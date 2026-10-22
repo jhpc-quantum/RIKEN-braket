@@ -503,15 +503,97 @@ class TrigonometricConstantTests(unittest.TestCase):
             self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
             self.assertEqual(converter._QASM2QCXConverter__qcx_lines, before_lines)
 
-    def test_cli_errors_are_atomic_and_runtime_lowering_remains_staged(self):
+    def test_cli_errors_are_atomic(self):
         for name in self.names:
             with patch('builtins.open', mock_open(read_data=f'OPENQASM 3; const float C = {name}(1e309);')):
                 with patch('builtins.print') as output, self.assertRaisesRegex(SystemExit, name + '.*nonfinite input'):
                     qasm2qcx.main(['trig.qasm'])
                 output.assert_not_called()
-            for source in (f'float x = {name}(1);', f'float x = 1; float out = {name}(x);'):
-                with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'runtime evaluation of function ' + name):
-                    self.converter(source)
+
+
+class TrigonometricRuntimeTests(unittest.TestCase):
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    names = ('sin', 'cos', 'tan')
+
+    def clean(self, source):
+        return InverseModifierLoweringTests.assert_clean_conversion(self, source)
+
+    def test_input_selected_real_signatures_and_explicit_promotions(self):
+        for name in self.names:
+            for declaration, operand in (('int x = 1;', ':REAL:X1'), ('uint x = 2;', ':REAL:X1'),
+                                         ('bool x = true;', ':REAL:X1'), ('float x = 1;', 'X1')):
+                lines = self.clean(declaration + f' complex out = {name}(x);')
+                call = next(line.split() for line in lines if f' <- {name.upper()} ' in line)
+                self.assertIn(f'VAR {call[1]} REAL', lines)
+                self.assertEqual(call[4], operand)
+            self.clean(f'bit b = 1; float out = {name}(float(b));')
+            for declaration in ('bit x;', 'complex x = 1;'):
+                with self.assertRaises(qasm2qcx.InvalidFunctionCallException):
+                    self.clean(declaration + f' complex out = {name}(x);')
+
+    def test_executable_literals_do_not_use_host_math(self):
+        for name in self.names:
+            for argument in ('0.0', '-0.0', '1', '1e308', '-1e308', '1e309', '-1e309', '0.0 / 0.0'):
+                with self.subTest(name=name, argument=argument), patch.object(
+                        qasm2qcx.math, name, side_effect=AssertionError('host math')):
+                    lines = self.clean(f'float out = {name}({argument});')
+                self.assertEqual(sum(f' <- {name.upper()} ' in line for line in lines), 1)
+                self.assertFalse(any(re.search(r'\b(?:inf|nan)\b', line, re.IGNORECASE) for line in lines))
+            number = (1 << 60) + 1
+            self.assertTrue(any(line.endswith(f':= :REAL:{number}')
+                                for line in self.clean(f'float out = {name}({number});')))
+
+    def test_nested_calls_visit_once_and_preserve_caller_temporaries(self):
+        converter = self.converter('float x = 1;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        expression = self.expression('sin(cos(tan(x)))')
+        arguments = (expression.arguments[0], expression.arguments[0].arguments[0],
+                     expression.arguments[0].arguments[0].arguments[0])
+        start = len(converter._QASM2QCXConverter__qcx_lines)
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            converter.visit(expression)
+        for argument in arguments:
+            self.assertEqual(sum(call.args[0] is argument for call in visit.call_args_list), 1)
+        result = converter._QASM2QCXConverter__value
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller, result})
+        self.assertEqual(converter._QASM2QCXConverter__value_type, qasm2qcx.ValueType.FLOAT)
+        lines = converter._QASM2QCXConverter__qcx_lines[start:]
+        for name in self.names:
+            self.assertEqual(sum(f' <- {name.upper()} ' in line for line in lines), 1)
+        self.assertFalse(any(line.startswith((f'LET {caller} ', 'LET X1 ')) for line in lines))
+
+    def test_indexed_assignments_reserve_array_indices(self):
+        for name in self.names:
+            lines = self.clean('array[float, 2] values = {1, 2}; array[complex, 2] zs = {1 + 1im, 2}; int i = 0; '
+                               f'values[i] = {name}(values[i]) + {name}(real(zs[i]));')
+            self.assertEqual(sum(line.startswith('ASSERT ') for line in lines), 6)
+            self.assertEqual(sum(line.endswith(' := I1') for line in lines), 3)
+            self.assertEqual(sum(f' <- {name.upper()} ' in line for line in lines), 2)
+
+    def test_gates_loop_expressions_and_condition_lowering(self):
+        self.clean('include "stdgates.inc"; qubit q; float x = 0; '
+                   'while (cos(x) > 0) { x += 1; } '
+                   'for int i in [0:int(cos(x)) + 2] { rx(sin(x)) q; } '
+                   'for int j in {int(sin(x)), int(tan(x))} { rz(float(j)) q; }')
+        for name in self.names:
+            lines = self.clean(f'bool out = true || bool({name}(1e309));')
+            self.assertTrue(any(f' <- {name.upper()} ' in line for line in lines))
+            ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_failure_restores_expression_state_and_caller_temporaries(self):
+        for name in self.names:
+            converter = self.converter('float x = 1;')
+            converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+            caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+            fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+            before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+            with patch.object(converter, '_QASM2QCXConverter__runtime_function_operand', side_effect=RuntimeError('conversion failed')):
+                with self.assertRaisesRegex(RuntimeError, 'conversion failed'):
+                    converter.visit(self.expression(f'{name}(x + 1)'))
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
 
 
 class LogConstantTests(unittest.TestCase):
