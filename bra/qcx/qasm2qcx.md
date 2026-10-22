@@ -513,14 +513,15 @@ value = value % divisor;    // evaluated by QCX at runtime
 value %= divisor;           // computes remainder, then assigns back to value
 ```
 
-The remainder is computed as `a - (a / b) * b`, so a nonzero signed remainder
+The remainder follows `a - trunc(a / b) * b`, so a nonzero signed remainder
 has the sign of the dividend. Unsigned remainder is nonnegative after operand
 promotion. Constant evaluation uses integer calculations without floating-point
 conversion; unsigned widths follow the normalization rules above.
 
-Runtime remainder is lowered to existing QCX integer division, multiplication,
-and subtraction instructions. Temporaries preserve both operands until the
-complete result is available. Computations remain in their original branches
+Runtime remainder is lowered to a temporary initialized from the dividend,
+followed by native QCX `LET temporary %= divisor`. Both operands remain live
+until the complete result is available; no intermediate quotient is evaluated.
+Computations remain in their original branches
 and short-circuit operands; only temporary declarations may be moved earlier.
 
 `%=` is supported for scalar `int` and `uint` variables with integer
@@ -531,10 +532,13 @@ or `a %= (a % b) + 1` therefore read the original target throughout evaluation.
 Evaluated constant `/` and `%` expressions with zero divisors produce
 converter-specific errors, reported by the command-line tool without a Python
 traceback. Skipped operands of constant Boolean expressions are still validated
-without performing the arithmetic. Runtime division remains deferred to QCX;
-`bra` checks integer zero divisors when the division instruction executes and
-throws `bra::integer_zero_divisor_error`. Signed integer overflow remains unchecked;
-unsigned arithmetic wraps at its supported width.
+without performing the arithmetic. Runtime division and remainder remain deferred
+to QCX; `bra` checks integer zero divisors when the respective instruction executes
+and throws `bra::integer_zero_divisor_error`. Remainder diagnostics identify
+`LET ... %= ...`, rather than a division instruction. The native minimum signed
+integer modulo `-1` produces zero, consistently with constant evaluation, without
+overflowing an intermediate quotient. Other signed arithmetic, including division
+overflow, remains unchecked; unsigned arithmetic wraps at its supported width.
 Literal zero-divisor `/` and `%` operations in runtime
 expressions are also deferred so short-circuited operands can skip them.
 Non-integer remainder operands are
@@ -3725,8 +3729,14 @@ invalid operands and widths, empty loops, read-only iterators, temporary cleanup
 and failed RHS lowering. The power numerical suite also passes with UBSan enabled.
 
 `bra/test/qasm2qcx_integer_remainder_numerical.py` verifies runtime remainder
-for signed operands, nested expressions, operand preservation, short-circuiting,
-compound assignments, self-references, and temporary reuse.
+for signed operands and native endpoints (including the minimum signed integer
+modulo `-1`), constant/runtime agreement, nested expressions, operand preservation,
+short-circuiting, compound assignments, indexed self-references, unsigned widths,
+and zero-divisor diagnostics. Unit tests additionally check temporary reuse and
+cleanup. `bra/test/integer_remainder_state.cpp` and
+`bra/test/integer_remainder_numerical.py` test native `INT`/`UINT` remainder,
+checked casts and nested indexing, aliasing, unchanged destinations after errors,
+and skipped execution. The remainder tests also pass with UBSan enabled.
 
 `bra/test/qasm2qcx_uint_numerical.py` compares constant folding and runtime
 unsigned arithmetic, remainder, bitwise expressions, complement, and compound
@@ -3897,6 +3907,7 @@ ulimit -c 0
 python3 bra/test/jumpif_numerical.py --bra bra/bin/bra
 python3 bra/test/assert_numerical.py --bra bra/bin/bra
 python3 bra/test/integer_division_numerical.py --bra bra/bin/bra
+python3 bra/test/integer_remainder_numerical.py --bra bra/bin/bra
 python3 bra/test/integer_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/integer_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
