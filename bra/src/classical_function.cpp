@@ -99,6 +99,16 @@ namespace bra
     auto const& registered = ::bra::resolve_classical_function(signature.function, signature.operand_types);
     if (signature.result_types != registered.result_types)
       throw std::invalid_argument{"unsupported result signature"};
+    if (signature.function == ::bra::classical_function_id::complex_)
+    {
+      auto const real = boost::get< ::bra::real_type >(call.operands()[0u]);
+      auto const imaginary = boost::get< ::bra::real_type >(call.operands()[1u]);
+      if (not boost::math::isfinite(real) or not boost::math::isfinite(imaginary))
+        throw std::domain_error{"nonfinite input to COMPLEX"};
+      // Construct components directly: arithmetic assembly loses signed zeros
+      // and can flush subnormals even though no mathematical work is needed.
+      return {::bra::complex_type{real, imaginary}};
+    }
     auto const& operand = call.operands().front();
     if (auto const value = boost::get< ::bra::real_type >(&operand))
     {

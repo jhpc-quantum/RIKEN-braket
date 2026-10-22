@@ -51,7 +51,7 @@ def main() -> None:
         array[complex, 4] a = {z + 1, -z, z * z, z / 2}; z = 99;''',
                   tuple(f'A1:{i}' for i in range(4)), ['(2,2)', '(-1,-2)', '(-3,4)', '(0.5,1)'])
     check_program(bra, '''const int N = 2; array[complex[float[64]], N] a = {1.0im, -1.0im};
-        for int N in [0:1] {}''', ('A1:0', 'A1:1'), ['(0,1)', '(0,-1)'])
+        for int N in [0:1] {}''', ('A1:0', 'A1:1'), ['(0,1)', '(-0,-1)'])
     check_program(bra, '''include "stdgates.inc"; qubit q; x q; bit b = measure q;
         array[complex, 2] a = {complex(b), complex(!b)};''',
                   ('A1:0', 'A1:1'), ['(1,0)', '(0,0)'])

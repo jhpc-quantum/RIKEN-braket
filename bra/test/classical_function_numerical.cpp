@@ -142,6 +142,23 @@ int main()
   auto const positive_zero = real{0};
   auto const negative_zero = std::copysign(real{0}, real{-1});
   auto const maximum = std::numeric_limits<real>::max();
+  auto const& constructor = bra::resolve_classical_function(function::complex_, {type::real, type::real});
+  for (auto const re: {positive_zero, negative_zero, real{3}, real{-3}, maximum, -maximum,
+                      std::numeric_limits<real>::min(), std::numeric_limits<real>::denorm_min()})
+    for (auto const im: {positive_zero, negative_zero, real{4}, real{-4}, maximum, -maximum,
+                        std::numeric_limits<real>::min(), std::numeric_limits<real>::denorm_min()})
+    {
+      auto result = complex{-77, 19};
+      auto const call = bra::classical_function_call{constructor, {&result}, {re, im}};
+      call.commit_results(bra::evaluate_classical_function(call));
+      require(result.real() == re and result.imag() == im, "COMPLEX changed a component value");
+      require(boost::math::fpclassify(result.real()) == boost::math::fpclassify(re)
+              and boost::math::fpclassify(result.imag()) == boost::math::fpclassify(im),
+              "COMPLEX flushed a stored component");
+      require(boost::math::signbit(result.real()) == boost::math::signbit(re)
+              and boost::math::signbit(result.imag()) == boost::math::signbit(im),
+              "COMPLEX changed a component sign");
+    }
   for (auto const input: {real{0.25}, real{1}, real{4}, std::numeric_limits<real>::min(), maximum})
     require(close(square_root(input) / std::sqrt(input), real{1}), "wrong real SQRT");
   for (auto const re: {positive_zero, negative_zero})
@@ -310,6 +327,21 @@ int main()
   auto const nan = std::numeric_limits<real>::quiet_NaN();
   for (auto const invalid: {infinity, -infinity, nan})
   {
+    for (auto const& inputs: {std::vector<bra::classical_function_value>{invalid, real{0}},
+                            std::vector<bra::classical_function_value>{real{0}, invalid},
+                            std::vector<bra::classical_function_value>{invalid, invalid}})
+    {
+      auto result = complex{-77, 19};
+      auto const call = bra::classical_function_call{constructor, {&result}, inputs};
+      auto caught = false;
+      try { call.commit_results(bra::evaluate_classical_function(call)); }
+      catch (std::domain_error const& error)
+      {
+        require(std::string{error.what()} == "nonfinite input to COMPLEX", "wrong COMPLEX diagnostic");
+        caught = true;
+      }
+      require(caught and result == complex{-77, 19}, "failed COMPLEX call modified destination");
+    }
     expect_failure<std::domain_error>(function::exp, invalid, "nonfinite input");
     expect_failure<std::domain_error>(function::sqrt, invalid, "nonfinite input");
     for (auto const z: {complex{invalid, 0}, complex{0, invalid}, complex{invalid, invalid}})

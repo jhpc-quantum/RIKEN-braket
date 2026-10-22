@@ -137,6 +137,15 @@ int main()
   check_close("RESULT", 0);
   state.invoke_assign_operation("RESULT", bra::assign_operation_type::assign, ":IMAG:CRESULT");
   check_close("RESULT", 2);
+  state.invoke_apply_operation({"CRESULT"}, function::complex_, {"R:N:N", ":REAL:CRESULT"});
+  state.invoke_assign_operation("RESULT", bra::assign_operation_type::assign, ":REAL:CRESULT");
+  check_close("RESULT", 3);
+  state.invoke_assign_operation("RESULT", bra::assign_operation_type::assign, ":IMAG:CRESULT");
+  check_close("RESULT", 0);
+  check_call({"RESULT"}, function::complex_, {"R", "R"}, "wrong destination type");
+  check_call({"CRESULT"}, function::complex_, {"N", "R"}, "unsupported operand signature");
+  check_call({"CRESULT"}, function::complex_, {"R"}, "wrong operand count");
+  check_call({"CRESULT"}, function::complex_, {"R", "R:999"}, "index out of range");
   check_call({"RESULT"}, function::sqrt, {"N"}, "unsupported operand signature");
   check_call({"CRESULT"}, function::sqrt, {"R:N"}, "wrong destination type");
   check_call({"RESULT"}, function::sqrt, {"Z"}, "wrong destination type");

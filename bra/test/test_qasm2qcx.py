@@ -492,14 +492,101 @@ class SquareRootConstantTests(unittest.TestCase):
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
         self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
 
-    def test_cli_error_has_no_partial_output_and_runtime_support_is_staged(self):
+    def test_cli_error_has_no_partial_output(self):
         with patch('builtins.open', mock_open(read_data='OPENQASM 3; qubit q; const float C = sqrt(-1);')):
             with patch('builtins.print') as output, self.assertRaisesRegex(SystemExit, 'sqrt.*negative real input'):
                 qasm2qcx.main(['sqrt.qasm'])
             output.assert_not_called()
-        for source in ('float x = sqrt(4);', 'complex z = sqrt(complex(-1));'):
-            with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'runtime evaluation of function sqrt'):
-                self.converter(source)
+
+
+class SquareRootRuntimeTests(unittest.TestCase):
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+
+    def clean(self, source):
+        return InverseModifierLoweringTests.assert_clean_conversion(self, source)
+
+    def test_runtime_overload_selection_and_explicit_promotions(self):
+        for declaration, operand in (('int x = 4;', ':REAL:X1'), ('uint x = 4;', ':REAL:X1'),
+                                     ('bool x = true;', ':REAL:X1'), ('float x = 4;', 'X1'),
+                                     ('complex x = 4im;', 'X1')):
+            with self.subTest(declaration=declaration):
+                lines = self.clean(declaration + ' complex out = sqrt(x);')
+                call = next(line.split() for line in lines if ' <- SQRT ' in line)
+                expected = 'COMPLEX' if declaration.startswith('complex') else 'REAL'
+                self.assertIn(f'VAR {call[1]} {expected}', lines)
+                self.assertEqual(call[4], operand)
+        self.clean('bit b = 1; float x = sqrt(float(b));')
+        with self.assertRaises(qasm2qcx.InvalidFunctionCallException):
+            self.clean('bit b; float x = sqrt(b);')
+
+    def test_literal_calls_use_native_math_even_for_invalid_values(self):
+        for source in ('float x = sqrt(-1);', 'float x = sqrt(4);', 'complex x = sqrt(complex(-1));',
+                       'float x = sqrt(1e309);', 'complex x = sqrt(1e309im);'):
+            with self.subTest(source=source), patch.object(qasm2qcx.math, 'sqrt', side_effect=AssertionError('host sqrt')):
+                with patch.object(qasm2qcx.cmath, 'sqrt', side_effect=AssertionError('host sqrt')):
+                    lines = self.clean(source)
+            self.assertEqual(sum(' <- SQRT ' in line for line in lines), 1)
+            self.assertFalse(any(re.search(r'\b(?:inf|nan)\b', line, re.IGNORECASE) for line in lines))
+
+    def test_negative_imaginary_zero_is_preserved_in_shared_literal_conversion(self):
+        for source in ('complex x = sqrt(-complex(4));',
+                       'complex z = -complex(4); complex x = sqrt(z);',
+                       'array[complex, 1] zs = {-complex(4)}; complex x = sqrt(zs[0]);',
+                       'const complex Z = -complex(4); complex x = sqrt(Z);',
+                       'complex x = sqrt(-0.0im);'):
+            with self.subTest(source=source):
+                lines = self.clean(source)
+                self.assertTrue(any(' <- COMPLEX ' in line and line.endswith(' :REAL:-0.0') for line in lines))
+                self.assertEqual(sum(' <- SQRT ' in line for line in lines), 1)
+
+    def test_nested_calls_visit_each_argument_once_and_preserve_caller_storage(self):
+        converter = self.converter('complex z = -3 + 4im;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        expression = self.expression('sqrt(real(sqrt(z)))')
+        arguments = (expression.arguments[0], expression.arguments[0].arguments[0],
+                     expression.arguments[0].arguments[0].arguments[0])
+        start = len(converter._QASM2QCXConverter__qcx_lines)
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            converter.visit(expression)
+            for argument in arguments:
+                self.assertEqual(sum(call.args[0] is argument for call in visit.call_args_list), 1)
+        result = converter._QASM2QCXConverter__value
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller, result})
+        self.assertEqual(converter._QASM2QCXConverter__value_type, qasm2qcx.ValueType.FLOAT)
+        lines = converter._QASM2QCXConverter__qcx_lines[start:]
+        self.assertEqual(sum(' <- SQRT ' in line for line in lines), 2)
+        self.assertFalse(any(line.startswith((f'LET {caller} ', 'LET Z1 ')) for line in lines))
+
+    def test_runtime_arrays_gates_and_control_flow(self):
+        lines = self.clean('include "stdgates.inc"; qubit q; '
+            'array[float, 2] values = {4, 9}; array[complex, 2] zs = {-3 + 4im, 1im}; int i = 0; '
+            'values[i] = sqrt(values[i]) + real(sqrt(zs[i]));')
+        self.assertEqual(sum(line.startswith('ASSERT ') for line in lines), 6)
+        self.assertEqual(sum(line.endswith(' := I1') for line in lines), 3)
+        self.assertEqual(sum(' <- SQRT ' in line for line in lines), 2)
+        self.clean('include "stdgates.inc"; qubit q; int n = 3; float total = 0; '
+            'while (sqrt(float(n)) > 0) { total += sqrt(float(n)); n -= 1; } '
+            'for int i in [0:n] { if (bool(sqrt(float(i)))) { rz(sqrt(total)) q; } }')
+
+    def test_short_circuits_keep_runtime_calls_behind_branches(self):
+        for source in ('false && bool(sqrt(-1))', 'true || (real(sqrt(1e309im)) > 0)'):
+            lines = self.clean('bool result = ' + source + ';')
+            self.assertTrue(any(' <- SQRT ' in line for line in lines))
+            ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_runtime_failure_cleans_up_temporaries_and_expression_state(self):
+        converter = self.converter('float x = 4;')
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        with patch.object(converter, '_QASM2QCXConverter__runtime_function_operand', side_effect=RuntimeError('conversion failed')):
+            with self.assertRaisesRegex(RuntimeError, 'conversion failed'):
+                converter.visit(self.expression('sqrt(x + 1)'))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
 
 
 class BuiltinFunctionRuntimeTests(unittest.TestCase):
@@ -3791,7 +3878,7 @@ class CheckedNegationExpressionTests(unittest.TestCase):
             float f = 1.5; float g = -f; complex z = 1 + 2im; complex w = -z;''')
         self.assertFalse(any(line.startswith('ASSERT ') for line in lines))
         self.assertTrue(any(' *= :UINT:-1' in line for line in lines))
-        self.assertTrue(any(' *= :COMPLEX:-1.0' in line for line in lines))
+        self.assertTrue(any(line.endswith(' <- COMPLEX -0.0 -0.0') for line in lines))
 
 
 class CheckedNegationIntegrationTests(unittest.TestCase):
@@ -11855,9 +11942,7 @@ class ClassicalScalarTests(unittest.TestCase):
 
         lines = convert(source)
         self.assertIn("VAR VALUE31 COMPLEX", lines)
-        self.assertIn("LET QASM2QCX_COMPLEX_0 := :COMPLEX:1.0", lines)
-        self.assertIn("LET QASM2QCX_COMPLEX_1 := :I", lines)
-        self.assertIn("LET QASM2QCX_COMPLEX_1 *= :COMPLEX:2.0", lines)
+        self.assertIn("APPLY QASM2QCX_COMPLEX_0 <- COMPLEX :REAL:1.0 :REAL:2.0", lines)
         self.assertIn("LET VALUE31 := QASM2QCX_COMPLEX_0", lines)
         self.assertEqual(lines[-1], "LET VALUE31 *= :COMPLEX:2.0")
         self.assertTrue(all("j" not in line for line in lines))

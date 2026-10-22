@@ -12,7 +12,7 @@
 namespace bra
 {
   enum class classical_function_id : int
-  { exp = 0, arg = 1, abs = 2, sqrt = 3 };
+  { exp = 0, arg = 1, abs = 2, sqrt = 3, complex_ = 4 };
 
   struct classical_function_signature
   {
@@ -30,6 +30,7 @@ namespace bra
     case ::bra::classical_function_id::arg: return "ARG";
     case ::bra::classical_function_id::abs: return "ABS";
     case ::bra::classical_function_id::sqrt: return "SQRT";
+    case ::bra::classical_function_id::complex_: return "COMPLEX";
     }
     throw std::invalid_argument{"unknown classical function identifier"};
   }
@@ -37,15 +38,17 @@ namespace bra
   // Overload lookup must compare operand types only. Result types are checked
   // against destinations after selecting the signature, never used to select it.
   inline auto classical_function_signatures()
-    -> std::array< ::bra::classical_function_signature, 6u > const&
+    -> std::array< ::bra::classical_function_signature, 7u > const&
   {
-    static auto const signatures = std::array< ::bra::classical_function_signature, 6u >{{
+    static auto const signatures = std::array< ::bra::classical_function_signature, 7u >{{
       {::bra::classical_function_id::exp, {::bra::variable_type::real}, {::bra::variable_type::real}},
       {::bra::classical_function_id::exp, {::bra::variable_type::complex_}, {::bra::variable_type::complex_}},
       {::bra::classical_function_id::arg, {::bra::variable_type::complex_}, {::bra::variable_type::real}},
       {::bra::classical_function_id::abs, {::bra::variable_type::complex_}, {::bra::variable_type::real}},
       {::bra::classical_function_id::sqrt, {::bra::variable_type::real}, {::bra::variable_type::real}},
-      {::bra::classical_function_id::sqrt, {::bra::variable_type::complex_}, {::bra::variable_type::complex_}}
+      {::bra::classical_function_id::sqrt, {::bra::variable_type::complex_}, {::bra::variable_type::complex_}},
+      {::bra::classical_function_id::complex_, {::bra::variable_type::real, ::bra::variable_type::real},
+                                            {::bra::variable_type::complex_}}
     }};
     return signatures;
   }

@@ -113,6 +113,20 @@ def main():
     bra = parser.parse_args().bra.resolve()
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     calls = 0
+    for re_part in (0.0, -0.0, 3.0, -3.0):
+        for im_part in (0.0, -0.0, 4.0, -4.0):
+            result = run(bra, SETUP + f'APPLY COUT <- COMPLEX {re_part!r} {im_part!r}\n'
+                         'PRINTLN :REAL:COUT :IMAG:COUT\n')
+            if result.returncode:
+                raise RuntimeError(f'COMPLEX construction failed: {result}')
+            actual = list(map(float, result.stdout.split()))
+            if len(actual) != 2 or any(a != e or math.copysign(1, a) != math.copysign(1, e)
+                                      for a, e in zip(actual, (re_part, im_part))):
+                raise RuntimeError(f'COMPLEX changed components: {actual} != {(re_part, im_part)}')
+            calls += 1
+    check_values(bra, SETUP + 'LET COUT := :I\nLET COUT += :COMPLEX:2.0\n'
+                 'apply cout <- complex :imag:cout :real:cout\nPRINTLN :REAL:COUT :IMAG:COUT\n', [1, 2])
+    calls += 1
     for source, value in (('R:0', 0.25), ('R:N:N', 0.75), ('4.0', 4), ('-0.0', -0.0),
                           (':REAL:N:1', 2), (':REAL:U', 2), ('1e308', 1e308), ('1e-300', 1e-300)):
         check_values(bra, SETUP + f'APPLY R:N:N <- SQRT {source}\nPRINTLN R:2 R:0 R:1 N:1 U\n',
@@ -186,6 +200,12 @@ def main():
     calls += 3
 
     failures = [
+        ('APPLY OUT <- COMPLEX R:0 R:1', 'wrong destination type', ''),
+        ('APPLY COUT <- COMPLEX N:0 R:0', 'unsupported operand signature', ''),
+        ('APPLY COUT <- COMPLEX R:0 U', 'unsupported operand signature', ''),
+        ('APPLY COUT <- COMPLEX R:0', 'wrong operand count', ''),
+        ('APPLY COUT <- COMPLEX R:0 R:1 R:2', 'wrong operand count', ''),
+        ('APPLY COUT <- COMPLEX R:0 R:999', 'index out of range', ''),
         ('APPLY OUT <- SQRT -1.0', 'negative real input', ''),
         ('APPLY OUT <- SQRT 1', 'unsupported operand signature', ''),
         ('APPLY OUT <- SQRT U', 'unsupported operand signature', ''),
@@ -225,6 +245,8 @@ def main():
     for numerator in ('1.0', '-1.0', '0.0'):
         preparation = f'LET OUT := {numerator}\nLET OUT /= 0.0\nLET COUT := :COMPLEX:OUT\n'
         failures.extend((
+            ('APPLY Z:0 <- COMPLEX OUT R:0', 'nonfinite input', preparation),
+            ('APPLY Z:0 <- COMPLEX R:0 OUT', 'nonfinite input', preparation),
             ('APPLY R:0 <- SQRT OUT', 'nonfinite input', preparation),
             ('APPLY Z:0 <- SQRT COUT', 'nonfinite input', preparation),
             ('APPLY R:0 <- EXP OUT', 'nonfinite input', preparation),
