@@ -24,6 +24,10 @@ int main()
   state.generate_new_variable("U", bra::variable_type::unsigned_integer, 2);
   state.generate_new_variable("I", bra::variable_type::integer, 1);
   state.generate_new_variable("R", bra::variable_type::real, 1);
+  state.generate_new_variable("Z", bra::variable_type::complex_, 1);
+  state.generate_new_variable("P", bra::variable_type::pauli_string_space, 1);
+  state.generate_new_variable("POINTERS", bra::variable_type::integer, 2);
+  state.generate_new_variable("BAD", bra::variable_type::real, 1);
   state.invoke_assign_operation("I", operation::assign, "1");
   state.invoke_assign_operation("A:0", operation::assign, "3");
   state.invoke_assign_operation("U:0", operation::assign, "3");
@@ -81,6 +85,81 @@ int main()
     require(std::string{error.what()}.find("R %= 3") != std::string::npos, "wrong remainder type-error diagnostic");
   }
   require(caught, "REAL remainder destination accepted");
+
+  // Explicit conversions are checked, while bare cross-type operands are not
+  // silently converted. Both integer storages and jump state survive failures.
+  state.invoke_assign_operation("R", operation::assign, "3.9");
+  state.invoke_assign_operation("Z", operation::assign, ":COMPLEX:3.9");
+  state.invoke_assign_operation("POINTERS:1", operation::assign, "0");
+  for (auto const& operand: {"A:0", "A:POINTERS:I", ":INT:3.9", ":INT:R", ":INT:Z", ":INT:U:0"})
+  {
+    state.invoke_assign_operation("A:1", operation::assign, "7");
+    state.invoke_assign_operation("A:I", operation::modulus_assign, operand);
+    state.invoke_assert_operation("A:1", comparison::equal_to, "1");
+  }
+  for (auto const& operand: {"U:0", "U:POINTERS:I", ":UINT:3.9", ":UINT:R", ":UINT:Z", ":UINT:A:0"})
+  {
+    state.invoke_assign_operation("U:1", operation::assign, "7");
+    state.invoke_assign_operation("U:I", operation::modulus_assign, operand);
+    state.invoke_assert_operation("U:1", comparison::equal_to, "1");
+  }
+  auto expect_unchanged = [&](std::string const& target, std::string const& operand)
+  {
+    state.invoke_assign_operation("A:1", operation::assign, "7");
+    state.invoke_assign_operation("U:1", operation::assign, "7");
+    auto failed = false;
+    try { state.invoke_assign_operation(target, operation::modulus_assign, operand); }
+    catch (...) { failed = true; }
+    require(failed, "invalid remainder instruction accepted: " + target + " %= " + operand);
+    state.invoke_assert_operation("A:0", comparison::equal_to, "3");
+    state.invoke_assert_operation("A:1", comparison::equal_to, "7");
+    state.invoke_assert_operation("U:0", comparison::equal_to, "3");
+    state.invoke_assert_operation("U:1", comparison::equal_to, "7");
+    state.invoke_assert_operation("I", comparison::equal_to, "1");
+    state.invoke_assert_operation("R", comparison::equal_to, "3.9");
+    require(state.maybe_label() and *state.maybe_label() == "PENDING", "failed remainder changed jump state");
+  };
+  for (auto const& operand: {"", "R", "Z", "P", "U", ":UINT:3", ":REAL:3", ":COMPLEX:3", "3.5",
+                            "MISSING", "A:-1", "A:2", "A:POINTERS:99", ":INT:R:99",
+                            ":INT:1e309", ":UNKNOWN:3"})
+    expect_unchanged("A:1", operand);
+  for (auto const& operand: {"", "A", "R", "Z", "P", "-1", "-0", ":INT:3", ":REAL:3", "3.5",
+                            "MISSING", "U:-1", "U:2", "U:POINTERS:99", ":UINT:R:99", ":UINT:1e309"})
+    expect_unchanged("U:1", operand);
+  expect_unchanged("A:1", std::to_string(std::numeric_limits<bra::int_type>::max()) + "0");
+  expect_unchanged("A:1", ":INT:" + std::to_string(std::numeric_limits<bra::int_type>::max()) + "0.0");
+  expect_unchanged("U:1", unsigned_maximum + "0");
+  expect_unchanged("A:1", ":INT::UINT:" + unsigned_maximum);
+  for (auto const& target: {"R", "Z", "P", "MISSING", ":INT:A", "A:-1", "A:2", "A:POINTERS:99", "U:-1", "U:2"})
+    expect_unchanged(target, "3");
+  for (auto const& numerator: {"0.0", "1.0", "-1.0"})
+  {
+    state.invoke_assign_operation("BAD", operation::assign, numerator);
+    state.invoke_assign_operation("BAD", operation::divides_assign, "0.0");
+    expect_unchanged("A:1", ":INT:BAD");
+    expect_unchanged("U:1", ":UINT:BAD");
+  }
+
+  // Resolve aliased RHS/index operands before any write to their destination.
+  state.invoke_assign_operation("A:1", operation::assign, "1");
+  state.invoke_assign_operation("A:I", operation::modulus_assign, "A:A:I");
+  state.invoke_assert_operation("A:1", comparison::equal_to, "0");
+  state.invoke_assign_operation("A:1", operation::assign, "1");
+  state.invoke_assign_operation("I", operation::modulus_assign, "A:I");
+  state.invoke_assert_operation("I", comparison::equal_to, "0");
+  for (auto const& target: {"A:1", "U:1"})
+  {
+    state.invoke_assign_operation(target, operation::assign, "7");
+    state.invoke_assign_operation(target, operation::modulus_assign, target);
+    state.invoke_assert_operation(target, comparison::equal_to, "0");
+    auto failed = false;
+    try { state.invoke_assign_operation(target, operation::modulus_assign, target); }
+    catch (bra::integer_zero_divisor_error const&) { failed = true; }
+    require(failed, "zero self-remainder accepted");
+    state.invoke_assert_operation(target, comparison::equal_to, "0");
+  }
+  require(std::string{bra::integer_zero_divisor_error{"A", "0"}.what()}
+            == "integer division by zero in LET A /= 0", "legacy division diagnostic changed");
   require(state.maybe_label() and *state.maybe_label() == "PENDING", "remainder changed pending jump state");
 
   auto input = std::istringstream{"QUBITS 0\nlet a:i %= u:i\n"};
