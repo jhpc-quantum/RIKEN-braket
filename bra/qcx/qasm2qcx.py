@@ -188,6 +188,7 @@ class _BuiltinFunctionSignature:
     result_type: ValueType
     qcx_function: str | None = None
     component: str | None = None
+    integer_remainder: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -315,6 +316,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         'arctan': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='ARCTAN'),),
         'ceiling': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='CEILING'),),
         'floor': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='FLOOR'),),
+        'mod': (_BuiltinFunctionSignature((ValueType.INT, ValueType.INT), ValueType.INT, integer_remainder=True),
+                _BuiltinFunctionSignature((ValueType.FLOAT, ValueType.FLOAT), ValueType.FLOAT, qcx_function='MOD')),
         'real': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='REAL'),),
         'imag': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='IMAG'),),
     }
@@ -3631,6 +3634,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # a special OpenQASM type, not an implicit integer/Boolean here.
         if source == target:
             return True
+        if target == ValueType.INT:
+            # Integer inputs select the signed overload before a real one.
+            # UINT conversion is checked during evaluation, not overload lookup.
+            return source in (ValueType.BOOL, ValueType.UINT)
         if source in (ValueType.BOOL, ValueType.INT, ValueType.UINT):
             return target in (ValueType.FLOAT, ValueType.COMPLEX)
         return source == ValueType.FLOAT and target == ValueType.COMPLEX
@@ -4783,11 +4790,19 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if not self.__evaluate_constant:
                     continue
                 try:
-                    operands.append(complex(self.__value) if target_type == ValueType.COMPLEX else float(self.__value))
+                    if target_type == ValueType.INT:
+                        value = int(self.__value)
+                        if self.__value_type == ValueType.UINT and value > self.QCX_INT_MAX:
+                            raise InvalidConstantFunctionException(
+                                f'Function {expression.name.name}: UINT to INT conversion outside QCX INT range')
+                    else:
+                        value = complex(self.__value) if target_type == ValueType.COMPLEX else float(self.__value)
+                    operands.append(value)
                 except (OverflowError, ValueError) as error:
                     raise InvalidConstantFunctionException(
                         f'Function {expression.name.name}: operand outside supported constant precision') from error
-            result = complex() if signature.result_type == ValueType.COMPLEX else 0.0
+            result = (complex() if signature.result_type == ValueType.COMPLEX
+                      else 0 if signature.result_type == ValueType.INT else 0.0)
             if self.__evaluate_constant:
                 result = self.__fold_builtin_function(expression.name.name, signature, tuple(operands))
             self.__value, self.__value_type, self.__value_kind = result, signature.result_type, ValueKind.LITERAL
@@ -4829,6 +4844,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return operand
 
     def __visit_runtime_function(self, expression: ast.FunctionCall, signature: _BuiltinFunctionSignature) -> None:
+        if len(signature.operand_types) != 1:
+            raise UnsupportedOpenQASMError(f'runtime function {expression.name.name}')
         # Every initial built-in is unary. Keep argument/conversion storage
         # reserved until the result is allocated, so nested calls and indexed
         # assignment destinations cannot alias or be overwritten by the result.
@@ -4875,11 +4892,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     @staticmethod
     def __fold_builtin_function(
-            name: str, signature: _BuiltinFunctionSignature, operands: tuple[float | complex, ...]
-            ) -> float | complex:
-        # Compile-time arithmetic uses Python float/complex precision, just as
-        # existing constant arithmetic does. Runtime calls must use bra instead.
+            name: str, signature: _BuiltinFunctionSignature, operands: tuple[int | float | complex, ...]
+            ) -> int | float | complex:
+        # Keep integer folding exact; real/complex folding uses Python's host
+        # precision, as existing constant arithmetic does. Runtime uses bra.
         value = operands[0]
+        if signature.integer_remainder:
+            dividend, divisor = operands
+            if divisor == 0:
+                raise InvalidConstantFunctionException(f'Function {name}: zero divisor')
+            return dividend - QASM2QCXConverter.__integer_quotient(dividend, divisor) * divisor
         if signature.component is not None:
             # Component extraction is LET, not APPLY: preserve its IEEE values
             # (including signed zeros/nonfinite components), without EXP checks.
@@ -4896,13 +4918,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             'ARCTAN': {ValueType.FLOAT: math.atan},
             'CEILING': {ValueType.FLOAT: math.ceil},
             'FLOOR': {ValueType.FLOAT: math.floor},
+            'MOD': {ValueType.FLOAT: math.fmod},
         }
         operand_type = signature.operand_types[0]
         function = functions.get(signature.qcx_function, {}).get(operand_type)
         if function is None:
             raise UnsupportedOpenQASMError(f'constant evaluation of function {name}')
-        if not cmath.isfinite(value):
+        if any(not cmath.isfinite(operand) for operand in operands):
             raise InvalidConstantFunctionException(f'Function {name}: nonfinite input')
+        if signature.qcx_function == 'MOD' and operands[1] == 0:
+            raise InvalidConstantFunctionException(f'Function {name}: zero divisor')
         if signature.qcx_function == 'SQRT' and operand_type == ValueType.FLOAT and value < 0:
             raise InvalidConstantFunctionException(f'Function {name}: negative real input')
         if signature.qcx_function == 'LOG' and value <= 0:
@@ -4910,7 +4935,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if signature.qcx_function in ('ARCSIN', 'ARCCOS') and not -1 <= value <= 1:
             raise InvalidConstantFunctionException(f'Function {name}: real input outside [-1, 1]')
         try:
-            result = function(value)
+            result = function(*operands)
             if signature.qcx_function in ('CEILING', 'FLOOR'):
                 # Python returns arbitrary-precision integers, but OpenQASM
                 # rounding calls return float. Recover the input's zero sign,
