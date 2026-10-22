@@ -3,6 +3,7 @@
 import importlib.util
 import ctypes
 import math
+import cmath
 from fractions import Fraction
 import re
 from pathlib import Path
@@ -18,6 +19,415 @@ SPEC.loader.exec_module(qasm2qcx)
 
 def convert(source: str) -> list[str]:
     return qasm2qcx.convert(source)
+
+
+class BuiltinFunctionSignatureTests(unittest.TestCase):
+    @staticmethod
+    def expression(source):
+        return qasm2qcx.openqasm3.parser.parse('OPENQASM 3; float result = ' + source + ';').statements[0].init_expression
+
+    @staticmethod
+    def converter(source=''):
+        return IntegerPowerModifierFoundationTests.converter(source)
+
+    def test_registry_records_input_selected_signatures_and_native_operations(self):
+        registry = qasm2qcx.QASM2QCXConverter.builtin_function_signatures
+        self.assertEqual(set(registry), {'exp', 'real', 'imag'})
+        resolve = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__resolve_builtin_function
+        real_exp = resolve('exp', (qasm2qcx.ValueType.FLOAT,))
+        complex_exp = resolve('exp', (qasm2qcx.ValueType.COMPLEX,))
+        self.assertEqual((real_exp.result_type, real_exp.qcx_function, real_exp.component),
+                         (qasm2qcx.ValueType.FLOAT, 'EXP', None))
+        self.assertEqual((complex_exp.result_type, complex_exp.qcx_function, complex_exp.component),
+                         (qasm2qcx.ValueType.COMPLEX, 'EXP', None))
+        for name, component in (('real', 'REAL'), ('imag', 'IMAG')):
+            signature = resolve(name, (qasm2qcx.ValueType.COMPLEX,))
+            self.assertEqual((signature.operand_types, signature.result_type, signature.qcx_function, signature.component),
+                             ((qasm2qcx.ValueType.COMPLEX,), qasm2qcx.ValueType.FLOAT, None, component))
+
+    def test_promotions_select_first_matching_input_signature(self):
+        resolve = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__resolve_builtin_function
+        for operand in (qasm2qcx.ValueType.INT, qasm2qcx.ValueType.UINT, qasm2qcx.ValueType.BOOL):
+            self.assertEqual(resolve('exp', (operand,)).operand_types, (qasm2qcx.ValueType.FLOAT,))
+        for name in ('real', 'imag'):
+            for operand in (qasm2qcx.ValueType.INT, qasm2qcx.ValueType.UINT,
+                            qasm2qcx.ValueType.FLOAT, qasm2qcx.ValueType.BOOL):
+                self.assertEqual(resolve(name, (operand,)).operand_types, (qasm2qcx.ValueType.COMPLEX,))
+        for name in ('exp', 'real', 'imag'):
+            with self.subTest(name=name), self.assertRaisesRegex(qasm2qcx.InvalidFunctionCallException, name):
+                resolve(name, (qasm2qcx.ValueType.BIT,))
+
+    def test_arity_and_unknown_functions_have_explicit_diagnostics(self):
+        resolve = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__resolve_builtin_function
+        for name in ('exp', 'real', 'imag'):
+            for operands in ((), (qasm2qcx.ValueType.FLOAT,) * 2):
+                with self.subTest(name=name, operands=operands), self.assertRaisesRegex(
+                        qasm2qcx.InvalidFunctionCallException, f'{name} expects 1 argument'):
+                    resolve(name, operands)
+        for name in ('EXP', 'sin', 'abs', 'arg', 'user_function'):
+            with self.subTest(name=name), self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, f'function {name}'):
+                resolve(name, (qasm2qcx.ValueType.FLOAT,))
+
+    def test_type_information_tracks_constants_variables_and_nested_results(self):
+        converter = self.converter('int n = 1; uint u = 2; float f = 0.5; complex z = 1 + 2im; '
+                                   'bool b = true; bit bit_value; const float C = 0.5;')
+        for source, operand, result, runtime in (
+                ('exp(1)', qasm2qcx.ValueType.FLOAT, qasm2qcx.ValueType.FLOAT, False),
+                ('exp(C)', qasm2qcx.ValueType.FLOAT, qasm2qcx.ValueType.FLOAT, False),
+                ('exp(n)', qasm2qcx.ValueType.FLOAT, qasm2qcx.ValueType.FLOAT, True),
+                ('exp(u)', qasm2qcx.ValueType.FLOAT, qasm2qcx.ValueType.FLOAT, True),
+                ('exp(b)', qasm2qcx.ValueType.FLOAT, qasm2qcx.ValueType.FLOAT, True),
+                ('exp(bool(bit_value))', qasm2qcx.ValueType.FLOAT, qasm2qcx.ValueType.FLOAT, True),
+                ('exp(z)', qasm2qcx.ValueType.COMPLEX, qasm2qcx.ValueType.COMPLEX, True),
+                ('exp(complex(1.0))', qasm2qcx.ValueType.COMPLEX, qasm2qcx.ValueType.COMPLEX, False),
+                ('real(n)', qasm2qcx.ValueType.COMPLEX, qasm2qcx.ValueType.FLOAT, True),
+                ('imag(f)', qasm2qcx.ValueType.COMPLEX, qasm2qcx.ValueType.FLOAT, True),
+                ('exp(imag(exp(z)))', qasm2qcx.ValueType.FLOAT, qasm2qcx.ValueType.FLOAT, True)):
+            with self.subTest(source=source):
+                signature, actual_runtime = converter._QASM2QCXConverter__function_call_info(self.expression(source))
+                self.assertEqual((signature.operand_types, signature.result_type, actual_runtime), ((operand,), result, runtime))
+
+    def test_indexed_arrays_are_scalar_arguments_but_whole_arrays_and_registers_are_not(self):
+        converter = self.converter('array[float, 2] values = {0.5, 1.0}; '
+                                   'array[complex, 2] zs = {1im, 2im}; int index = 0; bit b; bit[1] register;')
+        for source, value_type in (('exp(values[index])', qasm2qcx.ValueType.FLOAT),
+                                   ('real(zs[index])', qasm2qcx.ValueType.FLOAT)):
+            self.assertEqual(converter._QASM2QCXConverter__loop_expression_info(self.expression(source)), (value_type, True))
+        for source in ('exp(values)', 'real(zs)', 'exp(register)', 'exp(b)'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                converter._QASM2QCXConverter__function_call_info(self.expression(source))
+
+    def test_iterator_types_override_outer_constants_without_fabricating_values(self):
+        converter = self.converter('const int i = 1;')
+        for value_type, expected in ((qasm2qcx.ValueType.FLOAT, qasm2qcx.ValueType.FLOAT),
+                                     (qasm2qcx.ValueType.COMPLEX, qasm2qcx.ValueType.COMPLEX)):
+            signature, runtime = converter._QASM2QCXConverter__function_call_info(
+                self.expression('exp(i)'), {'i': value_type})
+            self.assertEqual((signature.result_type, runtime), (expected, True))
+        with self.assertRaises(qasm2qcx.InvalidFunctionCallException):
+            converter._QASM2QCXConverter__function_call_info(self.expression('exp(i)'), {'i': qasm2qcx.ValueType.BIT})
+
+    def test_validation_never_evaluates_arithmetic_or_changes_expression_state(self):
+        converter = self.converter()
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        lines = converter._QASM2QCXConverter__qcx_lines.copy()
+        for source in ('exp(1.0 / 0.0)', 'exp(1e308 * 1e308)', 'exp(real(1im) / 0.0)'):
+            with self.subTest(source=source), patch.object(converter, 'visit', side_effect=AssertionError('evaluated argument')):
+                signature, runtime = converter._QASM2QCXConverter__function_call_info(self.expression(source))
+                self.assertEqual((signature.result_type, runtime), (qasm2qcx.ValueType.FLOAT, False))
+            self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
+
+    def test_name_and_arity_errors_precede_argument_inspection(self):
+        converter = self.converter()
+        for source, error, message in (
+                ('unknown(missing)', qasm2qcx.UnsupportedOpenQASMError, 'function unknown'),
+                ('exp(missing, missing)', qasm2qcx.InvalidFunctionCallException, 'expects 1 argument'),
+                ('exp(missing)', qasm2qcx.NoVariableNameException, 'missing'),
+                ('exp(sin(missing))', qasm2qcx.UnsupportedOpenQASMError, 'function sin')):
+            with self.subTest(source=source), self.assertRaisesRegex(error, message):
+                converter._QASM2QCXConverter__function_call_info(self.expression(source))
+
+    def test_callee_names_are_not_variable_or_iterator_dependencies(self):
+        converter = self.converter()
+        self.assertEqual(converter._QASM2QCXConverter__loop_bound_names(self.expression('exp(real(zs[i]) + x)')),
+                         {'zs', 'i', 'x'})
+        self.assertEqual(converter._QASM2QCXConverter__loop_bound_names(self.expression('exp(0)')), set())
+
+    def test_empty_loops_validate_calls_without_evaluating_them(self):
+        source = ('OPENQASM 3; float out = 0; int zero = 0; '
+                  'for int i in [1:0] { out = exp(1.0 / zero); out += real(exp(1im)); }')
+        lines = convert(source)
+        self.assertFalse(any(line.startswith('APPLY ') for line in lines))
+        for call, error in (('exp(true, missing)', qasm2qcx.InvalidFunctionCallException),
+                            ('exp(b)', qasm2qcx.InvalidFunctionCallException),
+                            ('exp(missing)', qasm2qcx.NoVariableNameException),
+                            ('exp(values)', qasm2qcx.UnsupportedOpenQASMError),
+                            ('real(sin(1.0))', qasm2qcx.UnsupportedOpenQASMError)):
+            with self.subTest(call=call), self.assertRaises(error):
+                convert('OPENQASM 3; float out = 0; bit b; array[float, 1] values = {0.5}; '
+                        + 'for int i in [1:0] { out = ' + call + '; }')
+
+    def test_function_result_types_participate_in_surrounding_validation(self):
+        converter = self.converter('complex z = 1im;')
+        self.assertEqual(converter._QASM2QCXConverter__loop_expression_info(self.expression('real(z) > 0')), (qasm2qcx.ValueType.BOOL, True))
+        for source in ('exp(1) % 2', 'real(z) & 1', '!exp(0)', 'exp(z) < 1'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                converter._QASM2QCXConverter__loop_expression_info(self.expression(source))
+
+    def test_public_runtime_calls_lower_and_invalid_cli_calls_print_no_partial_output(self):
+        self.assertTrue(any(' <- EXP ' in line for line in convert('OPENQASM 3; float out = exp(1.0);')))
+        self.assertTrue(any(':= :REAL:Z1' in line for line in convert('OPENQASM 3; complex z = 1im; float out = real(z);')))
+        with patch('builtins.open', mock_open(read_data='OPENQASM 3; float out = exp(1.0, 2.0);')):
+            with patch('builtins.print') as output, self.assertRaises(SystemExit):
+                qasm2qcx.main(['functions.qasm'])
+            output.assert_not_called()
+
+
+class BuiltinFunctionConstantTests(unittest.TestCase):
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+
+    def evaluate(self, source, declarations='', *, evaluate=True):
+        converter = self.converter(declarations)
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONST_ARITHMETIC
+        converter._QASM2QCXConverter__evaluate_constant = evaluate
+        expression = self.expression(source) if isinstance(source, str) else source
+        converter.visit(expression)
+        return converter
+
+    def value(self, source, declarations=''):
+        converter = self.evaluate(source, declarations)
+        self.assertEqual(converter._QASM2QCXConverter__value_kind, qasm2qcx.ValueKind.LITERAL)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        return converter._QASM2QCXConverter__value, converter._QASM2QCXConverter__value_type
+
+    def test_real_exponentials_and_numeric_promotions(self):
+        for source, expected in (('exp(0)', 1.0), ('exp(true)', math.e), ('exp(false)', 1.0),
+                                 ('exp(-1)', 1 / math.e), ('exp(uint[3](15))', math.exp(7)),
+                                 ('exp(0.5)', math.exp(0.5))):
+            with self.subTest(source=source):
+                value, value_type = self.value(source)
+                self.assertEqual(value_type, qasm2qcx.ValueType.FLOAT)
+                self.assertIsInstance(value, float)
+                self.assertAlmostEqual(value, expected)
+
+    def test_complex_exponentials_and_nested_component_extraction(self):
+        for source, expected, value_type in (
+                ('exp(1im)', complex(math.cos(1), math.sin(1)), qasm2qcx.ValueType.COMPLEX),
+                ('exp(-0.5 + 2im)', math.exp(-0.5) * complex(math.cos(2), math.sin(2)), qasm2qcx.ValueType.COMPLEX),
+                ('exp(complex(1))', complex(math.e), qasm2qcx.ValueType.COMPLEX),
+                ('real(exp(1im))', math.cos(1), qasm2qcx.ValueType.FLOAT),
+                ('imag(exp(1im))', math.sin(1), qasm2qcx.ValueType.FLOAT),
+                ('exp(real(exp(1im)))', math.exp(math.cos(1)), qasm2qcx.ValueType.FLOAT),
+                ('real(-3 + 4im)', -3.0, qasm2qcx.ValueType.FLOAT),
+                ('imag(uint[3](15))', 0.0, qasm2qcx.ValueType.FLOAT)):
+            with self.subTest(source=source):
+                actual, actual_type = self.value(source)
+                self.assertEqual(actual_type, value_type)
+                self.assertAlmostEqual(actual, expected)
+
+    def test_declared_constants_can_feed_later_constants_and_gates(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; const float A = exp(0); '
+                  'const complex Z = exp(1im); const float B = real(Z); const float C = imag(Z); '
+                  'qubit q; u3(A, B, C) q;')
+        self.assertEqual(convert(source), ['QUBITS 1', f'U3 0 1.0 {math.cos(1)} {math.sin(1)}'])
+
+    def test_destination_does_not_select_exp_overload(self):
+        with patch.object(qasm2qcx.math, 'exp', wraps=math.exp) as real_exp:
+            with patch.object(qasm2qcx.cmath, 'exp', wraps=cmath.exp) as complex_exp:
+                converter = self.converter('const complex Z = exp(1);')
+                self.assertEqual(converter._QASM2QCXConverter__const_complex_variable_name_values_map['Z'], [complex(math.e)])
+                real_exp.assert_called_once_with(1.0)
+                complex_exp.assert_not_called()
+        with self.assertRaises(qasm2qcx.NoImplicitCastException):
+            convert('OPENQASM 3; const float F = exp(1im);')
+
+    def test_function_constants_work_in_sizes_indices_ranges_and_power_modifiers(self):
+        self.assertEqual(convert('OPENQASM 3; include "stdgates.inc"; '
+            'qubit[int(real(exp(0))) + 1] q; for int i in [0:int(real(exp(0)))] { x q[i]; }'),
+            ['QUBITS 2', 'X 0', 'X 1'])
+        prefix = 'OPENQASM 3; include "stdgates.inc"; qubit q; '
+        self.assertEqual(convert(prefix + 'pow(exp(0)) @ x q;'), convert(prefix + 'pow(1.0) @ x q;'))
+        self.assertEqual(convert(prefix + 'pow(int(real(exp(0)))) @ x q;'), convert(prefix + 'x q;'))
+        # General constant qubit selectors remain limited to loop contexts.
+        self.assertEqual(convert('OPENQASM 3; include "stdgates.inc"; qubit[2] q; '
+            'for int i in [0:0] { x q[i + int(imag(1im))]; }'),
+                         ['QUBITS 2', 'X 1'])
+        self.assertIn('VAR VALUES63 REAL 2', convert('OPENQASM 3; '
+            'array[float, int(real(exp(0))) + 1] values = {0.5, 1.0};'))
+
+    def test_nonconstant_operands_are_rejected_without_runtime_output(self):
+        for call in ('exp(f)', 'real(z)', 'imag(values[0])'):
+            with self.subTest(call=call), self.assertRaises(qasm2qcx.NoConstantExpressionException):
+                convert('OPENQASM 3; float f = 0.5; complex z = 1im; '
+                        'array[float, 1] values = {0.5}; const float C = ' + call + ';')
+
+    def test_exp_nonfinite_inputs_and_overflow_have_function_diagnostics(self):
+        for source, reason in (('exp(1e309)', 'nonfinite input'), ('exp(-1e309)', 'nonfinite input'),
+                               ('exp(1e309im)', 'nonfinite input'), ('exp(1e308 * 1e308)', 'nonfinite input'),
+                               ('exp(1000)', 'overflow/nonfinite result'), ('exp(1000 + 1im)', 'overflow/nonfinite result'),
+                               ('exp(' + str(10 ** 400) + ')', 'outside supported constant precision')):
+            with self.subTest(source=source), self.assertRaisesRegex(qasm2qcx.InvalidConstantFunctionException, 'exp.*' + reason):
+                self.value(source)
+        call = qasm2qcx.ast.FunctionCall(qasm2qcx.ast.Identifier('exp'), [qasm2qcx.ast.FloatLiteral(math.nan)])
+        with self.assertRaisesRegex(qasm2qcx.InvalidConstantFunctionException, 'nonfinite input'):
+            self.value(call)
+
+    def test_underflow_and_large_finite_imaginary_inputs_are_supported(self):
+        for source in ('exp(-1e308)', 'exp(-1000)', 'exp(-1000 + 1e308im)'):
+            with self.subTest(source=source):
+                value, _ = self.value(source)
+                self.assertEqual(value, 0)
+        value, _ = self.value('exp(-745)')
+        self.assertTrue(math.isfinite(value) and 0 <= value < 1e-320)
+        value, _ = self.value('exp(1e308im)')
+        self.assertAlmostEqual(value, complex(math.cos(1e308), math.sin(1e308)))
+
+    def test_components_preserve_signed_zero_and_do_not_add_exp_finiteness_checks(self):
+        for source in ('real(-0.0)', 'imag(-0.0im)'):
+            value, _ = self.value(source)
+            self.assertEqual(value, 0)
+            self.assertEqual(math.copysign(1, value), -1)
+        value, _ = self.value('real(1e309 + 2im)')
+        self.assertEqual(value, math.inf)
+        self.assertEqual(self.value('imag(1e309 + 2im)')[0], 2.0)
+        for name, expected_nan in (('real', False), ('imag', True)):
+            call = qasm2qcx.ast.FunctionCall(qasm2qcx.ast.Identifier(name), [qasm2qcx.ast.ImaginaryLiteral(math.nan)])
+            value, _ = self.value(call)
+            self.assertEqual(math.isnan(value), expected_nan)
+
+    def test_skipped_constant_boolean_operands_do_not_invoke_functions_or_coerce_values(self):
+        huge = str(10 ** 400)
+        for expression in ('false && (exp(1000) > 0)', 'true || (exp(1e309) > 0)',
+                           'false && (real(exp(1000 + 1im)) > 0)', 'true || (exp(1.0 / 0.0) > 0)',
+                           f'false && (exp({huge}) > 0)'):
+            with self.subTest(expression=expression), patch.object(qasm2qcx.math, 'exp', side_effect=AssertionError('evaluated')):
+                with patch.object(qasm2qcx.cmath, 'exp', side_effect=AssertionError('evaluated')):
+                    converter = self.converter('const bool C = ' + expression + ';')
+            self.assertEqual(converter._QASM2QCXConverter__const_bool_variable_values_map['C'], int(expression.startswith('true')))
+        for expression, error in (('false && (exp(missing) > 0)', qasm2qcx.NoVariableNameException),
+                                  ('true || (exp(true, missing) > 0)', qasm2qcx.InvalidFunctionCallException),
+                                  ('false && (sin(0) > 0)', qasm2qcx.UnsupportedOpenQASMError)):
+            with self.subTest(expression=expression), self.assertRaises(error):
+                self.converter('const bool C = ' + expression + ';')
+
+    def test_constant_evaluation_visits_each_argument_once_and_emits_no_instructions(self):
+        converter = self.converter()
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        lines = converter._QASM2QCXConverter__qcx_lines.copy()
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONST_ARITHMETIC
+        expression = self.expression('real(exp(1im))')
+        arguments = (expression.arguments[0], expression.arguments[0].arguments[0])
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            converter.visit(expression)
+            for argument in arguments:
+                self.assertEqual(sum(call.args[0] is argument for call in visit.call_args_list), 1)
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertAlmostEqual(converter._QASM2QCXConverter__value, math.cos(1))
+
+    def test_failures_restore_caller_expression_state_and_temporary_ownership(self):
+        converter = self.converter()
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONST_ARITHMETIC
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        lines = converter._QASM2QCXConverter__qcx_lines.copy()
+        for source in ('exp(1000)', 'real(exp(1000 + 1im))', 'exp(1.0 / 0.0)'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                converter.visit(self.expression(source))
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
+            self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
+
+    def test_cli_constant_failure_prints_no_partial_program(self):
+        source = 'OPENQASM 3; qubit q; const float C = exp(1000);'
+        with patch('builtins.open', mock_open(read_data=source)), patch('builtins.print') as output:
+            with self.assertRaisesRegex(SystemExit, 'exp.*overflow/nonfinite result'):
+                qasm2qcx.main(['functions.qasm'])
+            output.assert_not_called()
+
+
+class BuiltinFunctionRuntimeTests(unittest.TestCase):
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+
+    def clean(self, source):
+        return InverseModifierLoweringTests.assert_clean_conversion(self, source)
+
+    def test_documented_mathematical_function_example(self):
+        document = CONVERTER_PATH.with_suffix('.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- math-function-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        lines = self.clean(examples[0].split('\n', 1)[1])
+        self.assertEqual(sum(' <- EXP ' in line for line in lines), 1)
+
+    def test_input_types_select_exp_overload_and_promotions_are_explicit(self):
+        for declaration, operand in (('int n = 1;', ':REAL:N1'), ('uint n = 1;', ':REAL:N1'),
+                                     ('bool n = true;', ':REAL:N1'), ('float n = 1;', 'N1'),
+                                     ('complex n = 1im;', 'N1')):
+            with self.subTest(declaration=declaration):
+                lines = self.clean(declaration + ' complex out = exp(n);')
+                call = next(line.split() for line in lines if ' <- EXP ' in line)
+                expected_type = 'COMPLEX' if declaration.startswith('complex') else 'REAL'
+                self.assertIn(f'VAR {call[1]} {expected_type}', lines)
+                self.assertEqual(call[4], operand)
+
+    def test_runtime_literal_calls_use_native_math_not_python(self):
+        for source in ('float out = exp(1000);', 'complex out = exp(1000 + 1im);',
+                       'float out = exp(1e309);', 'complex out = exp(1e309im);'):
+            with self.subTest(source=source), patch.object(qasm2qcx.math, 'exp', side_effect=AssertionError('host exp')):
+                with patch.object(qasm2qcx.cmath, 'exp', side_effect=AssertionError('host exp')):
+                    lines = self.clean(source)
+            self.assertEqual(sum(' <- EXP ' in line for line in lines), 1)
+            self.assertFalse(any(re.search(r'\b(?:inf|nan)\b', line, re.IGNORECASE) for line in lines))
+
+    def test_literal_integer_promotion_keeps_native_conversion_precision(self):
+        value = (1 << 60) + 1
+        lines = self.clean(f'float out = exp({value});')
+        self.assertTrue(any(line.endswith(f':= :REAL:{value}') for line in lines))
+
+    def test_component_calls_use_native_extraction_and_preserve_literal_components(self):
+        for name, component in (('real', 'REAL'), ('imag', 'IMAG')):
+            lines = self.clean(f'complex z = 1im; float out = {name}(z);')
+            self.assertTrue(any(line.endswith(f':= :{component}:Z1') for line in lines))
+            self.assertFalse(any(line.startswith('APPLY ') for line in lines))
+        self.assertTrue(any(line.endswith(':= :REAL:-0.0') for line in self.clean('float out = imag(-0.0im);')))
+        self.assertTrue(any(line.endswith(':= :REAL:2.0') for line in self.clean('float out = imag(1e309 + 2im);')))
+
+    def test_nested_calls_visit_arguments_once_and_keep_only_the_result(self):
+        converter = self.converter('complex z = 1im;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        expression = self.expression('exp(real(exp(z)))')
+        arguments = (expression.arguments[0], expression.arguments[0].arguments[0],
+                     expression.arguments[0].arguments[0].arguments[0])
+        start = len(converter._QASM2QCXConverter__qcx_lines)
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            converter.visit(expression)
+            for argument in arguments:
+                self.assertEqual(sum(call.args[0] is argument for call in visit.call_args_list), 1)
+        result = converter._QASM2QCXConverter__value
+        self.assertEqual(converter._QASM2QCXConverter__value_type, qasm2qcx.ValueType.FLOAT)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller, result})
+        self.assertNotEqual(caller, result)
+        lines = converter._QASM2QCXConverter__qcx_lines[start:]
+        self.assertEqual(sum(' <- EXP ' in line for line in lines), 2)
+        self.assertFalse(any(line.startswith((f'LET {caller} ', 'LET Z1 ')) for line in lines))
+
+    def test_indexed_destination_and_arguments_are_captured_once(self):
+        lines = self.clean('array[float, 2] values = {0.5, 1.0}; array[complex, 2] zs = {1im, 2im}; int i = 0; '
+            'values[i] = exp(values[i]) + real(exp(zs[i]));')
+        self.assertEqual(sum(line.startswith('ASSERT ') for line in lines), 6)
+        self.assertEqual(sum(line.endswith(' := I1') for line in lines), 3)
+        self.assertEqual(sum(' <- EXP ' in line for line in lines), 2)
+
+    def test_functions_in_gate_arguments_comparisons_conditions_and_loops(self):
+        self.clean('include "stdgates.inc"; qubit q; float x = 0.5; complex z = 1im; int stop = 2; '
+            'rx(exp(x)) q; if (real(z) > 0 || bool(exp(x))) { h q; } '
+            'for int i in [0:stop] { x = exp(-float(i)); } '
+            'while (real(z) > 0) { z = exp(z); break; }')
+        for expression in ('false && bool(exp(1000))', 'true || (exp(1000) > 0)'):
+            lines = self.clean('bool out = ' + expression + ';')
+            self.assertTrue(any(' <- EXP ' in line for line in lines))
+            ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_runtime_failure_restores_state_and_keeps_caller_temporaries(self):
+        converter = self.converter('float x = 0.5;')
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        with patch.object(converter, '_QASM2QCXConverter__runtime_function_operand', side_effect=RuntimeError('conversion failed')):
+            with self.assertRaisesRegex(RuntimeError, 'conversion failed'):
+                converter.visit(self.expression('exp(x + 1)'))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
 
 
 class IntegerPowerModifierFoundationTests(unittest.TestCase):

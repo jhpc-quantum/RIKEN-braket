@@ -1,6 +1,7 @@
 import sys
 import itertools
 import math
+import cmath
 import enum
 import dataclasses
 import contextlib
@@ -170,9 +171,23 @@ class InvalidPowerException(QASM2QCXError):
 class InvalidNegationException(QASM2QCXError):
     """Native INT negation has an unrepresentable operand or result."""
 
+class InvalidFunctionCallException(QASM2QCXError):
+    """A known built-in function has invalid arity or operand types."""
+
+class InvalidConstantFunctionException(QASM2QCXError):
+    """A constant built-in call has an invalid value or overflowing result."""
+
 class WrongConstantVariableException(QASM2QCXError):
     def __str__(self):
         return 'Wrong constant variable'
+
+
+@dataclasses.dataclass(frozen=True)
+class _BuiltinFunctionSignature:
+    operand_types: tuple[ValueType, ...]
+    result_type: ValueType
+    qcx_function: str | None = None
+    component: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -282,6 +297,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     MAX_LOOP_OUTPUT_LINES = 1000000
     MAX_GATE_POWER_OUTPUT_LINES = 100000
     default_gates_qcx_map: dict[str, str] = {'U': 'U3'}
+
+    # OpenQASM overload order is significant: inputs, never the destination,
+    # select the first signature permitting all implicit promotions. Native
+    # APPLY itself does not promote, so lowering must make those casts explicit.
+    builtin_function_signatures: dict[str, tuple[_BuiltinFunctionSignature, ...]] = {
+        'exp': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='EXP'),
+                _BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.COMPLEX, qcx_function='EXP')),
+        'real': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='REAL'),),
+        'imag': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='IMAG'),),
+    }
 
     stdgates_qcx_map: dict[str, str] = {
             'p': 'U1', 'phase': 'U1', 'u1': 'U1', 'u2': 'U2', 'u3': 'U3',
@@ -3568,6 +3593,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 return value_type, False
         if isinstance(expression, ast.Cast):
             return self.__loop_cast_info(expression, iterators)
+        if isinstance(expression, ast.FunctionCall):
+            signature, runtime = self.__function_call_info(expression, iterators)
+            return signature.result_type, runtime
         if isinstance(expression, ast.UnaryExpression):
             return self.__loop_unary_info(expression, iterators)
         if isinstance(expression, ast.BinaryExpression):
@@ -3575,6 +3603,47 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if isinstance(expression, ast.IndexExpression) and isinstance(expression.collection, ast.Identifier):
             return self.__loop_index_info(expression, iterators)
         raise UnsupportedOpenQASMError(f'loop expression {type(expression).__name__}')
+
+    @classmethod
+    def __builtin_function_overloads(cls, name: str, arity: int) -> tuple[_BuiltinFunctionSignature, ...]:
+        overloads = cls.builtin_function_signatures.get(name)
+        if overloads is None:
+            raise UnsupportedOpenQASMError(f'function {name}')
+        matching = tuple(signature for signature in overloads if len(signature.operand_types) == arity)
+        if not matching:
+            expected = ', '.join(str(count) for count in sorted({len(signature.operand_types) for signature in overloads}))
+            raise InvalidFunctionCallException(f'Function {name} expects {expected} argument(s), but got {arity}')
+        return matching
+
+    @staticmethod
+    def __function_operand_promotes(source: ValueType, target: ValueType) -> bool:
+        # Standard classical types use C99-style promotion. A scalar bit is
+        # a special OpenQASM type, not an implicit integer/Boolean here.
+        if source == target:
+            return True
+        if source in (ValueType.BOOL, ValueType.INT, ValueType.UINT):
+            return target in (ValueType.FLOAT, ValueType.COMPLEX)
+        return source == ValueType.FLOAT and target == ValueType.COMPLEX
+
+    @classmethod
+    def __resolve_builtin_function(cls, name: str, operands: tuple[ValueType, ...]) -> _BuiltinFunctionSignature:
+        for signature in cls.__builtin_function_overloads(name, len(operands)):
+            if all(cls.__function_operand_promotes(source, target)
+                   for source, target in zip(operands, signature.operand_types)):
+                return signature
+        types = ', '.join(value_type.name.lower() for value_type in operands)
+        raise InvalidFunctionCallException(f'Function {name} has no matching overload for ({types})')
+
+    def __function_call_info(
+            self, expression: ast.FunctionCall, iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> tuple[_BuiltinFunctionSignature, bool]:
+        # Diagnose the function/arity before inspecting its arguments. This
+        # path must not visit/evaluate operands or allocate scratch storage.
+        name = expression.name.name
+        self.__builtin_function_overloads(name, len(expression.arguments))
+        operands = [self.__loop_expression_info(argument, iterators) for argument in expression.arguments]
+        signature = self.__resolve_builtin_function(name, tuple(value_type for value_type, _ in operands))
+        return signature, any(runtime for _, runtime in operands)
 
     def __loop_identifier_info(
             self, expression: ast.Identifier, iterators: set[str] | dict[str, ValueType] | None
@@ -3783,8 +3852,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if isinstance(node, ast.Expression) and not isinstance(node, (
                 ast.Identifier, ast.IntegerLiteral, ast.FloatLiteral,
                 ast.ImaginaryLiteral, ast.BooleanLiteral, ast.BitstringLiteral,
-                ast.UnaryExpression, ast.BinaryExpression, ast.Cast, ast.IndexExpression)):
+                ast.UnaryExpression, ast.BinaryExpression, ast.Cast, ast.IndexExpression, ast.FunctionCall)):
             raise UnsupportedOpenQASMError(f'loop expression {type(node).__name__}')
+        if isinstance(node, ast.FunctionCall):
+            self.__builtin_function_overloads(node.name.name, len(node.arguments))
         if isinstance(node, ast.BinaryExpression) and node.op.name not in (
                 '+', '-', '*', '/', '%', '**', '&', '|', '^', '<<', '>>',
                 '==', '!=', '<', '<=', '>', '>=', '&&', '||'):
@@ -3811,6 +3882,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __loop_bound_names(self, node: ast.QASMNode) -> set[str]:
         if isinstance(node, ast.Identifier):
             return {node.name}
+        if isinstance(node, ast.FunctionCall):
+            # A callee identifier is not a variable or iterator dependency.
+            return set().union(*(self.__loop_bound_names(argument) for argument in node.arguments))
         names: set[str] = set()
         for field in dataclasses.fields(node):
             value = getattr(node, field.name)
@@ -4100,7 +4174,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
         # Logical values and casts also need type checking when a body is
         # empty; this inspects types without executing skipped arithmetic.
-        if ((isinstance(node, ast.UnaryExpression) and node.op.name in ('~', '-', '!'))
+        if (isinstance(node, ast.FunctionCall)
+                or (isinstance(node, ast.UnaryExpression) and node.op.name in ('~', '-', '!'))
                 or (isinstance(node, ast.Cast) and isinstance(node.type, (ast.BoolType, ast.BitType)))
                 or (isinstance(node, ast.BinaryExpression) and node.op.name in (
                     '&', '|', '^', '<<', '>>', '**', '%', '&&', '||', '==', '!=', '<', '<=', '>', '>='))):
@@ -4676,7 +4751,141 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         raise UnsupportedOpenQASMError('durationof expression')
 
     def visit_FunctionCall(self, expression: ast.FunctionCall) -> None:
-        raise UnsupportedOpenQASMError('function call')
+        signature, runtime = self.__function_call_info(expression)
+        if self.__expression_kind != ExpressionKind.CONST_ARITHMETIC:
+            if self.__expression_kind not in (ExpressionKind.ARITHMETIC, ExpressionKind.CONDITIONAL):
+                raise UnsupportedOpenQASMError('function call outside a value expression')
+            self.__visit_runtime_function(expression, signature)
+            return
+        if runtime:
+            raise NoConstantExpressionException
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        try:
+            operands = []
+            for argument, target_type in zip(expression.arguments, signature.operand_types):
+                self.visit(argument)
+                if self.__value_kind != ValueKind.LITERAL:
+                    raise NoConstantExpressionException
+                # A skipped constant Boolean operand is still validated, but
+                # does not perform casts or numerical function evaluation.
+                if not self.__evaluate_constant:
+                    continue
+                try:
+                    operands.append(complex(self.__value) if target_type == ValueType.COMPLEX else float(self.__value))
+                except (OverflowError, ValueError) as error:
+                    raise InvalidConstantFunctionException(
+                        f'Function {expression.name.name}: operand outside supported constant precision') from error
+            result = complex() if signature.result_type == ValueType.COMPLEX else 0.0
+            if self.__evaluate_constant:
+                result = self.__fold_builtin_function(expression.name.name, signature, tuple(operands))
+            self.__value, self.__value_type, self.__value_kind = result, signature.result_type, ValueKind.LITERAL
+        except Exception:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            raise
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
+    def __emit_function_real_literal(self, destination: str, value: int | float) -> None:
+        # QCX has no portable inf/nan literal. Materialize nonfinite values
+        # inside the reached path, leaving EXP to perform its native checks.
+        # Do not narrow integer literals through Python float first.
+        if isinstance(value, float) and not math.isfinite(value):
+            numerator = 0.0 if math.isnan(value) else math.copysign(1.0, value)
+            self.__qcx_lines.extend([f'LET {destination} := {numerator!r}', f'LET {destination} /= 0.0'])
+        else:
+            self.__qcx_lines.append(f'LET {destination} := :REAL:{value}')
+
+    def __runtime_function_operand(
+            self, value: str | int | float | complex, value_type: ValueType,
+            value_kind: ValueKind, target_type: ValueType) -> str:
+        if value_kind == ValueKind.LITERAL:
+            if value_type != ValueType.COMPLEX:
+                scalar = self.__add_new_temporary_variable(ValueType.FLOAT)
+                self.__emit_function_real_literal(scalar, value)
+                return scalar if target_type == ValueType.FLOAT else f':COMPLEX:{scalar}'
+            if not cmath.isfinite(value):
+                # Literal component extraction is handled directly by the
+                # caller. EXP must reject either nonfinite component; using
+                # a typed nonfinite operand avoids unparseable QCX literals.
+                scalar = self.__add_new_temporary_variable(ValueType.FLOAT)
+                component = value.real if not math.isfinite(value.real) else value.imag
+                self.__emit_function_real_literal(scalar, component)
+                return f':COMPLEX:{scalar}'
+        operand, _ = self.__converted_operand(value, value_type, value_kind, target_type)
+        return operand
+
+    def __visit_runtime_function(self, expression: ast.FunctionCall, signature: _BuiltinFunctionSignature) -> None:
+        # Every initial built-in is unary. Keep argument/conversion storage
+        # reserved until the result is allocated, so nested calls and indexed
+        # assignment destinations cannot alias or be overwritten by the result.
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        result = None
+        keep = False
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            self.visit(expression.arguments[0])
+            value, value_type, value_kind = self.__value, self.__value_type, self.__value_kind
+            if value_kind is None or value_type is None:
+                raise UninitializedValueException
+            if signature.component is not None and value_kind == ValueKind.LITERAL:
+                # Selecting a stored literal component is exact, not a host
+                # mathematical evaluation. Avoid constructing a complex value
+                # with arithmetic that could contaminate a finite component
+                # with the other component's NaN/Inf or discard a signed zero.
+                if value_type == ValueType.COMPLEX:
+                    component = value.real if signature.component == 'REAL' else value.imag
+                else:
+                    component = value if signature.component == 'REAL' else 0.0
+                result = self.__add_new_temporary_variable(signature.result_type)
+                self.__emit_function_real_literal(result, component)
+            else:
+                operand = self.__runtime_function_operand(value, value_type, value_kind, signature.operand_types[0])
+                result = self.__add_new_temporary_variable(signature.result_type)
+                if signature.component is not None:
+                    self.__qcx_lines.append(f'LET {result} := :{signature.component}:{operand}')
+                else:
+                    self.__qcx_lines.append(f'APPLY {result} <- {signature.qcx_function} {operand}')
+            self.__expression_kind = previous[0]
+            self.__value, self.__value_type, self.__value_kind = result, signature.result_type, ValueKind.TEMPORARY
+            keep = True
+        except Exception:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            raise
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                if not keep or temporary != result:
+                    self.__release_temporary_variable(temporary)
+
+    @staticmethod
+    def __fold_builtin_function(
+            name: str, signature: _BuiltinFunctionSignature, operands: tuple[float | complex, ...]
+            ) -> float | complex:
+        # Compile-time arithmetic uses Python float/complex precision, just as
+        # existing constant arithmetic does. Runtime calls must use bra instead.
+        value = operands[0]
+        if signature.component is not None:
+            # Component extraction is LET, not APPLY: preserve its IEEE values
+            # (including signed zeros/nonfinite components), without EXP checks.
+            return value.real if signature.component == 'REAL' else value.imag
+        if signature.qcx_function != 'EXP':
+            raise UnsupportedOpenQASMError(f'constant evaluation of function {name}')
+        is_complex = signature.operand_types[0] == ValueType.COMPLEX
+        if not cmath.isfinite(value):
+            raise InvalidConstantFunctionException(f'Function {name}: nonfinite input')
+        try:
+            result = cmath.exp(value) if is_complex else math.exp(value)
+        except (OverflowError, ValueError) as error:
+            raise InvalidConstantFunctionException(f'Function {name}: overflow/nonfinite result') from error
+        if not cmath.isfinite(result):
+            raise InvalidConstantFunctionException(f'Function {name}: overflow/nonfinite result')
+        return result
 
     def visit_IndexExpression(self, expression: ast.IndexExpression) -> None:
         if self.__expression_kind is None:
