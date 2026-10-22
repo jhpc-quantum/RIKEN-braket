@@ -110,8 +110,10 @@ def main() -> None:
     check_error(bra, '''array[int, 2] values = {1, 2}; int bad = 2; int zero = 0;
         values[bad] = 1 / zero;''', 'assertion failed in ASSERT')
     for operation in ('/=', '%='):
+        arithmetic = 'division' if operation == '/=' else 'remainder'
         check_error(bra, f'''array[int, 2] values = {{1, 2}}; int i = 0; int zero = 0;
-            values[i] {operation} zero;''', 'integer division by zero in LET')
+            values[i] {operation} zero;''',
+                    f'integer {arithmetic} by zero in LET')
 
     # Compare signed assignments against an independent truncation-toward-zero
     # integer model; Python's // and % use a different negative-operand rule.
@@ -286,9 +288,10 @@ def main() -> None:
         for int value in values {{ seen = value; visits += 1; continue; }}''',
                   ('SEEN15', 'VISITS63'), [str(minimum), '3'])
     for operation in ('/=', '%='):
+        arithmetic = 'division' if operation == '/=' else 'remainder'
         check_error(bra, f'''array[int, 2] values = {{1, 0}};
             for int value in values {{ values[0] {operation} values[1]; }}''',
-                    'integer division by zero in LET')
+                    f'integer {arithmetic} by zero in LET')
 
     # Declarations allocate storage but initializer calculations must execute.
     lines = qasm2qcx.convert('''OPENQASM 3.0; int seed = 3; int zero = 0;

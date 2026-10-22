@@ -8452,7 +8452,7 @@ class RuntimeIntegerArrayReadTests(unittest.TestCase):
     def test_runtime_index_arithmetic_is_evaluated_once(self) -> None:
         lines = convert('OPENQASM 3.0; array[int, 2] a = {1, 2}; int i = 1; '
                         'int value = a[(i % 2)];')
-        self.assertEqual(sum(' /= 2' in line for line in lines), 1)
+        self.assertEqual(sum(' %= 2' in line for line in lines), 1)
         self.assertEqual(sum(line.startswith('ASSERT ') for line in lines), 2)
         self.assertEqual(sum(' := A1:QASM2QCX_' in line for line in lines), 1)
 
@@ -8505,7 +8505,7 @@ class RuntimeIntegerArrayAssignmentTests(unittest.TestCase):
     def test_remainder_assignment_does_not_recompute_index_arithmetic(self) -> None:
         lines = convert('OPENQASM 3.0; array[int, 2] a = {7, 3}; int i = 1; '
                         'a[i % 2] %= a[i];')
-        self.assertEqual(sum(' /= 2' in line for line in lines), 1)
+        self.assertEqual(sum(' %= 2' in line for line in lines), 1)
         self.assertEqual(sum(line.startswith('ASSERT ') for line in lines), 4)
         self.assertEqual(sum(line.startswith('@QASM2QCX_ARRAY_INDEX_') for line in lines), 2)
 
@@ -9355,7 +9355,7 @@ class RuntimeForLoweringTests(unittest.TestCase):
         entry = next(index for index, line in enumerate(lines) if line.startswith('JUMPIF '))
         declarations = [index for index, line in enumerate(lines) if line.startswith('VAR QASM2QCX_')]
         self.assertTrue(all(index < entry for index in declarations))
-        self.assertGreater(next(index for index, line in enumerate(lines) if ' /= ' in line), entry)
+        self.assertGreater(next(index for index, line in enumerate(lines) if ' %= ' in line), entry)
 
     def test_runtime_iterations_do_not_consume_constant_iteration_budget(self) -> None:
         with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_LOOP_ITERATIONS', 0):
@@ -10028,8 +10028,8 @@ class WhileLoopLoweringTests(unittest.TestCase):
         lines = convert('''OPENQASM 3.0; int n = 5;
             while (n % 3 != 0) { n -= 1; }''')
         condition = lines.index('@QASM2QCX_LOOP_0_CONDITION')
-        division = next(index for index, line in enumerate(lines) if ' /= ' in line)
-        self.assertGreater(division, condition)
+        remainder = next(index for index, line in enumerate(lines) if ' %= ' in line)
+        self.assertGreater(remainder, condition)
         self.assertTrue(all(index < condition for index, line in enumerate(lines)
                             if line.startswith('VAR QASM2QCX_')))
         ForLoopControlLoweringTests.assert_resolved_jumps(lines)
@@ -10041,7 +10041,7 @@ class WhileLoopLoweringTests(unittest.TestCase):
         condition = lines.index('@QASM2QCX_LOOP_0_CONDITION')
         self.assertTrue(all(index < condition for index, line in enumerate(lines)
                             if line.startswith('VAR QASM2QCX_')))
-        self.assertGreater(next(index for index, line in enumerate(lines) if ' /= ' in line), condition)
+        self.assertGreater(next(index for index, line in enumerate(lines) if ' %= ' in line), condition)
 
     def test_unsupported_body_and_condition_rejected_even_when_false(self) -> None:
         for source in ('while (false) { int local; }',
@@ -10356,10 +10356,10 @@ class ForLoopControlLoweringTests(unittest.TestCase):
                     sum += value + 1;''')
                 jump = next(i for i, line in enumerate(lines) if line.startswith('JUMP '))
                 declarations = [i for i, line in enumerate(lines) if line.startswith('VAR QASM2QCX_')]
-                self.assertEqual(len(declarations), 2)
+                self.assertEqual(len(declarations), 1)
                 self.assertTrue(all(i < jump for i in declarations))
-                division = next(i for i, line in enumerate(lines) if ' /= ' in line)
-                self.assertGreater(division, jump)
+                remainder = next(i for i, line in enumerate(lines) if ' %= ' in line)
+                self.assertGreater(remainder, jump)
                 self.assert_resolved_jumps(lines)
 
     def test_nested_loop_temporaries_are_available_after_skipped_first_use(self) -> None:
@@ -10998,7 +10998,7 @@ class ConstantForSetLoweringTests(unittest.TestCase):
         jump = lines.index('JUMP QASM2QCX_LOOP_0_NEXT_0')
         self.assertTrue(all(index < jump for index, line in enumerate(lines)
                             if line.startswith('VAR QASM2QCX_')))
-        self.assertGreater(next(index for index, line in enumerate(lines) if ' /= ' in line), jump)
+        self.assertGreater(next(index for index, line in enumerate(lines) if ' %= ' in line), jump)
 
     def test_budget_counts_duplicates_nested_iterations_and_unreachable_statements(self) -> None:
         for source, attribute, limit in (
@@ -11630,13 +11630,34 @@ class IntegerRemainderConstantTests(unittest.TestCase):
                     convert(f'OPENQASM 3.0; {declaration} int value = a % 3;')
 
 class IntegerRemainderRuntimeTests(unittest.TestCase):
-    def test_emits_remainder_using_existing_qcx_operations(self) -> None:
+    def test_signed_endpoint_remainder_constant_and_runtime_paths(self) -> None:
+        minimum = qasm2qcx.QASM2QCXConverter.QCX_INT_MIN
+        lines = convert(f'''OPENQASM 3.0; const int C = {minimum} % -1;
+            int folded = C; int a = {minimum}; int b = -1;
+            int result = a % b; a %= -1;''')
+        self.assertIn('LET FOLDED63 := 0', lines)
+        self.assertIn('LET QASM2QCX_INT_0 %= B1', lines)
+        self.assertIn('LET QASM2QCX_INT_0 %= -1', lines)
+        self.assertFalse(any(' /= ' in line or ' *= ' in line for line in lines))
+
+    def test_nested_remainders_release_all_operand_and_result_temporaries(self) -> None:
+        for source in (
+                'int a = 7; int b = 3; a %= (a % b) + (b % a);',
+                'array[int, 3] a = {7, 3, 2}; int i = 0; a[i % 2] %= a[a[2] - 1];',
+                'array[uint[8], 2] a = {255, 7}; int i = 0; a[i] %= a[i + 1];'):
+            with self.subTest(source=source):
+                program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0; ' + source)
+                converter = qasm2qcx.QASM2QCXConverter(program)
+                converter.visit(program)
+                self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+                self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
+
+    def test_emits_native_remainder(self) -> None:
         self.assertEqual(convert('OPENQASM 3.0; int a = 7; int b = 3; int result = a % b;'), [
             'QUBITS 0', 'VAR A1 INT', 'LET A1 := 7', 'VAR B1 INT', 'LET B1 := 3',
-            'VAR RESULT63 INT', 'VAR QASM2QCX_INT_0 INT', 'VAR QASM2QCX_INT_1 INT',
-            'LET QASM2QCX_INT_0 := A1', 'LET QASM2QCX_INT_1 := A1',
-            'LET QASM2QCX_INT_1 /= B1', 'LET QASM2QCX_INT_1 *= B1',
-            'LET QASM2QCX_INT_0 -= QASM2QCX_INT_1', 'LET RESULT63 := QASM2QCX_INT_0',
+            'VAR RESULT63 INT', 'VAR QASM2QCX_INT_0 INT',
+            'LET QASM2QCX_INT_0 := A1', 'LET QASM2QCX_INT_0 %= B1',
+            'LET RESULT63 := QASM2QCX_INT_0',
         ])
 
     def test_does_not_modify_source_operands(self) -> None:
@@ -11654,26 +11675,26 @@ class IntegerRemainderRuntimeTests(unittest.TestCase):
                 prefix = ('LET RESULT63 := QASM2QCX_INT_' if expression in ('a % 3', 'a % a')
                           else 'LET RESULT63 := :INT:QASM2QCX_UINT_')
                 self.assertTrue(lines[-1].startswith(prefix))
-                self.assertFalse(any('%=' in line for line in lines))
+                self.assertTrue(any(' %= ' in line for line in lines))
 
     def test_self_assignment_is_emitted_after_complete_remainder(self) -> None:
         lines = convert('OPENQASM 3.0; int a = 7; a = a % a;')
         self.assertEqual(lines[-2:], [
-            'LET QASM2QCX_INT_0 -= QASM2QCX_INT_1', 'LET A1 := QASM2QCX_INT_0',
+            'LET QASM2QCX_INT_0 %= A1', 'LET A1 := QASM2QCX_INT_0',
         ])
 
     def test_reuses_remainder_temporaries(self) -> None:
         lines = convert('OPENQASM 3.0; int a = 7; int b = 3; '
                         'int result = a % b; result = b % a; result = a + b;')
         self.assertEqual([line for line in lines if line.startswith('VAR QASM2QCX_')], [
-            'VAR QASM2QCX_INT_0 INT', 'VAR QASM2QCX_INT_1 INT',
+            'VAR QASM2QCX_INT_0 INT',
         ])
 
     def test_avoids_reserved_source_names(self) -> None:
         lines = convert('OPENQASM 3.0; int a = 7; int result = a % 3; '
                         'int QASM2QCX_INT_ = 9;')
         self.assertIn('LET RESULT63 := QASM2QCX_INT_1', lines)
-        self.assertIn('LET QASM2QCX_INT_1 -= QASM2QCX_INT_2', lines)
+        self.assertIn('LET QASM2QCX_INT_1 %= 3', lines)
         self.assertEqual([line for line in lines if line.startswith('LET QASM2QCX_INT_0 ')],
                          ['LET QASM2QCX_INT_0 := 9'])
 
@@ -11684,8 +11705,8 @@ class IntegerRemainderRuntimeTests(unittest.TestCase):
                 lines = convert('OPENQASM 3.0; bool a = false; int divisor = 0; '
                                 f'bool result = {expression}; divisor = divisor + 1;')
                 rhs_start = lines.index('@QASM2QCX_CONDITION_0')
-                division = next(i for i, line in enumerate(lines) if ' /= ' in line)
-                self.assertLess(rhs_start, division)
+                remainder = next(i for i, line in enumerate(lines) if ' %= ' in line)
+                self.assertLess(rhs_start, remainder)
                 first_jump = next(i for i, line in enumerate(lines) if line.startswith('JUMP'))
                 self.assertTrue(all(i < first_jump for i, line in enumerate(lines)
                                     if line.startswith('VAR QASM2QCX_')))
@@ -11710,7 +11731,7 @@ class IntegerRemainderAssignmentTests(unittest.TestCase):
     def test_self_referencing_assignment_updates_target_after_join(self) -> None:
         lines = convert('OPENQASM 3.0; int a = 7; a %= a;')
         self.assertEqual(lines[-2:], [
-            'LET QASM2QCX_INT_0 -= QASM2QCX_INT_1', 'LET A1 := QASM2QCX_INT_0',
+            'LET QASM2QCX_INT_0 %= A1', 'LET A1 := QASM2QCX_INT_0',
         ])
         self.assertEqual([line for line in lines if line.startswith('LET A1 ')], [
             'LET A1 := 7', 'LET A1 := QASM2QCX_INT_0',
@@ -11719,21 +11740,21 @@ class IntegerRemainderAssignmentTests(unittest.TestCase):
     def test_uint_target_and_mixed_integer_rhs(self) -> None:
         lines = convert('OPENQASM 3.0; uint a = 7; int b = 3; a %= b;')
         self.assertEqual(lines[-1], 'LET A1 := QASM2QCX_UINT_0')
-        self.assertIn('LET QASM2QCX_UINT_1 /= :UINT:B1', lines)
+        self.assertIn('LET QASM2QCX_UINT_0 %= :UINT:B1', lines)
 
     def test_compound_assignment_reuses_temporaries(self) -> None:
         lines = convert('OPENQASM 3.0; int a = 7; int b = 3; '
                         'a %= b; b %= a; a += b;')
         self.assertEqual([line for line in lines if line.startswith('VAR QASM2QCX_')], [
-            'VAR QASM2QCX_INT_0 INT', 'VAR QASM2QCX_INT_1 INT',
+            'VAR QASM2QCX_INT_0 INT',
         ])
-        self.assertFalse(any('%=' in line for line in lines))
+        self.assertEqual(sum(' %= ' in line for line in lines), 2)
 
     def test_zero_divisor_stays_in_skipped_branch(self) -> None:
         lines = convert('OPENQASM 3.0; int a = 7; if (false) { a %= 0; } a %= 3;')
         self.assertLess(lines.index('@QASM2QCX_IF_0'),
-                        lines.index('LET QASM2QCX_INT_1 /= 0'))
-        self.assertEqual(sum(line.startswith('VAR QASM2QCX_') for line in lines), 2)
+                        lines.index('LET QASM2QCX_INT_0 %= 0'))
+        self.assertEqual(sum(line.startswith('VAR QASM2QCX_') for line in lines), 1)
 
     def test_rejects_non_integer_targets_and_rhs(self) -> None:
         for declaration, statement in (

@@ -9,6 +9,7 @@ Example:
 import argparse
 import importlib.util
 import pathlib
+import resource
 import subprocess
 
 
@@ -37,9 +38,12 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--bra", required=True, type=pathlib.Path)
     arguments = parser.parse_args()
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
-    for lhs in (-7, -6, -1, 0, 1, 6, 7):
-        for rhs in (-3, -1, 1, 3):
+    minimum = qasm2qcx.QASM2QCXConverter.QCX_INT_MIN
+    maximum = qasm2qcx.QASM2QCXConverter.QCX_INT_MAX
+    for lhs in (minimum, minimum + 1, -7, -6, -1, 0, 1, 6, 7, maximum):
+        for rhs in (minimum, -3, -1, 1, 3, maximum):
             expected = abs(lhs) % abs(rhs) * (-1 if lhs < 0 else 1)
             for expression in ('a % b', f'a % ({rhs})', f'({lhs}) % b'):
                 source = f'''OPENQASM 3.0; int a = {lhs}; int b = {rhs};
@@ -51,6 +55,40 @@ def main() -> None:
                     a %= {operand};'''
                 check_program(arguments.bra, source, ('A1', 'B1'),
                               [str(expected), str(rhs)])
+
+    # Runtime endpoints must agree with constant folding, including the case
+    # where the corresponding signed division quotient cannot fit in INT.
+    source = f'''OPENQASM 3.0; const int C = {minimum} % -1;
+        int a = {minimum}; int b = -1; int result = a % b; int folded = C;
+        a %= b;'''
+    check_program(arguments.bra, source, ('A1', 'RESULT63', 'FOLDED63'), ['0', '0', '0'])
+
+    for declaration, values, rhs, expected, unchanged in (
+            ('int', f'{{{minimum}, -1, 3}}', 'a[i + 1]', 0, -1),
+            ('int', '{-7, 3, 2}', 'a[a[2] - 1]', -1, 3),
+            ('uint', f'{{{qasm2qcx.QASM2QCXConverter.QCX_UINT_MAX}, 7, 2}}', 'a[i + 1]',
+             qasm2qcx.QASM2QCXConverter.QCX_UINT_MAX % 7, 7),
+            ('uint[8]', '{255, 7, 2}', 'a[i + 1]', 3, 7)):
+        source = f'''OPENQASM 3.0; array[{declaration}, 3] a = {values};
+            int i = 0; a[i % 2] %= {rhs};'''
+        check_program(arguments.bra, source, ('A1:0', 'A1:1', 'I1'),
+                      [str(expected), str(unchanged), '0'])
+
+    source = '''OPENQASM 3.0; uint[8] a = 255; uint[8] b = 7;
+        uint[8] result = (a + uint[8](2)) % b; a %= b;'''
+    check_program(arguments.bra, source, ('A1', 'B1', 'RESULT63'), ['3', '7', '1'])
+
+    for statement in ('int result = a % b;', 'a %= b;', 'values[i] %= b;'):
+        source = ('OPENQASM 3.0; int a = 7; int b = 0; '
+                  'array[int, 1] values = {7}; int i = 0; ' + statement)
+        lines = qasm2qcx.convert(source)
+        instruction = next(line for line in lines if ' %= ' in line)
+        result = subprocess.run(
+            [str(arguments.bra)], input='\n'.join(lines) + '\n', text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+        if (result.returncode == 0
+                or f'integer remainder by zero in {instruction}' not in result.stderr):
+            raise RuntimeError(f'Expected zero remainder divisor diagnostic: {result.stderr}')
 
     for expression, expected in (
             ('(a + 1) % (b + 1)', 0), ('a % (b % a)', 1),

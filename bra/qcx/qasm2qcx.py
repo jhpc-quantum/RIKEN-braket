@@ -1615,16 +1615,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_integer_remainder(
             self, lhs: str, rhs: str, value_type: ValueType = ValueType.INT,
             uint_type: _UnsignedIntegerType | None = None) -> str:
-        # Keep both operands live throughout the calculation. In particular,
-        # neither the quotient nor the result may alias an operand temporary.
+        # Keep both operands live until %= has read them. The result must not
+        # alias either operand, including a captured array destination index.
         result = self.__add_new_temporary_variable(value_type, uint_type)
-        quotient = self.__add_new_temporary_variable(value_type, uint_type)
         self.__qcx_lines.extend([
-            f'LET {result} := {lhs}', f'LET {quotient} := {lhs}',
-            f'LET {quotient} /= {rhs}', f'LET {quotient} *= {rhs}',
-            f'LET {result} -= {quotient}',
+            f'LET {result} := {lhs}', f'LET {result} %= {rhs}',
         ])
-        self.__release_temporary_variable(quotient)
         if uint_type is not None:
             self.__normalize_uint_storage(result, uint_type)
         return result

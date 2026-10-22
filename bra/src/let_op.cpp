@@ -53,6 +53,10 @@ namespace bra
         repr_stream
           << std::right
           << std::setw(parameter_width) << "/=";
+      else if (op_ == ::bra::assign_operation_type::modulus_assign)
+        repr_stream
+          << std::right
+          << std::setw(parameter_width) << "%=";
       else if (op_ == ::bra::assign_operation_type::bit_and_assign)
         repr_stream
           << std::right

@@ -51,7 +51,7 @@ namespace bra
   {
     assign = 0, plus_assign = 1, minus_assign = 2, multiplies_assign = 3, divides_assign = 4,
     bit_and_assign = 5, bit_or_assign = 6, bit_xor_assign = 7,
-    left_shift_assign = 8, right_shift_assign = 9
+    left_shift_assign = 8, right_shift_assign = 9, modulus_assign = 10
   };
 
   enum class compare_operation_type : int
@@ -86,6 +86,8 @@ namespace bra
   {
    public:
     integer_zero_divisor_error(std::string const& lhs_variable_name, std::string const& rhs_literal_or_variable_name);
+    integer_zero_divisor_error(std::string const& lhs_variable_name, ::bra::assign_operation_type const op,
+                               std::string const& rhs_literal_or_variable_name);
   }; // class integer_zero_divisor_error
 
   class assertion_error

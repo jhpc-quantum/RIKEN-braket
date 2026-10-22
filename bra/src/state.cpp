@@ -195,11 +195,23 @@ namespace bra
                       ? "<<="
                       : op == ::bra::assign_operation_type::right_shift_assign
                         ? ">>="
-                        : "";
+                        : op == ::bra::assign_operation_type::modulus_assign
+                          ? "%="
+                          : "";
   }
 
   integer_zero_divisor_error::integer_zero_divisor_error(std::string const& lhs_variable_name, std::string const& rhs_literal_or_variable_name)
-    : std::runtime_error{"integer division by zero in LET " + lhs_variable_name + " /= " + rhs_literal_or_variable_name}
+    : integer_zero_divisor_error{lhs_variable_name, ::bra::assign_operation_type::divides_assign, rhs_literal_or_variable_name}
+  { }
+
+  integer_zero_divisor_error::integer_zero_divisor_error(
+    std::string const& lhs_variable_name, ::bra::assign_operation_type const op,
+    std::string const& rhs_literal_or_variable_name)
+    : std::runtime_error{
+        std::string{op == ::bra::assign_operation_type::modulus_assign
+          ? "integer remainder by zero in LET " : "integer division by zero in LET "}
+        + lhs_variable_name + (op == ::bra::assign_operation_type::modulus_assign ? " %= " : " /= ")
+        + rhs_literal_or_variable_name}
   { }
 
   assertion_error::assertion_error(
@@ -583,6 +595,45 @@ namespace bra
     using size_type = std::string::size_type;
     auto const found_index = lhs_variable_name.find(':');
     auto const variable_name = lhs_variable_name.substr(size_type{0u}, found_index);
+    if (op == ::bra::assign_operation_type::modulus_assign)
+    {
+      auto const unsigned_destination = uint_variables_.count(variable_name) != 0u;
+      if (not unsigned_destination and int_variables_.count(variable_name) == 0u)
+        throw ::bra::wrong_assignment_argument_error{lhs_variable_name, op, rhs_literal_or_variable_name};
+      // Use bounded resolution for both the captured destination and every
+      // nested RHS/index/cast. No writes occur until evaluation has succeeded.
+      auto const destination = resolve_apply_destination(lhs_variable_name);
+      auto operand = rhs_literal_or_variable_name;
+      auto const type = apply_operand_type(operand);
+      if (unsigned_destination)
+      {
+        // Bare positive integer literals follow LET's UINT literal rules,
+        // including values above INT_MAX. Signed operands need explicit casts.
+        if (type == ::bra::variable_type::integer
+            and (std::isdigit(static_cast<unsigned char>(operand.front())) or operand.front() == '+'))
+          operand = ":UINT:" + operand;
+        else if (type != ::bra::variable_type::unsigned_integer)
+          throw ::bra::wrong_assignment_argument_error{lhs_variable_name, op, rhs_literal_or_variable_name};
+        auto const rhs = boost::get<uint_type>(read_apply_operand(operand));
+        if (rhs == uint_type{0})
+          throw ::bra::integer_zero_divisor_error{lhs_variable_name, op, rhs_literal_or_variable_name};
+        auto& lhs = **boost::get<uint_type*>(&destination);
+        lhs %= rhs;
+      }
+      else
+      {
+        if (type != ::bra::variable_type::integer)
+          throw ::bra::wrong_assignment_argument_error{lhs_variable_name, op, rhs_literal_or_variable_name};
+        auto const rhs = boost::get<int_type>(read_apply_operand(operand));
+        if (rhs == int_type{0})
+          throw ::bra::integer_zero_divisor_error{lhs_variable_name, op, rhs_literal_or_variable_name};
+        auto& lhs = **boost::get<int_type*>(&destination);
+        // C++ INT_MIN % -1 is undefined even though its mathematical result
+        // is zero. Avoid the operation (and any overflowing quotient) entirely.
+        lhs = rhs == int_type{-1} ? int_type{0} : lhs % rhs;
+      }
+      return;
+    }
     auto const index = found_index == std::string::npos ? 0 : to_int(lhs_variable_name.substr(found_index + size_type{1u}));
 
     if (op == ::bra::assign_operation_type::left_shift_assign

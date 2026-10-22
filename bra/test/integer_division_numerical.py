@@ -13,7 +13,7 @@ import subprocess
 
 
 def check_program(bra: pathlib.Path, source: str, expected: list[str] | None,
-                  instruction: str = '') -> None:
+                  instruction: str = '', operation: str = 'division') -> None:
     result = subprocess.run(
         [str(bra)], input=source, text=True, stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, timeout=30,
@@ -22,7 +22,7 @@ def check_program(bra: pathlib.Path, source: str, expected: list[str] | None,
         # The CLI currently leaves runtime exceptions uncaught. Require the
         # specific diagnostic, rather than accepting any nonzero status/signal.
         valid = (result.returncode != 0
-                 and f'integer division by zero in {instruction}' in result.stderr)
+                 and f'integer {operation} by zero in {instruction}' in result.stderr)
     else:
         valid = (result.returncode == 0
                  and [line.strip() for line in result.stdout.splitlines()] == expected)
@@ -90,8 +90,9 @@ PRINTLN VALUES:1 VALUES:0
     spec.loader.exec_module(converter)
     for statement in ('a = a / b;', 'a /= b;', 'a = a % b;', 'a %= b;'):
         lines = converter.convert('OPENQASM 3.0; int a = 7; int b = 0; ' + statement)
-        instruction = next(line for line in lines if ' /= ' in line)
-        check_program(arguments.bra, '\n'.join(lines) + '\n', None, instruction)
+        operator, operation = ('%=', 'remainder') if '%' in statement else ('/=', 'division')
+        instruction = next(line for line in lines if f' {operator} ' in line)
+        check_program(arguments.bra, '\n'.join(lines) + '\n', None, instruction, operation)
 
 
 if __name__ == '__main__':
