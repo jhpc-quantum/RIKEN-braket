@@ -313,6 +313,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         'arcsin': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='ARCSIN'),),
         'arccos': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='ARCCOS'),),
         'arctan': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='ARCTAN'),),
+        'ceiling': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='CEILING'),),
+        'floor': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='FLOOR'),),
         'real': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='REAL'),),
         'imag': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='IMAG'),),
     }
@@ -4765,6 +4767,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def visit_FunctionCall(self, expression: ast.FunctionCall) -> None:
         signature, runtime = self.__function_call_info(expression)
         if self.__expression_kind != ExpressionKind.CONST_ARITHMETIC:
+            # Runtime rounding calls are enabled and verified in Stage 3.
+            if signature.qcx_function in ('CEILING', 'FLOOR'):
+                raise UnsupportedOpenQASMError(f'runtime evaluation of function {expression.name.name}')
             if self.__expression_kind not in (ExpressionKind.ARITHMETIC, ExpressionKind.CONDITIONAL):
                 raise UnsupportedOpenQASMError('function call outside a value expression')
             self.__visit_runtime_function(expression, signature)
@@ -4896,6 +4901,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             'ARCSIN': {ValueType.FLOAT: math.asin},
             'ARCCOS': {ValueType.FLOAT: math.acos},
             'ARCTAN': {ValueType.FLOAT: math.atan},
+            'CEILING': {ValueType.FLOAT: math.ceil},
+            'FLOOR': {ValueType.FLOAT: math.floor},
         }
         operand_type = signature.operand_types[0]
         function = functions.get(signature.qcx_function, {}).get(operand_type)
@@ -4911,6 +4918,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise InvalidConstantFunctionException(f'Function {name}: real input outside [-1, 1]')
         try:
             result = function(value)
+            if signature.qcx_function in ('CEILING', 'FLOOR'):
+                # Python returns arbitrary-precision integers, but OpenQASM
+                # rounding calls return float. Recover the input's zero sign,
+                # which is lost by the intermediate Python integer result.
+                result = float(result)
+                if result == 0:
+                    result = math.copysign(result, value)
         except (OverflowError, ValueError) as error:
             raise InvalidConstantFunctionException(f'Function {name}: overflow/nonfinite result') from error
         if not cmath.isfinite(result):
