@@ -918,6 +918,15 @@ class RoundingRuntimeTests(unittest.TestCase):
     test_indexed_assignments_reserve_array_indices = TrigonometricRuntimeTests.test_indexed_assignments_reserve_array_indices
     test_failure_restores_expression_state_and_caller_temporaries = TrigonometricRuntimeTests.test_failure_restores_expression_state_and_caller_temporaries
 
+    def test_documented_rounding_example(self):
+        document = CONVERTER_PATH.with_suffix('.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- rounding-function-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        lines = self.clean(examples[0].split('\n', 1)[1])
+        for name in ('CEILING', 'FLOOR'):
+            self.assertEqual(sum(f' <- {name} ' in line for line in lines), 1)
+
     def test_literals_use_native_rounding_without_host_evaluation(self):
         for name, host_name in (('ceiling', 'ceil'), ('floor', 'floor')):
             for argument in ('0.0', '-0.0', '0.5', '-0.5', '5e-324', '-5e-324',

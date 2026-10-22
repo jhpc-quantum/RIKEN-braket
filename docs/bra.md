@@ -259,6 +259,8 @@ not literals, casts, or built-in constants.
 | `ARCSIN` | `REAL` | `REAL` |
 | `ARCCOS` | `REAL` | `REAL` |
 | `ARCTAN` | `REAL` | `REAL` |
+| `CEILING` | `REAL` | `REAL` |
+| `FLOOR` | `REAL` | `REAL` |
 | `COMPLEX` | `REAL`, `REAL` | `COMPLEX` |
 
 Only operand types select an overload. Destination types must then match the
@@ -296,6 +298,8 @@ APPLY Y <- TAN X
 APPLY Y <- ARCSIN 0.5
 APPLY Y <- ARCCOS 0.5
 APPLY Y <- ARCTAN X
+APPLY Y <- CEILING X
+APPLY Y <- FLOOR X
 APPLY Z <- COMPLEX X -0.0
 APPLY X <- EXP X
 ```
@@ -408,6 +412,26 @@ without build-option or floating-point-control-mode changes. Subnormal
 arithmetic follows that library and environment. Invalid domains and
 nonfinite inputs/results leave the destination unchanged, including in-place
 calls. Skipped instructions do not evaluate their operands or domain checks.
+
+`CEILING` rounds toward positive infinity and `FLOOR` toward negative infinity.
+Both have only a `REAL -> REAL` signature: their results are floating-point
+integral values, not `INT` or `UINT`. Finite inputs and results are required;
+errors leave the destination unchanged. Large finite inputs outside native
+integer ranges are supported without conversion through native integers.
+
+Both functions preserve either sign of exact zero. `CEILING` also returns
+negative zero for inputs in (-1, 0), while `FLOOR` returns positive zero for
+inputs in (0, 1). Stored nonzero subnormals retain their directed-rounding
+meaning even under DAZ: positive values give `CEILING = 1` and `FLOOR = +0`;
+negative values give `CEILING = -0` and `FLOOR = -1`. Representation-based
+classification substitutes a same-sign normal representative before the
+library call, without arithmetic on the original subnormal. An input already
+flushed to zero by earlier arithmetic cannot be recovered.
+
+Direct C-library calls use the configured `REAL` precision. Results do not
+depend on the caller's rounding direction, and calls do not change compiler
+options or floating-point control modes. Skipped calls do not evaluate
+operands, finiteness checks, or rounding.
 
 `ARG` computes the complex argument in radians and rejects zero, including all
 combinations of signed-zero components. For a negative real component,
