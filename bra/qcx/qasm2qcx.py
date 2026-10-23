@@ -444,6 +444,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__const_float_variable_name_values_map: dict[str, list[float]] = {}
         self.__const_complex_variable_name_values_map: dict[str, list[complex]] = {}
         self.__const_bool_variable_values_map: dict[str, int] = {}
+        self.__const_bit_variable_values_map: dict[str, int] = {}
         self.__const_bit_register_values: dict[str, _ConstantBitRegister] = {}
         self.__declared_constant_variables: set[str] = set()
 
@@ -646,6 +647,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__const_float_variable_name_values_map,
                 self.__const_complex_variable_name_values_map,
                 self.__const_bool_variable_values_map,
+                self.__const_bit_variable_values_map,
                 self.__const_bit_register_values,
             )
         )
@@ -670,6 +672,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__value_type = ValueType.FLOAT
         elif expression.name in self.__const_bit_register_values:
             raise UnsupportedOpenQASMError('constant bit register requires a register-expression context')
+        elif expression.name in self.__const_bit_variable_values_map:
+            self.__value = self.__const_bit_variable_values_map[expression.name]
+            self.__value_type = ValueType.BIT
+            self.__value_kind = ValueKind.LITERAL
         elif expression.name in self.__const_bool_variable_values_map:
             self.__value = self.__const_bool_variable_values_map[expression.name]
             self.__value_type = ValueType.BOOL
@@ -3785,7 +3791,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 (self.__const_uint_variable_name_values_map, ValueType.UINT),
                 (self.__const_float_variable_name_values_map, ValueType.FLOAT),
                 (self.__const_complex_variable_name_values_map, ValueType.COMPLEX),
-                (self.__const_bool_variable_values_map, ValueType.BOOL)):
+                (self.__const_bool_variable_values_map, ValueType.BOOL),
+                (self.__const_bit_variable_values_map, ValueType.BIT)):
             if name in constants:
                 return value_type, False
         if name in ('pi', 'tau', 'euler'):
@@ -5414,10 +5421,38 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__constant_bit_register(name)
             raise InvalidBitOperandException('A constant bit register is read-only')
 
+    def __declare_constant_scalar_bit(self, statement: ast.ConstantDeclaration) -> None:
+        name = statement.identifier.name
+        if statement.init_expression is None:
+            raise NoConstantExpressionException
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        try:
+            # Check dependencies before evaluating: short-circuiting cannot
+            # turn an expression involving mutable storage into a constant.
+            _, runtime = self.__loop_expression_info(statement.init_expression)
+            if runtime:
+                raise NoConstantExpressionException
+            self.__expression_kind = ExpressionKind.CONST_ARITHMETIC
+            self.__evaluate_constant = True
+            self.visit(statement.init_expression)
+            if self.__value_kind != ValueKind.LITERAL:
+                raise NoConstantExpressionException
+            if (self.__value_type not in (ValueType.BIT, ValueType.BOOL)
+                    and not (self.__value_type in (ValueType.INT, ValueType.UINT)
+                             and self.__value in (0, 1))):
+                raise NoImplicitCastException
+            value = int(self.__value)
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+        # Publish only a successfully initialized value; self/forward
+        # references must never observe a placeholder zero.
+        self.__const_bit_variable_values_map[name] = value
+        self.__constant_source_types[name] = statement.type
+
     def __declare_constant_bit_register(self, statement: ast.ConstantDeclaration) -> None:
         name = statement.identifier.name
-        if statement.type.size is None:
-            raise UnsupportedOpenQASMError('scalar const bit')
         if statement.init_expression is None:
             raise NoConstantExpressionException
         previous = (self.__expression_kind, self.__value, self.__value_type,
@@ -5451,7 +5486,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         variable_name = statement.identifier.name
         self.__register_source_identifier(variable_name)
         if isinstance(variable_type, ast.BitType):
-            self.__declare_constant_bit_register(statement)
+            if variable_type.size is None:
+                self.__declare_constant_scalar_bit(statement)
+            else:
+                self.__declare_constant_bit_register(statement)
             return
         self.__constant_source_types[variable_name] = variable_type
 
