@@ -214,6 +214,18 @@ class _UnsignedIntegerType:
 
 
 @dataclasses.dataclass(frozen=True)
+class _ConstantBitRegister:
+    width: int
+    value: int
+
+    def __post_init__(self) -> None:
+        if self.width <= 0:
+            raise ValueError('constant bit-register width must be positive')
+        if self.value < 0 or self.value.bit_length() > self.width:
+            raise ValueError('constant bit-register value must fit its width')
+
+
+@dataclasses.dataclass(frozen=True)
 class _StaticBitSelection:
     source_name: str
     indices: tuple[int, ...]
@@ -432,6 +444,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__const_float_variable_name_values_map: dict[str, list[float]] = {}
         self.__const_complex_variable_name_values_map: dict[str, list[complex]] = {}
         self.__const_bool_variable_values_map: dict[str, int] = {}
+        self.__const_bit_register_values: dict[str, _ConstantBitRegister] = {}
         self.__declared_constant_variables: set[str] = set()
 
         self.__is_stdgates_included: bool = False
@@ -633,6 +646,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__const_float_variable_name_values_map,
                 self.__const_complex_variable_name_values_map,
                 self.__const_bool_variable_values_map,
+                self.__const_bit_register_values,
             )
         )
         if (is_user_constant and not self.__is_initialization_process
@@ -654,6 +668,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__value = qcx_symbol
                 self.__value_kind = ValueKind.LVALUE
             self.__value_type = ValueType.FLOAT
+        elif expression.name in self.__const_bit_register_values:
+            raise UnsupportedOpenQASMError('constant bit register requires a register-expression context')
         elif expression.name in self.__const_bool_variable_values_map:
             self.__value = self.__const_bool_variable_values_map[expression.name]
             self.__value_type = ValueType.BOOL
@@ -850,6 +866,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             name = expression.name
             shadowed = ((iterators is not None and name in iterators)
                         or any(name in scope for scope in self.__loop_bindings))
+            if not shadowed and name in self.__const_bit_register_values:
+                return self.__constant_bit_register(name).width
             if not shadowed and name in self.__bit_register_source_sizes:
                 return self.__bit_register_source_sizes[name]
         if isinstance(expression, ast.IndexExpression) and self.__is_register_bit_selection(expression):
@@ -1876,12 +1894,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                   or any(name in scope for scope in self.__loop_bindings))
         if active:
             raise UnsupportedOpenQASMError('static bit selection of a for-loop iterator')
-        source_type = self.__classical_source_types.get(name)
+        constant = self.__constant_bit_register(name) if name in self.__const_bit_register_values else None
+        if destination and constant is not None:
+            raise InvalidBitOperandException('A constant bit register is read-only')
+        source_type = (self.__constant_source_types[name] if constant is not None
+                       else self.__classical_source_types.get(name))
         if source_type is None:
             raise NoVariableNameException(name)
         if not isinstance(source_type, ast.BitType):
             raise InvalidBitOperandException(f'Bit selection source {name} is not a bit variable')
-        size = self.__bit_register_source_sizes.get(name, 1)
+        size = constant.width if constant is not None else self.__bit_register_source_sizes.get(name, 1)
         if selector is None:
             return _StaticBitSelection(name, tuple(range(size)), source_type.size is not None)
         # Even an unrolled iterator is not a declaration-scope constant. Do
@@ -1946,6 +1968,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __bit_target(
             self, target: ast.Identifier | ast.IndexedIdentifier, *,
             role: str = 'Bit operand') -> Iterator[tuple[list[str], bool]]:
+        self.__reject_constant_bit_target(target)
         if isinstance(target, ast.IndexedIdentifier) and len(target.indices) == 1:
             source_name = target.name.name
             variable_name = self.__capitalize_variable_name(source_name)
@@ -3123,6 +3146,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     'multidimensional conditional indexing')
 
             source_name = expression.collection.name
+            if source_name in self.__const_bit_register_values:
+                return self.__constant_bit_element(expression), ValueType.BIT, ValueKind.LITERAL
             variable_name = self.__capitalize_variable_name(source_name)
             if variable_name in self.__array_element_types:
                 operand, index = self.__array_access(expression)
@@ -3306,6 +3331,19 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __constant_bit_register_value(self, expression: ast.Expression, width: int) -> int:
         if isinstance(expression, ast.BitstringLiteral):
             return expression.value if self.__evaluate_constant else 0
+        if isinstance(expression, ast.Identifier) and expression.name in self.__const_bit_register_values:
+            constant = self.__constant_bit_register(expression.name)
+            return constant.value if self.__evaluate_constant else 0
+        if (isinstance(expression, ast.IndexExpression)
+                and isinstance(expression.collection, ast.Identifier)
+                and expression.collection.name in self.__const_bit_register_values):
+            selection = self.__static_bit_selection(expression)
+            if not selection.is_register:
+                raise InvalidBitOperandException('A register expression requires a register selection')
+            constant = self.__constant_bit_register(selection.source_name)
+            return (sum(((constant.value >> source) & 1) << target
+                        for target, source in enumerate(selection.indices))
+                    if self.__evaluate_constant else 0)
         if isinstance(expression, ast.FunctionCall) and expression.name.name in ('rotl', 'rotr'):
             self.__function_call_info(expression)
             value = self.__constant_bit_register_value(expression.arguments[0], width)
@@ -3331,8 +3369,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 return lhs | rhs
             if expression.op.name == '^':
                 return lhs ^ rhs
-        # const bit[n] declarations are not supported: register names and
-        # selections therefore cannot supply a constant register value.
+        # Mutable registers and their selections cannot supply constant values.
         raise NoConstantExpressionException
 
     def __emit_condition(
@@ -3753,6 +3790,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 return value_type, False
         if name in ('pi', 'tau', 'euler'):
             return ValueType.FLOAT, False
+        if name in self.__const_bit_register_values:
+            self.__constant_bit_register(name)
+            raise UnsupportedOpenQASMError('whole constant bit register in scalar expression')
         if name not in self.__classical_source_types:
             raise NoVariableNameException(name)
         variable_type = self.__classical_source_types[name]
@@ -3836,7 +3876,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # Inspect both sides without evaluating shift counts or reading bits.
         if isinstance(expression, ast.BitstringLiteral):
             return False
-        if isinstance(expression, (ast.Identifier, ast.IndexExpression)):
+        if isinstance(expression, ast.Identifier):
+            if expression.name in self.__const_bit_register_values:
+                self.__constant_bit_register(expression.name)
+                return False
+            return True
+        if isinstance(expression, ast.IndexExpression):
+            if (isinstance(expression.collection, ast.Identifier)
+                    and expression.collection.name in self.__const_bit_register_values):
+                self.__static_bit_selection(expression, iterators)
+                return False
             return True
         if isinstance(expression, ast.UnaryExpression):
             return self.__register_expression_runtime(expression.expression, iterators)
@@ -3855,6 +3904,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if ((iterators is not None and name in iterators)
                 or any(name in scope for scope in self.__loop_bindings)):
             raise UnsupportedOpenQASMError('indexed use of a for-loop iterator')
+        if name in self.__const_bit_register_values:
+            selection = self.__static_bit_selection(expression, iterators)
+            if selection.is_register:
+                raise UnsupportedOpenQASMError('register selection in scalar expression')
+            return ValueType.BIT, False
         variable_type = self.__classical_source_types.get(name)
         if isinstance(variable_type, ast.ArrayType):
             return self.__source_value_type(variable_type.base_type), True
@@ -4225,6 +4279,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return False  # An active scalar iterator shadows the register.
         if (statement.op.name == '=' and not selected_target
                 and not isinstance(statement.rvalue, (ast.UnaryExpression, ast.BinaryExpression, ast.FunctionCall))
+                and not self.__is_constant_bit_source(statement.rvalue)
                 and not self.__is_register_bit_selection(statement.rvalue)):
             return False  # Preserve the existing literal/copy assignment path.
         expression = (ast.BinaryExpression(ast.BinaryOperator[statement.op.name[:-1]],
@@ -4250,6 +4305,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if isinstance(node, ast.ForInLoop):
             self.__validate_bitwise_types(node.set_declaration, iterators)
             return
+        target = (node.lvalue if isinstance(node, ast.ClassicalAssignment)
+                  else node.target if isinstance(node, ast.QuantumMeasurementStatement) else None)
+        if target is not None:
+            self.__reject_constant_bit_target(target, iterators)
         # Register values need register-aware contexts, not accidental use as
         # scalar loop bounds, casts, or indices.
         if isinstance(node, ast.FunctionCall) and node.name.name in ('popcount', 'rotl', 'rotr'):
@@ -4259,6 +4318,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
         if isinstance(node, ast.ClassicalAssignment) and self.__validate_register_operator_assignment(node, iterators):
             return
+        if (isinstance(node, ast.ClassicalAssignment) and node.op.name == '='
+                and self.__is_constant_bit_source(node.rvalue)):
+            if self.__bit_register_expression_width(node.rvalue, iterators) is not None:
+                raise InvalidBitOperandException('A constant register source requires a register target')
+            # Scalar selections were checked without reading mutable storage;
+            # still walk the assignment's destination and nested index syntax.
         if (isinstance(node, ast.BinaryExpression)
                 and node.op.name in ('==', '!=', '<', '<=', '>', '>=')
                 and self.__register_comparison_width(node, iterators) is not None):
@@ -4370,6 +4435,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if ((iterators is not None and name in iterators)
                 or any(name in scope for scope in self.__loop_bindings)):
             raise UnsupportedOpenQASMError('iteration over a scalar for-loop iterator')
+        if name in self.__const_bit_register_values:
+            self.__constant_bit_register(name)
+            raise UnsupportedOpenQASMError('iteration over constant bit registers')
         variable_type = self.__classical_source_types.get(name)
         if variable_type is None:
             raise NoVariableNameException(name)
@@ -5217,6 +5285,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__expression_kind is None:
             return
         if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+            if (isinstance(expression.collection, ast.Identifier)
+                    and expression.collection.name in self.__const_bit_register_values):
+                self.__value = self.__constant_bit_element(expression)
+                self.__value_type, self.__value_kind = ValueType.BIT, ValueKind.LITERAL
+                return
             raise NoConstantExpressionException
         self.__value, self.__value_type, self.__value_kind = self.__condition_operand(expression)
 
@@ -5309,6 +5382,66 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
                 self.__const_complex_variable_name_values_map[variable_name][0] = complex(self.__value)
 
+    def __constant_bit_register(self, name: str) -> _ConstantBitRegister:
+        constant = self.__const_bit_register_values.get(name)
+        if (constant is None or any(name in scope for scope in self.__loop_bindings)
+                or (not self.__is_initialization_process
+                    and name not in self.__declared_constant_variables)):
+            raise NoVariableNameException(name)
+        return constant
+
+    def __constant_bit_element(self, expression: ast.IndexExpression) -> int:
+        selection = self.__static_bit_selection(expression)
+        if selection.is_register:
+            raise UnsupportedOpenQASMError('constant bit selection requires a register-expression context')
+        constant = self.__constant_bit_register(selection.source_name)
+        return (constant.value >> selection.indices[0]) & 1 if self.__evaluate_constant else 0
+
+    def __is_constant_bit_source(self, expression: ast.Expression) -> bool:
+        return ((isinstance(expression, ast.Identifier)
+                 and expression.name in self.__const_bit_register_values)
+                or (isinstance(expression, ast.IndexExpression)
+                    and isinstance(expression.collection, ast.Identifier)
+                    and expression.collection.name in self.__const_bit_register_values))
+
+    def __reject_constant_bit_target(
+            self, target: ast.Identifier | ast.IndexedIdentifier,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> None:
+        name = self.__operand_name(target)
+        shadowed = ((iterators is not None and name in iterators)
+                    or any(name in scope for scope in self.__loop_bindings))
+        if not shadowed and name in self.__const_bit_register_values:
+            self.__constant_bit_register(name)
+            raise InvalidBitOperandException('A constant bit register is read-only')
+
+    def __declare_constant_bit_register(self, statement: ast.ConstantDeclaration) -> None:
+        name = statement.identifier.name
+        if statement.type.size is None:
+            raise UnsupportedOpenQASMError('scalar const bit')
+        if statement.init_expression is None:
+            raise NoConstantExpressionException
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        try:
+            width = self.__bit_type_size(statement.type, name)
+            self.__expression_kind = ExpressionKind.CONST_ARITHMETIC
+            self.__evaluate_constant = True
+            source_width = self.__bit_register_expression_width(statement.init_expression)
+            if source_width is None or source_width != width:
+                raise InvalidDeclarationException(
+                    f'Constant bit register {name}[{width}] requires a matching-width register initializer')
+            if self.__register_expression_runtime(statement.init_expression, None):
+                raise NoConstantExpressionException
+            value = self.__constant_bit_register_value(statement.init_expression, width)
+            constant = _ConstantBitRegister(width, value)
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+        # Never expose a fabricated zero while evaluating an initializer or
+        # its width. Reserve the source name separately for duplicate checks.
+        self.__const_bit_register_values[name] = constant
+        self.__constant_source_types[name] = statement.type
+
     def visit_ConstantDeclaration(self, statement: ast.ConstantDeclaration) -> None:
         if not self.__is_initialization_process:
             self.__declared_constant_variables.add(statement.identifier.name)
@@ -5317,6 +5450,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         variable_type = statement.type
         variable_name = statement.identifier.name
         self.__register_source_identifier(variable_name)
+        if isinstance(variable_type, ast.BitType):
+            self.__declare_constant_bit_register(statement)
+            return
         self.__constant_source_types[variable_name] = variable_type
 
         if isinstance(variable_type, ast.ArrayType):
@@ -5637,6 +5773,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             yield tuple((expression.value >> index) & 1 for index in range(expression.width))
             return
         if isinstance(expression, ast.Identifier):
+            if (expression.name in self.__const_bit_register_values
+                    and not any(expression.name in scope for scope in self.__loop_bindings)):
+                constant = self.__constant_bit_register(expression.name)
+                yield tuple((constant.value >> index) & 1 for index in range(constant.width))
+                return
             name, indices, is_register = self.__bit_operand(expression, role='Bit source')
             if not is_register:
                 raise InvalidBitOperandException('A bit-register expression requires register operands')
@@ -5647,6 +5788,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             selection = self.__static_bit_selection(expression)
             if not selection.is_register:
                 raise InvalidBitOperandException('A bit-register expression requires register operands')
+            if selection.source_name in self.__const_bit_register_values:
+                constant = self.__constant_bit_register(selection.source_name)
+                yield tuple((constant.value >> index) & 1 for index in selection.indices)
+                return
             name = self.__capitalize_variable_name(selection.source_name)
             # Declaration metadata alone is not permission to read storage
             # before its actual declaration in the emitted program.
@@ -5692,7 +5837,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_bit_value_assignment(
             self, target_names: list[str], target_is_register: bool,
             expression: ast.Expression) -> None:
-        if target_is_register and isinstance(expression, (ast.UnaryExpression, ast.BinaryExpression, ast.FunctionCall)):
+        constant_source = self.__is_constant_bit_source(expression)
+        if target_is_register and (constant_source or isinstance(
+                expression, (ast.UnaryExpression, ast.BinaryExpression, ast.FunctionCall))):
             width = self.__bit_register_expression_width(expression)
             if width is None:
                 raise InvalidBitOperandException('A bit-register assignment requires a register value')
@@ -5702,6 +5849,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             with self.__bit_register_expression_value(expression) as values:
                 for target, value in zip(target_names, values):
                     self.__qcx_lines.append(f'LET {target} := {value}')
+            return
+        if constant_source:
+            value, value_type, value_kind = self.__condition_operand(expression)
+            if value_type != ValueType.BIT:
+                raise InvalidBitOperandException('Scalar bit assignment requires a scalar bit value')
+            self.__emit_assignment(target_names[0], ':=', ValueType.BIT, value, value_type, value_kind)
             return
         boolean_identifier = isinstance(expression, ast.Identifier) and (
             self.__capitalize_variable_name(expression.name) in self.__bool_variable_names
@@ -6046,6 +6199,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
 
         source_name = self.__operand_name(statement.lvalue)
+        self.__reject_constant_bit_target(statement.lvalue)
         variable_name: str = self.__capitalize_variable_name(source_name)
         variable_type: ValueType = self.__type_of(variable_name)
         if variable_name in self.__array_element_types:
