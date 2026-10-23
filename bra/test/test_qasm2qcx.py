@@ -881,6 +881,63 @@ class UnsignedPopcountRuntimeTests(unittest.TestCase):
         self.assertEqual(len(labels), len(set(labels)))
 
 
+class UnsignedPopcountIntegrationTests(unittest.TestCase):
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+
+    def test_nested_calls_preserve_caller_storage_and_visit_argument_once(self):
+        converter = self.converter('uint[6] u = 37; array[uint[6], 2] a = {1, 2}; int i = 0;')
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        expression = self.expression('popcount(rotl(a[i], int(popcount(~u))))')
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            converter.visit(expression)
+        self.assertEqual(sum(call.args[0] is expression.arguments[0] for call in visit.call_args_list), 1)
+        result = converter._QASM2QCXConverter__value
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller, result})
+        converter._QASM2QCXConverter__release_temporary_variable(result)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+
+    def test_indexed_assignment_and_condition_contexts_release_all_scratch(self):
+        program = qasm2qcx.openqasm3.parser.parse('''OPENQASM 3;
+            array[uint[6], 2] a = {1, 37}; int i = 0; uint[6] u = 37;
+            a[a[i]] = popcount(a[a[i]]); a[i] += popcount(rotl(a[i], 1));
+            bool ready = popcount(~u) == popcount(u);
+            if (ready && (popcount(u) > 0)) { u = popcount(u); }
+            while (popcount(u) > 0) { u >>= 1; }
+        ''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
+        labels = [line for line in converter if line.startswith('@')]
+        self.assertEqual(len(labels), len(set(labels)))
+
+    def test_empty_loops_validate_inputs_without_reading_elements(self):
+        prefix = 'OPENQASM 3; uint[6] u; uint out; array[uint[3], 2] a; '
+        for body in ('out = popcount(a[999]);',
+                     'out = popcount(rotl(u, int(a[999])));',
+                     'out = popcount(u / uint[6](0));',
+                     'for uint[3] u in a { out = popcount(u); }'):
+            with self.subTest(body=body):
+                lines = convert(prefix + 'for int i in [1:0] { ' + body + ' }')
+                self.assertFalse(any(line.startswith('VAR QASM2QCX_') for line in lines))
+        for expression in ('popcount(a)', 'popcount(u + 0)', 'popcount(missing)',
+                           'popcount(popcount(u))', 'popcount(u << 1.5)'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(prefix + 'for int i in [1:0] { out = ' + expression + '; }')
+
+    def test_index_failure_restores_state_after_nested_operand(self):
+        converter = self.converter('uint[6] u = 37; array[uint[6], 2] a;')
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        previous = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            converter.visit(self.expression('popcount(rotl(uint[6](popcount(u)), int(a[999])))'))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], previous)
+
+
 class PopcountTests(unittest.TestCase):
     expression = staticmethod(BuiltinFunctionSignatureTests.expression)
     converter = staticmethod(BuiltinFunctionSignatureTests.converter)

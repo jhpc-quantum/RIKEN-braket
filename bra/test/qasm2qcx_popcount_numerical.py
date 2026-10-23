@@ -54,6 +54,85 @@ class BackendTests(unittest.TestCase):
                             ('power', 'complement', 'narrow', 'u', 'after'),
                             (4096, maximum - 1, 0, 8, 1))
 
+    def test_unsigned_nested_expression_inputs(self):
+        for expression, expected in (
+                ('~u', 3), ('u + uint[6](31)', 1), ('u * uint[6](3)', 5),
+                ('u / uint[6](2)', 2), ('u % uint[6](3)', 1),
+                ('(u & v) | uint[6](8)', 3), ('u ^ v', 2),
+                ('u << d', 2), ('u >> d', 2), ('u ** uint[6](2)', 3),
+                ('rotl(u, d)', 3), ('rotr(rotl(u, d), -1)', 3),
+                ('uint[3](popcount(u))', 2), ('uint[6](popcount("1011"))', 2)):
+            with self.subTest(expression=expression):
+                self.check_unsigned('uint[6] u = 37; uint[6] v = 7; int d = 2; '
+                                    f'uint out = popcount({expression}); uint sum = popcount(u) + popcount(v);',
+                                    ('out', 'sum', 'u', 'v', 'd'), (expected, 6, 37, 7, 2))
+        self.check('''uint[6] u = 37; float root = sqrt(popcount(u) + 1);
+            uint remainder = uint(mod(popcount(u), 2));
+            bit[4] flags = "1011"; uint mixed = popcount(rotl(flags, int(popcount(u))));''',
+                   (('root', False), ('remainder', False), ('mixed', False)), (2, 1, 3))
+
+    def test_unsigned_indexed_operands_and_overlapping_assignments(self):
+        self.check_unsigned('''array[uint[6], 3] a = {1, 37, 63}; int i = 0;
+            a[a[i]] = popcount(a[a[i]]); a[i] = popcount(a[a[i]]);
+            uint first = a[0]; uint second = a[1]; uint third = a[2];
+            uint last = popcount(a[-1]); uint nested = popcount(rotl(a[i], int(a[1])));''',
+                            ('first', 'second', 'third', 'last', 'nested', 'i'), (2, 3, 63, 6, 1, 0))
+        self.check_unsigned('''array[uint[6], 2] a = {37, 63}; int i = 1;
+            uint out = popcount(a[i - 1]) + popcount(a[i]);
+            a[i] += popcount(a[i]); uint saved = a[i];''', ('out', 'saved'), (9, 5))
+
+    def test_unsigned_conditions_loops_and_scoped_iterators(self):
+        self.check_unsigned('''uint[6] u = 37; uint total = 0; int visits = 0;
+            while (popcount(u) > 0) { u >>= 1; total += popcount(u); visits += 1; }
+            bool ready = bool(popcount(u));''', ('total', 'visits', 'u', 'ready'), (7, 6, 0, 0))
+        self.check_unsigned('''uint[6] u = 37; int visits = 0; uint total = 0;
+            for int i in [0:popcount(u)] { visits += 1; }
+            for int i in [0:popcount(u):6] { visits += 1; }
+            for int n in {popcount(u), popcount(~u)} { total += n; }
+            array[uint[6], 3] a = {37, 63, 0};
+            for uint[6] value in a { total += popcount(value); }
+            bool same = popcount(u) == popcount("1011");''',
+                            ('visits', 'total', 'same'), (7, 15, 1))
+        self.check_unsigned('''uint[6] u = 63; uint total = 0; int visits = 0;
+            while (popcount(u) > 0) {
+                u >>= 1; visits += 1;
+                if (popcount(u) == 4) { continue; }
+                if (popcount(u) == 2) { break; }
+                total += popcount(u);
+            }''', ('total', 'visits', 'u'), (8, 4, 3))
+        self.check_unsigned('''const int W = 6; uint[W] u = 37; uint total = 0;
+            for int W in [0:1] { total += popcount(u); }
+            array[uint[3], 2] a = {7, 1};
+            for uint[3] u in a { total += popcount(u); }
+            total += popcount(u);
+            for int i in [1:0] { for uint[3] u in a { total += popcount(u); } }''',
+                            ('total', 'u'), (13, 37))
+
+    def test_unsigned_short_circuiting_and_reached_errors(self):
+        self.check_unsigned('''uint[6] u = 37; uint[6] zero = 0; int bad = 6;
+            uint out = 7; array[uint[6], 2] a = {1, 2}; int index = 99;
+            if (false) { out = popcount(u / zero); out = popcount(a[index]); }
+            bool off = false && (popcount(u << bad) > 0);
+            bool on = true || (popcount(uint[6](1) / uint[6](0)) > 0);
+            while (false) { out = popcount(u << -1); }
+            for int i in [1:0] { out = popcount(u / zero); }
+            for int i in [1:0] { out = popcount(a[index]); }''',
+                            ('out', 'off', 'on', 'u'), (7, 0, 1, 37))
+        for expression, diagnostic in (
+                ('popcount(u / zero)', 'integer division by zero'),
+                ('popcount(uint[6](1) / uint[6](0))', 'integer division by zero'),
+                ('popcount(u << bad)', 'assertion failed in ASSERT'),
+                ('popcount(u << -1)', 'assertion failed in ASSERT'),
+                ('popcount(a[index])', 'assertion failed in ASSERT')):
+            lines = self.program('uint[6] u = 37; uint[6] zero = 0; int bad = 6; '
+                                 'array[uint[6], 2] a = {1, 2}; int index = 99; '
+                                 f'uint out = {expression};', (('out', False),))
+            result = self.execute(lines)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(diagnostic, result.stderr)
+            self.assertEqual(result.stdout, '')
+            type(self).checked += 1
+
     def test_literals_constants_registers_and_widths_beyond_uint(self):
         for width in (1, 2, 3, 8, 32, 65, 129):
             for bits in ('0' * width, '1' * width, ('10' * width)[:width], '1' + '0' * (width - 1)):
