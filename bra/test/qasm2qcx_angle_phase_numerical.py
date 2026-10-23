@@ -12,6 +12,7 @@ import pathlib
 import re
 import resource
 import unittest
+from fractions import Fraction
 
 import qasm2qcx_math_function_numerical as functions
 
@@ -23,7 +24,7 @@ class BackendTests(unittest.TestCase):
     program = functions.BackendTests.program
     execute = functions.BackendTests.execute
 
-    def check_phase(self, source, width, bits, conditions, *, basis=None, fused=False):
+    def check_phase(self, source, width, bits, conditions, *, basis=None, fused=False, preserved=()):
         # Reference the whole diagonal phase, not a product of the emitted R
         # gates. Use a signed representative to resolve phases near one turn.
         signed = bits if bits <= (1 << (width - 1)) else bits - (1 << width)
@@ -40,10 +41,14 @@ class BackendTests(unittest.TestCase):
             mask = sum(1 << wire for wire in wires)
             expected = [value * phase if index & mask == mask else value
                         for index, value in enumerate(expected)]
-        lines = self.program('include "stdgates.inc"; qubit[3] q; ' + preparation + source, fused=fused)
+        lines = self.program('include "stdgates.inc"; qubit[3] q; ' + preparation + source,
+                             tuple((name, False) for name, _ in preserved), fused=fused)
         lines.append('DO AMPLITUDES')
         result = self.execute(lines)
         self.assertEqual(result.returncode, 0, result.stderr + '\n' + source)
+        if preserved:
+            self.assertEqual(re.findall(r'^([0-9]+)$', result.stdout, re.MULTILINE),
+                             [str(value) for _, value in preserved])
         actual = {int(index, 2): complex(float(real), float(imaginary)) for index, real, imaginary in
                   re.findall(r'^([01]+) => (\S+) \+ (\S+) i$', result.stdout, re.MULTILINE)}
         self.assertEqual(set(actual), set(range(8)), result.stdout)
@@ -89,6 +94,65 @@ class BackendTests(unittest.TestCase):
                 while (false) { p(A) q[0]; }''', 4, 5, ((0, 2),), fused=fused)
             self.check_phase('const angle[4] A = 5 * pi / 8; for int i in [0:1] { p(A) q[i]; }',
                              4, 5, ((0,), (1,)), fused=fused)
+
+    def test_runtime_angles_all_aliases_patterns_and_source_preservation(self):
+        native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
+        for gate in ('p', 'phase', 'u1', 'cp', 'cphase'):
+            wires = (2, 0) if gate in ('cp', 'cphase') else (1,)
+            operands = ', '.join(f'q[{wire}]' for wire in wires)
+            for width in sorted({1, 4, 8, native}):
+                for bits in sorted({0, 1, 1 << (width - 1), (1 << width) // 3, (1 << width) - 1}):
+                    radians = math.ldexp(math.tau * bits, -width)
+                    source = f'const angle[{width}] A = {radians!r}; angle[{width}] live = A; {gate}(live) {operands};'
+                    for fused in (False, True):
+                        with self.subTest(gate=gate, width=width, bits=bits, fused=fused):
+                            self.check_phase(source, width, bits, (wires,), fused=fused, preserved=(('live', bits),))
+
+    def test_runtime_float_casts_keep_native_quantization(self):
+        for width in (1, 4, 8, self.module.QASM2QCXConverter.QCX_UINT_WIDTH):
+            tie = math.ldexp(math.tau, -width - 1)
+            for value in (0.0, -math.pi / 2, math.tau, 0.1, 1e308,
+                          tie, math.nextafter(tie, math.inf)):
+                bits = round(Fraction(value) / Fraction(math.tau) * (1 << width)) % (1 << width)
+                for expression in (repr(value), 'value'):
+                    self.check_phase(f'float value = {value!r}; cp(angle[{width}]({expression})) q[2], q[0];',
+                                     width, bits, ((2, 0),))
+
+    def test_runtime_width_casts_broadcasting_arrays_and_live_reentry(self):
+        for fused in (False, True):
+            self.check_phase('const angle[4] A = 5 * pi / 8; angle[4] live = A; p(angle[8](live)) q;',
+                             8, 80, ((0,), (1,), (2,)), fused=fused, preserved=(('live', 5),))
+            self.check_phase('const angle[4] A = 5 * pi / 8; angle[4] live = A; cp(angle[2](live)) q[2], q[0:1];',
+                             2, 1, ((2, 0), (2, 1)), fused=fused, preserved=(('live', 5),))
+            self.check_phase('''array[float, 2] values = {0.0, 5 * pi / 8}; int index = 1;
+                p(angle[8](angle[4](values[index]))) q;''', 4, 5, ((0,), (1,), (2,)), fused=fused)
+            self.check_phase('''angle[4] live = pi / 2; int count = 0;
+                while (count < 2) { p(live) q[0]; live = pi; count += 1; }''',
+                             4, 12, ((0,),), fused=fused, preserved=(('live', 8),))
+            self.check_phase('''array[float, 2] values = {pi / 2, pi};
+                for float item in values { p(angle[4](item)) q[1]; }''', 4, 12, ((1,),), fused=fused)
+            self.check_phase('''const angle[4] A = pi / 2; array[float, 1] values = {pi};
+                for float A in values { p(angle[4](A)) q[0]; } p(A) q[1];''',
+                             4, 4, ((0,), (0,), (1,)), fused=fused)
+
+    def test_skipped_runtime_failures_and_executed_errors(self):
+        for fused in (False, True):
+            self.check_phase('''bool flag = false; angle[4] live = pi / 2;
+                if (flag) { p(angle[4](1e309)) q; }
+                while (flag) { p(angle[4](1.0 / 0.0)) q; }
+                for int i in [1:0] { p(angle[4](1e309)) q; }
+                array[float, 1] values = {0.0}; int index = 2;
+                if (flag) { p(angle[4](values[index])) q; } p(live) q[0];''',
+                             4, 4, ((0,),), fused=fused, preserved=(('live', 4),))
+            for expression in ('1e309', '1.0 / 0.0', 'values[index]'):
+                source = ('include "stdgates.inc"; qubit q; array[float, 1] values = {0.0}; int index = 2; '
+                          + f'p(angle[4]({expression})) q;')
+                lines = self.program(source, fused=fused)
+                lines.append('DO AMPLITUDES')
+                result = self.execute(lines)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn(' => ', result.stdout)
+                type(self).checked += 1
 
 
 def main():

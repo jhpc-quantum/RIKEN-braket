@@ -2443,9 +2443,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 qasm_gate_name, expected_parameters, expected_qubits,
                 len(statement.arguments), len(statement.qubits))
 
-        constant_angle = self.__constant_angle_phase_parameter(statement)
-        if constant_angle is not None:
-            self.__emit_constant_angle_phase_gate(statement, constant_angle)
+        angle_parameter = self.__angle_phase_parameter(statement)
+        if angle_parameter is not None:
+            constant = self.__constant_angle_gate_value(angle_parameter)
+            if constant is not None:
+                self.__emit_constant_angle_phase_gate(statement, constant)
+            else:
+                self.__emit_runtime_angle_phase_gate(statement, angle_parameter)
             return
 
         if isinstance(info, _OrderedGateModifierInfo):
@@ -2538,9 +2542,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         for temporary_variable in temporary_variables:
             self.__release_temporary_variable(temporary_variable)
 
-    def __constant_angle_phase_parameter(
+    def __angle_phase_parameter(
             self, statement: ast.QuantumGate | ast.QuantumPhase,
-            iterators: set[str] | dict[str, ValueType] | None = None) -> _ConstantAngle | None:
+            iterators: set[str] | dict[str, ValueType] | None = None) -> ast.Expression | None:
         # Shared by emission and non-evaluating loop validation. Do not let
         # unsupported angle uses disappear in empty loops or zero powers.
         arguments = statement.arguments if isinstance(statement, ast.QuantumGate) else [statement.argument]
@@ -2555,10 +2559,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError('angle-valued phase gate requires one parameter')
         if statement.modifiers:
             raise UnsupportedOpenQASMError('modifiers on angle-valued phase gates')
-        constant = self.__constant_angle_gate_value(angle_arguments[0], iterators)
-        if constant is None:
-            raise UnsupportedOpenQASMError('runtime angle-valued phase gate parameter')
-        return constant
+        return angle_arguments[0]
 
     def __constant_angle_gate_value(
             self, expression: ast.Expression,
@@ -2585,6 +2586,39 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         for qubits in self.__qubit_operand_tuples(statement.qubits, distinct=mnemonic == 'CR'):
             for exponent in exponents:
                 self.__qcx_lines.append(f'{mnemonic} {" ".join(qubits)} {exponent}')
+
+    @contextlib.contextmanager
+    def __captured_angle_bits(self, expression: ast.Expression) -> Iterator[tuple[str, _AngleType]]:
+        previous_used = self.__used_temporary_variables.copy()
+        try:
+            value, value_type, _ = self.__condition_operand(expression)
+            angle_type = self.__angle_expression_type(expression)
+            if value_type != ValueType.ANGLE or angle_type is None:
+                raise UnsupportedOpenQASMError('angle gate parameter without angle width metadata')
+            snapshot = self.__add_new_temporary_variable(
+                ValueType.UINT, _UnsignedIntegerType(angle_type.width, True))
+            # Copy raw internal bits, not an OpenQASM angle-to-integer cast.
+            # Keep this private snapshot live across the complete broadcast.
+            self.__qcx_lines.append(f'LET {snapshot} := {value}')
+            yield snapshot, angle_type
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
+    def __emit_runtime_angle_phase_gate(self, statement: ast.QuantumGate, expression: ast.Expression) -> None:
+        mnemonic = 'CR' if statement.name.name in ('cp', 'cphase') else 'R'
+        with self.__captured_angle_bits(expression) as (snapshot, angle_type):
+            # Allocate scratch before any bit-test jumps. Never mutate the
+            # snapshot or source while testing individual bit contributions.
+            scratch = self.__add_new_temporary_variable(ValueType.UINT)
+            prefix = self.__gate_power_label() + '_ANGLE'
+            for index, qubits in enumerate(self.__qubit_operand_tuples(statement.qubits, distinct=mnemonic == 'CR')):
+                for bit in range(angle_type.width):
+                    skip = f'{prefix}_{index}_{bit}_SKIP'
+                    self.__qcx_lines.extend([
+                        f'LET {scratch} := {snapshot}', f'LET {scratch} &= {1 << bit}',
+                        f'JUMPIF {skip} {scratch} == 0',
+                        f'{mnemonic} {" ".join(qubits)} {angle_type.width - bit}', f'@{skip}'])
 
     @contextlib.contextmanager
     def __captured_phase_angle(
@@ -4259,8 +4293,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise UnsupportedOpenQASMError(f'assignment operator {child.op.name}')
             if isinstance(child, ast.ClassicalAssignment) and child.op.name in ('&=', '|=', '^=', '<<=', '>>=', '**='):
                 self.__validate_integer_operator_assignment_types(child, iterators)
-            constant_angle = (self.__constant_angle_phase_parameter(child, iterators)
-                              if isinstance(child, (ast.QuantumGate, ast.QuantumPhase)) else None)
+            angle_parameter = (self.__angle_phase_parameter(child, iterators)
+                               if isinstance(child, (ast.QuantumGate, ast.QuantumPhase)) else None)
             if (isinstance(child, (ast.QuantumGate, ast.QuantumPhase))
                     and any(modifier.modifier == ast.GateModifierName.pow for modifier in child.modifiers)):
                 # A skipped loop must still reject an invalid powered gate's
@@ -4293,7 +4327,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if len(child.arguments) != parameters or len(child.qubits) != qubits:
                     raise WrongGateArityException(child.name.name, parameters, qubits,
                                                   len(child.arguments), len(child.qubits))
-                if constant_angle is not None and not self.__is_initialization_process:
+                if angle_parameter is not None and not self.__is_initialization_process:
                     for qubit in child.qubits:
                         name = self.__operand_name(qubit)
                         if name in iterators or name not in self.__declared_quantum_registers:
