@@ -103,6 +103,39 @@ class BackendTests(unittest.TestCase):
                                  ('original', 'folded', 'live', 'nonzero'),
                                  (bits, expected, expected, int(expected != 0)))
 
+    def test_angle_assignments_in_control_flow(self):
+        self.check_exact('''angle[4] a = pi / 2; angle[8] b; int count = 0;
+            while (bool(a)) { b = a; a = 0.0; count += 1; }
+            if (bool(b)) { a = angle[4](b); } else { a = 0.0; }''',
+                         ('a', 'b', 'count'), (4, 64, 1))
+        self.check_exact('''int stop = 3; angle[4] out;
+            for int i in [0:stop] { if (i == 1) { continue; }
+                out = angle[4](float(i) * pi / 2); if (i == 2) { break; } }''',
+                         ('out',), (8,))
+
+    def test_float_array_elements_and_iterators_convert_to_angles(self):
+        self.check_exact('''array[float, 3] values = {0.0, pi / 2, pi};
+            angle[4] out; for float item in values { out = item; }
+            int index = 1; angle[8] wide = angle[8](angle[4](values[index]));
+            bool nonzero = bool(angle[2](values[index]));''',
+                         ('out', 'wide', 'nonzero'), (8, 64, 1))
+
+    def test_angle_shadowing_restores_constant_values_and_widths(self):
+        self.check_exact('''const angle[4] A = pi;
+            array[float, 1] values = {pi / 2}; angle[4] out;
+            for float A in values { out = angle[4](A); }
+            int count = 0; for int A in [0:1] { if (bool(A)) { count += 1; } }
+            angle[8] restored = A;''', ('out', 'restored', 'count'), (4, 128, 1))
+
+    def test_skipped_control_flow_does_not_evaluate_angle_conversions(self):
+        self.check_exact('''angle[4] out = pi;
+            for int i in [1:0] { out = angle[4](1.0 / 0.0); }
+            while (false) { out = 1e309; }
+            if (false) { out = angle[4](1e309); } else { out = pi / 2; }''',
+                         ('out',), (4,))
+        self.check_exact('''const angle[4] A = pi; int count = 0;
+            for int i in [0:int(bool(A))] { count += 1; }''', ('count',), (2,))
+
     def test_nonfinite_runtime_failure_identifies_native_conversion(self):
         for source in ('float huge = 1e308; float bad = huge * huge; angle[4] out = bad;',
                        'float huge = 1e308; float bad = -huge * huge; angle[4] out = angle[4](bad);',
