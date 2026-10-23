@@ -126,6 +126,7 @@ The converter currently covers:
 - runtime iteration over one-dimensional `int`, `uint`, `float`, `bool`, and
   `complex` arrays;
 - runtime iteration over mutable bit registers with scalar `bit` iterators;
+- unrolled iteration over named constant bit registers with scalar `bit` iterators;
 - runtime `while` loops, including nested loops, `break`, and `continue`;
 - scalar expressions used as gate parameters; and
 - final-state amplitude output through a namespaced pragma.
@@ -673,11 +674,10 @@ uint count = COUNT;                    // 5
 uint selected = popcount(SELECTED);    // 3
 ```
 
-Runtime-dependent constant-register selections, direct
-iteration over constant registers, register casts, aliases, concatenation, and
-whole-array constants remain unsupported. Constant registers can nevertheless
-be referenced inside supported loop bodies. General block-local declarations
-remain unsupported.
+Named constant registers also support `for bit` iteration as described below.
+Runtime-dependent constant-register selections, register casts, aliases,
+concatenation, and whole-array constants remain unsupported. General block-local
+declarations remain unsupported.
 
 ### Unsigned integers
 
@@ -2986,8 +2986,9 @@ charge each iteration twice. Runtime-skipped branches still consume expansion
 budgets because their instructions must be generated. Exceeding a limit produces
 a converter error rather than silently truncating the loop.
 The same budgets apply to constant range and set loops and to the generated
-body copies of runtime-valued set loops; repeated set elements each count as an
-expanded iteration. A `break` does not reduce the generated iteration count.
+body copies of runtime-valued set loops and constant bit-register loops; repeated
+elements each count as an expanded iteration. A `break` does not reduce the
+generated iteration count.
 Runtime-bound range, signed/unsigned integer-array, floating-point-array,
 Boolean-array, complex-array, and bit-register loops do not expand their runtime
 iteration count.
@@ -3500,8 +3501,8 @@ outside this subset.
 ## Bit-register for loops
 
 The converter supports `for bit name in flags` when `flags` is a previously
-declared mutable `bit[N]` register. Direct iteration over `const bit[N]`
-registers remains unsupported. Elements are visited in increasing index order,
+declared mutable `bit[N]` or constant `const bit[N]` register.
+Elements are visited in increasing index order,
 including repeated values. Bit zero is the rightmost bit in a source bit string:
 
 ```qasm
@@ -3529,8 +3530,8 @@ are rejected. A `bit[1]` source is iterable and visits its single element;
 a scalar `bit` source is not iterable. As elsewhere, a scalar bit cannot be
 implicitly broadcast to a whole-register assignment target, including `bit[1]`.
 
-The converter uses the same live-read policy as integer-array loops: each
-iteration copies the current element into the iterator before executing its
+For mutable sources, the converter uses the same live-read policy as integer-array
+loops: each iteration copies the current element into the iterator before executing its
 body. Writes or measurements into future source elements affect later visits,
 but changing the current source element does not change its copied iterator.
 
@@ -3552,8 +3553,8 @@ Its type is preserved through mixed bit/integer nesting. Writes and measurements
 into active iterators remain rejected, including on unreachable paths.
 
 Register sizes are resolved in declaration scope and remain fixed when an
-iterator shadows a size constant. A register used for iteration must have a
-positive size that fits the host-derived QCX `INT` range described under
+iterator shadows a size constant. A mutable register used for iteration must
+have a positive size that fits the host-derived QCX `INT` range described under
 runtime-bound loops. This assumes a backend with compatible integer storage.
 
 Bodies support the same statements as other loops, including measurement,
@@ -3563,18 +3564,64 @@ Computations stay on their original execution paths; skipped branches and
 transfers skip runtime arithmetic and accesses, while conversion-time validation
 still applies.
 
-The body is generated once using existing QCX storage, indexed operands, labels,
-`LET`, `JUMP`, and `JUMPIF`. Private storage holds the current index and copied
+For mutable sources, the body is generated once using existing QCX storage,
+indexed operands, labels, `LET`, `JUMP`, and `JUMPIF`. Private storage holds the current index and copied
 bit value throughout the body. Singleton registers use their existing scalar
 QCX storage. An endpoint check precedes advancement, keeping loop-control
 arithmetic representable for accepted register sizes. No new bra instruction is
 required. Runtime iteration counts do not consume expansion budgets, but nested
 expanded loops and enclosing expansions retain their existing accounting.
 
-Bit iterators may index integer-array and bit-register elements through an
+Bit iterators may index integer-array and mutable bit-register elements through an
 explicit integer cast. Runtime user-supplied qubit indices, register slices as
 iterable sources, aliases, general array-type iteration, and block-local declarations
 remain unsupported.
+
+### Constant sources
+
+For a named `const bit[N]` source, the converter unrolls one body copy per source
+bit, assigning literal zero or one to private BIT-typed iterator storage before
+each copy. The constant source itself needs no QCX storage. This supports widths
+above native integer size without packing the register into a native integer.
+The source is resolved before the iterator is bound, so
+`for bit FLAGS in FLAGS` is also valid for a constant register.
+
+<!-- constant-bit-register-loop-example -->
+```qasm
+OPENQASM 3.0;
+const bit[8] FLAGS = "10001111";
+uint count = 0;
+int visits = 0;
+for bit value in FLAGS {
+    visits += 1;
+    if (!value) { continue; }
+    count += uint(value);
+}
+bool unchanged = FLAGS == "10001111";
+// Visits 1, 1, 1, 1, 0, 0, 0, 1; count is 5, visits is 8.
+```
+
+Although source bits are known, the iterator remains a read-only scalar bit with
+runtime expression semantics, not a constant integer. It cannot supply static
+qubit indices or compile-time selections of constant registers. Numeric uses
+require the same explicit casts as mutable-register iterators. Both iterator
+writes and source-register writes are rejected, including in skipped bodies.
+Names must be declared before use, outer bindings are restored after shadowing,
+and source widths retain declaration-scope meaning.
+
+Nested constant/mutable register, array, range, set, and `while` loops retain
+their respective behavior. `break` targets the nearest loop's end; `continue`
+targets the next body copy of this loop. Runtime calculations remain on the
+paths that reach them. Temporary declarations are hoisted so skipped copies
+cannot leave reused storage undeclared.
+
+Each constant-register body copy consumes the conversion-wide expansion
+budgets above, including copies skipped at runtime by branches or transfers.
+An empty enclosing constant loop validates the nested loop without expanding
+its body. Large registers can therefore hit expansion limits even though their
+declarations and constant expressions are otherwise supported. No new bra/QCX
+instruction is required. Iterable register expressions, selections, aliases,
+scalar bits, and general block-local declarations remain unsupported.
 
 ## Runtime while loops
 
@@ -3684,7 +3731,6 @@ The current prototype does not reliably support:
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
 - scalar-bit shifts and runtime-dependent register selections,
-  direct iteration over constant bit registers,
   ordered bit-register comparisons, whole-array bitwise operations, direct
   Boolean bitwise operations, or classical functions other than the
   `exp`/`sqrt`/`log`/`sin`/`cos`/`tan`/`arcsin`/`arccos`/`arctan`/`ceiling`/`floor`/
@@ -4167,6 +4213,15 @@ are checked against 288 explicit Python reference cases. Unit tests additionally
 cover iterator typing, invalid sources and iterator types, storage cleanup,
 reserved names, fixed-size code generation, and expansion budgets.
 
+`bra/test/qasm2qcx_constant_bit_register_loop_numerical.py` checks literal-bit
+visit order and counts through 129 bits, nested and repeated entry, live mutable
+inner registers, nearest loop transfers, typed shadowing, declaration-scope
+widths, measurement-controlled execution, skipped and reached errors, source
+preservation, gate parameters with and without fusion, and the constant-register
+loop example above. Unit tests additionally check source visibility and iterator
+types, rejected writes on skipped paths, expansion budgets, unique resolved
+labels, and failure cleanup preserving caller-owned storage.
+
 `bra/test/qasm2qcx_runtime_bit_numerical.py` verifies runtime reads, assignments,
 both measurement-destination syntaxes, singleton storage, negative indices,
 integer casts, nested bit/integer-array indexing, and short-circuit evaluation.
@@ -4249,6 +4304,7 @@ python3 bra/test/qasm2qcx_rounding_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_mod_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_popcount_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_bit_register_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_constant_bit_register_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_scalar_bit_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_rotation_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_u_phase_numerical.py --bra bra/bin/bra

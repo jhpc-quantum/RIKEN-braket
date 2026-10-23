@@ -4363,8 +4363,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     @contextlib.contextmanager
     def __expanded_loop_scope(self) -> Iterator[None]:
-        # Runtime-valued sets still emit one body copy per source element.
-        # Account for those copies without inventing a constant iterator value.
+        # Runtime-valued sets and constant bit registers emit one body copy
+        # per element without making their iterators compile-time constants.
         self.__expanded_loop_depth += 1
         try:
             yield
@@ -4449,14 +4449,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __collection_loop_info(
             self, source: ast.Identifier, iteration_type: ast.QASMNode,
             iterators: set[str] | dict[str, ValueType] | None = None
-            ) -> tuple[str, int, ValueType, _UnsignedIntegerType | None]:
+            ) -> tuple[str | _ConstantBitRegister, int, ValueType, _UnsignedIntegerType | None]:
         name = source.name
         if ((iterators is not None and name in iterators)
                 or any(name in scope for scope in self.__loop_bindings)):
             raise UnsupportedOpenQASMError('iteration over a scalar for-loop iterator')
         if name in self.__const_bit_register_values:
-            self.__constant_bit_register(name)
-            raise UnsupportedOpenQASMError('iteration over constant bit registers')
+            constant = self.__constant_bit_register(name)
+            if not isinstance(iteration_type, ast.BitType) or iteration_type.size is not None:
+                raise UnsupportedOpenQASMError('constant bit-register iteration requires a scalar bit iterator')
+            # Return the immutable value itself, never a fabricated QCX
+            # storage name or an array packed into a native integer.
+            return constant, constant.width, ValueType.BIT, None
         variable_type = self.__classical_source_types.get(name)
         if variable_type is None:
             raise NoVariableNameException(name)
@@ -4489,7 +4493,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         raise UnsupportedOpenQASMError('for-loop identifier other than an int/uint/float/bool/complex array or bit register')
 
     def __visit_collection_for(self, statement: ast.ForInLoop) -> None:
-        variable_name, size, value_type, uint_type = self.__collection_loop_info(
+        source, size, value_type, uint_type = self.__collection_loop_info(
             statement.set_declaration, statement.type)
         binding = _RuntimeIteratorBinding(f'QASM2QCX_LOOP_{self.__loop_index}_ITERATOR', value_type, uint_type)
         with self.__iterator_binding(statement.identifier.name, binding):
@@ -4500,6 +4504,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         body_label = f'QASM2QCX_LOOP_{loop_index}_BODY'
         next_label = f'QASM2QCX_LOOP_{loop_index}_NEXT'
         end_label = f'QASM2QCX_LOOP_{loop_index}_END'
+        if isinstance(source, _ConstantBitRegister):
+            self.__visit_constant_bit_register_for(statement, source, loop_index)
+            return
         if self.__is_initialization_process:
             with self.__iterator_binding(statement.identifier.name, binding), self.__loop_context(end_label, next_label):
                 for child in statement.block:
@@ -4513,7 +4520,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         try:
             # QCX stores a singleton bit register as a scalar INT, unlike
             # classical arrays, whose scalar accesses retain explicit indexing.
-            operand = variable_name if value_type == ValueType.BIT and size == 1 else f'{variable_name}:{index}'
+            operand = source if value_type == ValueType.BIT and size == 1 else f'{source}:{index}'
             self.__qcx_lines.extend([f'LET {index} := 0', f'@{body_label}',
                                     f'LET {iterator} := {operand}'])
             # Read the current element on each iteration, not a loop-entry
@@ -4531,6 +4538,41 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # No expression result escapes a collection loop. Also release
             # body temporaries left behind by failed expression lowering,
             # without disturbing storage reserved by enclosing callers.
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
+    def __visit_constant_bit_register_for(
+            self, statement: ast.ForInLoop, source: _ConstantBitRegister, loop_index: int) -> None:
+        count = source.width
+        if count > self.MAX_LOOP_ITERATIONS - self.__loop_iterations:
+            raise InvalidLoopRangeException(
+                f'For-loop expansion exceeds {self.MAX_LOOP_ITERATIONS} iterations')
+        self.__loop_iterations += count
+        end_label = f'QASM2QCX_LOOP_{loop_index}_END'
+        previous_temporaries = self.__declared_temporary_variables.copy()
+        previous_used = self.__used_temporary_variables.copy()
+        iterator = (f'QASM2QCX_LOOP_{loop_index}_ITERATOR' if self.__is_initialization_process
+                    else self.__add_new_temporary_variable(ValueType.BIT))
+        try:
+            # Keep BIT/runtime dependency semantics even though each source
+            # bit is known. A plain integer binding would change typing and
+            # incorrectly permit compile-time uses of the loop variable.
+            with self.__iterator_binding(statement.identifier.name, _RuntimeIteratorBinding(iterator, ValueType.BIT)), \
+                    self.__expanded_loop_scope():
+                for index in range(count):
+                    if not self.__is_initialization_process:
+                        self.__qcx_lines.append(f'LET {iterator} := {(source.value >> index) & 1}')
+                    with self.__loop_context(end_label, f'QASM2QCX_LOOP_{loop_index}_NEXT_{index}') as frame:
+                        for child in statement.block:
+                            self.visit(child)
+                    if not self.__is_initialization_process:
+                        self.__qcx_lines.append(f'@{frame.continue_label}')
+                        self.__check_loop_output_limit()
+            if not self.__is_initialization_process:
+                self.__qcx_lines.append(f'@{end_label}')
+                self.__hoist_temporary_declarations(previous_temporaries)
+                self.__check_loop_output_limit()
+        finally:
             for temporary in self.__used_temporary_variables - previous_used:
                 self.__release_temporary_variable(temporary)
 
