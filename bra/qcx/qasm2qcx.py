@@ -214,6 +214,18 @@ class _UnsignedIntegerType:
 
 
 @dataclasses.dataclass(frozen=True)
+class _ConstantBitRegister:
+    width: int
+    value: int
+
+    def __post_init__(self) -> None:
+        if self.width <= 0:
+            raise ValueError('constant bit-register width must be positive')
+        if self.value < 0 or self.value.bit_length() > self.width:
+            raise ValueError('constant bit-register value must fit its width')
+
+
+@dataclasses.dataclass(frozen=True)
 class _StaticBitSelection:
     source_name: str
     indices: tuple[int, ...]
@@ -432,6 +444,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__const_float_variable_name_values_map: dict[str, list[float]] = {}
         self.__const_complex_variable_name_values_map: dict[str, list[complex]] = {}
         self.__const_bool_variable_values_map: dict[str, int] = {}
+        self.__const_bit_register_values: dict[str, _ConstantBitRegister] = {}
         self.__declared_constant_variables: set[str] = set()
 
         self.__is_stdgates_included: bool = False
@@ -850,6 +863,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             name = expression.name
             shadowed = ((iterators is not None and name in iterators)
                         or any(name in scope for scope in self.__loop_bindings))
+            if not shadowed and name in self.__const_bit_register_values:
+                return self.__constant_bit_register(name).width
             if not shadowed and name in self.__bit_register_source_sizes:
                 return self.__bit_register_source_sizes[name]
         if isinstance(expression, ast.IndexExpression) and self.__is_register_bit_selection(expression):
@@ -3331,8 +3346,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 return lhs | rhs
             if expression.op.name == '^':
                 return lhs ^ rhs
-        # const bit[n] declarations are not supported: register names and
-        # selections therefore cannot supply a constant register value.
+        # Named register values and selections are not part of this literal
+        # folding path yet.
         raise NoConstantExpressionException
 
     def __emit_condition(
@@ -5309,6 +5324,42 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
                 self.__const_complex_variable_name_values_map[variable_name][0] = complex(self.__value)
 
+    def __constant_bit_register(self, name: str) -> _ConstantBitRegister:
+        constant = self.__const_bit_register_values.get(name)
+        if (constant is None or any(name in scope for scope in self.__loop_bindings)
+                or (not self.__is_initialization_process
+                    and name not in self.__declared_constant_variables)):
+            raise NoVariableNameException(name)
+        return constant
+
+    def __declare_constant_bit_register(self, statement: ast.ConstantDeclaration) -> None:
+        name = statement.identifier.name
+        if statement.type.size is None:
+            raise UnsupportedOpenQASMError('scalar const bit')
+        if statement.init_expression is None:
+            raise NoConstantExpressionException
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        try:
+            width = self.__bit_type_size(statement.type, name)
+            self.__expression_kind = ExpressionKind.CONST_ARITHMETIC
+            self.__evaluate_constant = True
+            source_width = self.__bit_register_expression_width(statement.init_expression)
+            if source_width is None or source_width != width:
+                raise InvalidDeclarationException(
+                    f'Constant bit register {name}[{width}] requires a matching-width register initializer')
+            if self.__register_expression_runtime(statement.init_expression, None):
+                raise NoConstantExpressionException
+            value = self.__constant_bit_register_value(statement.init_expression, width)
+            constant = _ConstantBitRegister(width, value)
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+        # Never expose a fabricated zero while evaluating an initializer or
+        # its width. Reserve the source name separately for duplicate checks.
+        self.__const_bit_register_values[name] = constant
+        self.__constant_source_types[name] = statement.type
+
     def visit_ConstantDeclaration(self, statement: ast.ConstantDeclaration) -> None:
         if not self.__is_initialization_process:
             self.__declared_constant_variables.add(statement.identifier.name)
@@ -5317,6 +5368,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         variable_type = statement.type
         variable_name = statement.identifier.name
         self.__register_source_identifier(variable_name)
+        if isinstance(variable_type, ast.BitType):
+            self.__declare_constant_bit_register(statement)
+            return
         self.__constant_source_types[variable_name] = variable_type
 
         if isinstance(variable_type, ast.ArrayType):
