@@ -5506,22 +5506,86 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return name
 
     @contextlib.contextmanager
+    def __rotate_bit_register_value(
+            self, expression: ast.FunctionCall,
+            values: tuple[str | int, ...]) -> Iterator[tuple[str | int, ...]]:
+        operand = None
+        temporaries = []
+        try:
+            operand = self.__condition_operand(expression.arguments[1])
+            distance, distance_type, distance_kind = operand
+            width = len(values)
+            if distance_kind == ValueKind.LITERAL and self.QCX_INT_MIN <= int(distance) <= self.QCX_INT_MAX:
+                # Snapshot borrowed source bits even for a zero rotation: a
+                # selected destination can overlap the source in another order.
+                count = int(distance) % width
+                if expression.name.name == 'rotr' and count:
+                    count = width - count
+                result = []
+                for index in range(width):
+                    value = values[(index - count) % width]
+                    if isinstance(value, str):
+                        temporary = self.__add_new_temporary_variable(ValueType.BIT)
+                        temporaries.append(temporary)
+                        self.__qcx_lines.append(f'LET {temporary} := {value}')
+                        value = temporary
+                    result.append(value)
+                yield tuple(result)
+                return
+            if width > self.QCX_INT_MAX:
+                raise InvalidBitOperandException('Runtime register rotations require a width within QCX INT range')
+            prefix = f'QASM2QCX_ROTATION_{self.__rotation_index}'
+            self.__rotation_index += 1
+            count = self.__add_new_temporary_variable(ValueType.INT)
+            source_index = self.__add_new_temporary_variable(ValueType.INT)
+            target_index = self.__add_new_temporary_variable(ValueType.INT)
+            source_buffer = self.__add_temporary_bit_register(width)
+            result_buffer = self.__add_temporary_bit_register(width)
+            temporaries.extend((count, source_index, target_index, source_buffer, result_buffer))
+            converted, _ = self.__converted_operand(distance, distance_type, distance_kind, ValueType.INT)
+            self.__qcx_lines.extend([
+                f'LET {count} := {converted}', f'LET {count} %= {width}',
+                f'JUMPIF {prefix}_NORMALIZED {count} >= 0',
+                f'LET {count} += {width}', f'@{prefix}_NORMALIZED',
+                f'LET {target_index} := {count}',
+            ])
+            if expression.name.name == 'rotr':
+                self.__qcx_lines.extend([
+                    f'JUMPIF {prefix}_DIRECTION {count} == 0',
+                    f'LET {target_index} := {width}', f'LET {target_index} -= {count}',
+                    f'@{prefix}_DIRECTION',
+                ])
+            for index, value in enumerate(values):
+                self.__qcx_lines.append(
+                    f'LET {self.__qcx_bit_name(source_buffer, width, index)} := {value}')
+            # Copy by indices, never by packing the register into native UINT.
+            # Incrementing indices at most to width avoids signed overflow,
+            # unlike computing (index + distance) before taking a remainder.
+            self.__qcx_lines.extend([
+                f'LET {source_index} := 0', f'@{prefix}_COPY',
+                f'JUMPIF {prefix}_DONE {source_index} >= {width}',
+                f'JUMPIF {prefix}_READY {target_index} < {width}',
+                f'LET {target_index} := 0', f'@{prefix}_READY',
+                f'LET {result_buffer}:{target_index} := {source_buffer}:{source_index}',
+                f'LET {source_index} += 1', f'LET {target_index} += 1',
+                f'JUMP {prefix}_COPY', f'@{prefix}_DONE',
+            ])
+            yield tuple(self.__qcx_bit_name(result_buffer, width, index) for index in range(width))
+        finally:
+            for temporary in temporaries:
+                self.__release_temporary_variable(temporary)
+            if operand is not None and operand[2] == ValueKind.TEMPORARY:
+                self.__release_temporary_variable(str(operand[0]))
+
+    @contextlib.contextmanager
     def __bit_register_expression_value(
             self, expression: ast.Expression) -> Iterator[tuple[str | int, ...]]:
         # The caller validates widths first. Each result owns its temporary
         # bits until the assignment finishes; no destination is written here.
         if isinstance(expression, ast.FunctionCall) and expression.name.name in ('rotl', 'rotr'):
-            _, runtime = self.__function_call_info(expression)
-            if runtime:
-                raise UnsupportedOpenQASMError('runtime register rotation is not implemented yet')
-            width = self.__bit_register_expression_width(expression)
-            previous = (self.__expression_kind, self.__value, self.__value_type, self.__value_kind)
-            try:
-                self.__expression_kind = ExpressionKind.CONST_ARITHMETIC
-                packed = self.__constant_bit_register_value(expression, width)
-            finally:
-                self.__expression_kind, self.__value, self.__value_type, self.__value_kind = previous
-            yield tuple((packed >> index) & 1 for index in range(width))
+            with self.__bit_register_expression_value(expression.arguments[0]) as values:
+                with self.__rotate_bit_register_value(expression, values) as result:
+                    yield result
             return
         if isinstance(expression, ast.BitstringLiteral):
             yield tuple((expression.value >> index) & 1 for index in range(expression.width))

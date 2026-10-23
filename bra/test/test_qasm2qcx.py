@@ -575,7 +575,7 @@ class RotationFoundationTests(unittest.TestCase):
         self.converter('const bool B = false && (rotl(uint[6](37), 1 / 0) > 0);')
         self.converter('bit[8] b; uint[6] u; int d; for int i in [1:0] { u = rotl(u, d); }')
 
-    def test_invalid_arguments_and_unsupported_runtime_lowering(self):
+    def test_invalid_arguments_and_constant_runtime_dependency(self):
         for source in ('rotl()', 'rotr(missing)', 'rotl(1, 2)', 'rotl(true, 1)',
                        'rotl(uint(37), 2)', 'rotr(uint[6](37), 1.5)',
                        'rotr("11", 1im)', 'rotl("11", "1")'):
@@ -586,8 +586,7 @@ class RotationFoundationTests(unittest.TestCase):
         with self.assertRaises(qasm2qcx.NoConstantExpressionException):
             self.value('rotl(u, 1)', 'uint[6] u = 37;')
         convert('OPENQASM 3; uint[6] u = 37; u = rotl(u, 1);')
-        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
-            convert('OPENQASM 3; bit[8] b; b = rotl(b, 1);')
+        convert('OPENQASM 3; bit[8] b; b = rotl(b, 1);')
 
     def test_register_width_checks_and_scalar_rejection(self):
         for source in ('bit[4] b = rotl("111", 1);',
@@ -655,6 +654,44 @@ class RuntimeUnsignedRotationTests(unittest.TestCase):
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
         self.assertEqual((converter._QASM2QCXConverter__value, converter._QASM2QCXConverter__value_type,
                           converter._QASM2QCXConverter__value_kind), previous)
+
+
+class RuntimeRegisterRotationTests(unittest.TestCase):
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+
+    def test_runtime_rotations_use_indexed_copy_without_packing(self):
+        lines = convert('OPENQASM 3; bit[65] b; int d = -2; b = rotl(b, d);')
+        text = '\n'.join(lines)
+        self.assertIn('%= 65', text)
+        self.assertIn('_COPY', text)
+        self.assertIn('_READY', text)
+        self.assertNotIn(' UINT', text)
+
+    def test_temporary_lifetimes_across_nested_register_calls(self):
+        converter = self.converter('bit[8] b; int d = 2;')
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        expression = self.expression('rotr(rotl(~b, d), int(popcount(b)))')
+        context = converter._QASM2QCXConverter__bit_register_expression_value
+        with context(expression) as values:
+            self.assertEqual(len(values), 8)
+            self.assertTrue(converter._QASM2QCXConverter__used_temporary_variables)
+            # The context owns only its own scratch storage, not the caller's.
+            caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.INT)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        converter._QASM2QCXConverter__release_temporary_variable(caller)
+
+    def test_constant_distance_snapshots_and_failure_cleanup(self):
+        converter = self.converter('bit[4] b; array[int, 2] counts;')
+        context = converter._QASM2QCXConverter__bit_register_expression_value
+        with context(self.expression('rotl(b, 0)')) as values:
+            self.assertEqual(len(set(values)), 4)
+            self.assertTrue(all('QASM2QCX_' in value for value in values))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            with context(self.expression('rotl(~b, counts[999])')):
+                pass
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
 
 
 class PopcountTests(unittest.TestCase):

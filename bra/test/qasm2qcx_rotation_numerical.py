@@ -104,6 +104,91 @@ class BackendTests(unittest.TestCase):
             self.assertEqual(result.stdout, '')
             type(self).checked += 1
 
+    def test_register_widths_distances_and_self_assignment(self):
+        minimum = self.module.QASM2QCXConverter.QCX_INT_MIN
+        maximum = self.module.QASM2QCXConverter.QCX_INT_MAX
+        for width in (1, 4, 8, 65, 129):
+            bits = ('1001011' * width)[:width]
+            value = int(bits, 2)
+            for distance in sorted({0, 1, -1, width, -width, width * 3 + 2, minimum, maximum}):
+                for name in ('rotl', 'rotr'):
+                    expected = format(reference(value, width, distance, name), f'0{width}b')
+                    self.check(f'''bit[{width}] b = "{bits}"; int d = {distance};
+                        bit[{width}] out = {name}(b, d);
+                        bit[{width}] literal = {name}(b, {distance});
+                        bit[{width}] runtime_literal = {name}("{bits}", d);
+                        bit[{width}] folded = {name}("{bits}", {distance});
+                        bool sourceok = b == "{bits}";
+                        b = {name}(b, d);
+                        bool outok = out == "{expected}";
+                        bool literalok = literal == "{expected}";
+                        bool runtimeok = runtime_literal == "{expected}";
+                        bool foldedok = folded == "{expected}";
+                        bool selfok = b == "{expected}";''',
+                               ('sourceok', 'outok', 'literalok', 'runtimeok', 'foldedok', 'selfok'), (1,) * 6)
+
+    def test_register_selections_overlap_and_operator_composition(self):
+        for distance in (0, 1, -2, 9):
+            selected = 0b1101  # flags[7:-2:1], low-index-first selection
+            expected = format(reference(selected, 4, distance, 'rotl'), '04b')
+            self.check(f'''bit[8] flags = "11001010"; int d = {distance};
+                bit[4] out = rotl(flags[7:-2:1], d);
+                bool correct = out == "{expected}";
+                bit[4] duplicates = rotr(flags[{{1, 1, 6, 7}}], d);
+                bool duplicateok = duplicates == "{format(reference(15, 4, distance, 'rotr'), '04b')}";
+                bit[4] original = flags[7:-2:1];
+                flags[7:-2:1] = rotl(flags[7:-2:1], d);
+                bool overlapok = flags[7:-2:1] == "{expected}";
+                bit[4] restored = rotr(out, d);
+                bool restoredok = restored == original;''',
+                       ('correct', 'duplicateok', 'overlapok', 'restoredok'), (1, 1, 1, 1))
+            reversed_bits = format(reference(0b1011, 4, distance, 'rotl'), '04b')[::-1]
+            self.check(f'''bit[4] b = "1011"; bit[4] c = "1011"; int d = {distance};
+                b[3:-1:0] = rotl(b, d); c[3:-1:0] = rotl(c, {distance});
+                bool runtimeok = b == "{reversed_bits}";
+                bool literalok = c == "{reversed_bits}";''', ('runtimeok', 'literalok'), (1, 1))
+        self.check('''bit[4] b = "1011"; int zero = 0;
+            b[3:-1:0] = rotl(b, zero); bool reverseok = b == "1101";
+            bit[4] a = "1011"; a[3:-1:0] = rotr(a, 0); bool aliasok = a == "1101";
+            bit[4] c = "1011"; int d = 1;
+            bit[4] out = ~rotr(rotl(c, d), d) | "0001";
+            bool operatorok = out == "0101";
+            bit[4] shifted = rotl(c, d) << 1; bool shiftok = shifted == "1110";
+            c ^= rotl(c, d); bool compoundok = c == "1100";
+            uint count = popcount(rotr(out, d));''',
+                   ('reverseok', 'aliasok', 'operatorok', 'shiftok', 'compoundok', 'count'), (1, 1, 1, 1, 1, 2))
+
+    def test_register_runtime_contexts_and_unsigned_distance(self):
+        self.check('''bit[4] b = "1011"; uint d = 13;
+            bit[4] out = rotl(b, d); bool ok = out == "0111";
+            bit[4] nested = rotr(rotl(b, int(popcount(b))), int(popcount(b)));
+            bool nestedok = nested == b;
+            uint[3] u = 1; bit[4] mixed = rotl(b, int(rotl(u, 1)));
+            bool mixedok = mixed == "1110";
+            int visits = 0; while (rotl(b, visits) != b || visits == 0) { visits += 1; }
+            uint total = 0; for int i in [0:1] { total += popcount(rotl(b, i)); }
+            bool yes = true; bit[4] promoted = rotr(b, yes);
+            bool promotedok = promoted == "1101";''',
+                   ('ok', 'nestedok', 'mixedok', 'visits', 'total', 'promotedok'), (1, 1, 1, 4, 6, 1))
+
+    def test_register_skipped_and_reached_errors(self):
+        self.check('''bit[4] b = "1011"; uint bad = uint(-1); int zero = 0;
+            if (false) { b = rotl(b, bad); b = rotr("1011", 1 / zero); }
+            bool off = false && (popcount(rotl(b, bad)) > 0);
+            bool on = true || (rotl(b, 1 / zero) == b);
+            for int i in [1:0] { b = rotl(b, bad); }
+            bool unchanged = b == "1011";''', ('off', 'on', 'unchanged'), (0, 1, 1))
+        for expression, diagnostic in (('rotl(b, bad)', 'INT'),
+                                       ('rotr("1011", uint(-1))', 'INT'),
+                                       ('rotl(b, 1 / zero)', 'integer division by zero'),
+                                       ('rotr("1011", 1 / 0)', 'integer division by zero')):
+            lines = self.program('bit[4] b = "1011"; uint bad = uint(-1); int zero = 0; '
+                                 f'bit[4] out = {expression};')
+            result = self.execute(lines)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(diagnostic, result.stderr)
+            type(self).checked += 1
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
