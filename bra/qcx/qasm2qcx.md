@@ -104,6 +104,8 @@ The converter currently covers:
 - scalar `const bit` declarations and supported constant-bit expressions;
 - scalar `angle`/`angle[n]` variables and constants, float-to-angle conversion,
   angle-width conversion, and explicit Boolean conversion;
+- scalar angle parameters for `p`, `phase`, `u1`, `cp`, and `cphase`, including
+  inverse/control modifiers and constant/runtime integer powers;
 - scalar built-in `exp`, `sqrt`, `log`, `sin`, `cos`, `tan`, `arcsin`, `arccos`,
   `arctan`, `ceiling`, `floor`, `real`, and `imag` calls in constant and runtime
   expressions, including nested calls;
@@ -208,13 +210,80 @@ Skipped branches, short-circuited operands, and empty loops do not execute
 conversion domain checks or skipped arithmetic. Empty loops still validate
 names, widths, types, and read-only targets.
 
-This is a declaration-and-conversion foundation, not full angle support.
-Arithmetic, comparisons, bitwise operations, indexing, compound assignments,
-angle arrays/iteration, numeric or bit casts from angles, angle-typed
-trigonometric calls, and angle-valued gate parameters remain unsupported.
+This is not full angle support. Arithmetic, comparisons, bitwise operations,
+indexing, compound assignments, angle arrays/iteration, numeric or bit casts
+from angles, and angle-typed trigonometric calls remain unsupported.
 Use `bool(a)` explicitly in a condition; a bare angle is not a Boolean condition.
-Lowering angle-valued phase gates to QCX `R`/controlled phase instructions is
-separate future work; this change does not emit those instructions for angles.
+Angle-valued gate parameters are limited to the phase gates described below.
+
+### Angle-valued phase gates
+
+`p`, `phase`, and `u1` accept scalar angle parameters and apply the diagonal
+matrix `diag(1, exp(i*a))`. `cp` and `cphase` apply the corresponding controlled
+phase, multiplying only the all-one control/target state. These are full
+phase gates, not `rz`/`crz` operations with a discarded global phase.
+As with the other standard gates, include `stdgates.inc` before using them.
+
+For an `angle[n]` with stored bits `m`, every set bit at position `j` contributes
+the phase $2\pi/2^{n-j}$. The converter emits QCX `R` instructions with exponent
+`n-j`; controlled forms use `CR`/`C<n>R`, and constant inversions use their
+adjoint forms. For example, a four-bit angle with stored bits `0101` represents
+$5\pi/8$ and decomposes into `R q 4` and `R q 2`. The decomposition is
+mathematically exact; native complex amplitudes still use backend floating-point
+precision. Phase exponents are not limited by the circuit's qubit count.
+
+Named constants and width casts of those constants emit only set-bit
+contributions. Runtime angle variables and executable angle casts are evaluated
+once and copied into private UINT storage. Integer bit tests and `JUMPIF`
+conditionally execute each contribution. Register broadcasting reuses the same
+snapshot, and neither bit testing nor power evaluation changes the source.
+Executable float-to-angle casts, including literal inputs, retain native
+`ANGLEBITS` evaluation rather than substituting host constant folding.
+
+`inv`, `ctrl`, `negctrl`, and constant/runtime integer `pow` modifiers are
+supported, including nested combinations and controls added to `cp`/`cphase`.
+Control operands retain their source order and polarity; negative controls use
+QCX `wire#0`. All operands of a controlled operation must be distinct, and
+broadcast register selections must have equal lengths.
+
+An integer power `k` has angle bits $(m k) \bmod 2^n$. Constant powers are
+reduced during conversion; runtime powers use unsigned multiplication and
+masking, with separate sign handling. This avoids signed overflow and a gate
+loop proportional to the exponent, including `INT_MIN`, `UINT_MAX`, and large
+nested products. The emitted bit-test work is bounded by angle width and
+broadcast size, subject to the existing output/expansion budgets.
+
+Runtime exponents and angle expressions are still evaluated on reached
+classical paths even for zero powers or inactive quantum controls. A zero
+angle or zero power does not hide invalid qubit operands. Skipped branches
+and empty loops do not execute runtime conversion, access, or arithmetic
+checks, but names, types, widths, modifiers, and statically checkable qubit
+operands are validated. Normal and fused execution are supported.
+
+<!-- angle-phase-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit[3] q;
+const angle[4] STEP = 5 * pi / 8;
+angle[4] live = STEP;
+int exponent = -3;
+h q;
+p(STEP) q[0];
+negctrl @ pow(exponent) @ p(live) q[2], q[1];
+cp(angle[8](live)) q[0], q[2];
+pragma riken_braket.amplitudes
+```
+
+The negative-control operation above applies a phase of `pi/8` when `q[2]`
+is zero and `q[1]` is one: `-3 * 5` reduces to `1` modulo `16`.
+
+Floating-point `pow` modifiers on angle-valued gates remain unsupported,
+including integer-valued floats such as `pow(2.0)`. Principal fractional powers
+cannot generally be distributed over the individual `R` contributions.
+Angle-valued `gphase`, rotations, and U-family parameters also remain unsupported.
+Existing non-angle parameters keep their previous radian-based lowering and
+floating-power behavior; they are not implicitly quantized into fixed-point angles.
 
 ### Mathematical function calls
 
@@ -3812,7 +3881,8 @@ The current prototype does not reliably support:
   `exp`/`sqrt`/`log`/`sin`/`cos`/`tan`/`arcsin`/`arccos`/`arctan`/`ceiling`/`floor`/
   `mod`/`popcount`/`rotl`/`rotr`/`real`/`imag` subset above;
 - angle arithmetic/comparisons, indexing, arrays/iteration, numeric or bit casts
-  from angles, and angle-typed trigonometric arguments or gate parameters; or
+  from angles, angle-typed trigonometric arguments, angle-valued gates outside
+  `p`/`phase`/`u1`/`cp`/`cphase`, or floating-point powers of angle-valued gates; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
 
 Integer limitations additionally include `uint[n]` widths above native `UINT`,
@@ -3841,6 +3911,18 @@ cleanup. `bra/test/classical_function_angle_numerical.py` checks native
 and long-double REAL builds in debug, release, and mixed-release modes. It covers
 rounding directions, stored subnormals, invalid inputs, and unchanged
 floating-point controls; `--sanitize` repeats the matrix with UBSan.
+
+`bra/test/qasm2qcx_angle_phase_numerical.py` compares whole diagonal phase
+matrices with the generated angle-phase circuits, without discarding global
+phase. It covers all five names, basis states and complex superpositions,
+widths and bit patterns, conversions, source preservation, broadcasting,
+positive/negative controls, integer power boundaries and nested products,
+loops, reached/skipped errors, and fusion. It also observes the powered private
+UINT snapshot to verify exact modular results at every supported width, including
+low bits hidden by amplitude printing. It executes the angle-phase example
+above. Unit tests additionally check exact exponent emission, once-only
+capture, declaration hoisting, temporary cleanup, zero-identity validation,
+unsupported uses, CLI errors without partial output, and expansion budgets.
 
 `bra/test/qasm2qcx_math_function_numerical.py` compares constant, executable
 literal, and variable calls, with independent trigonometric references for
@@ -4388,6 +4470,7 @@ python3 bra/test/integer_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_math_function_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_angle_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_sqrt_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_log_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_trigonometric_numerical.py --bra bra/bin/bra
