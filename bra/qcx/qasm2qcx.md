@@ -101,6 +101,7 @@ The converter currently covers:
 - scalar integer shift expressions (`<<`, `>>`) and compound assignments
   (`<<=`, `>>=`), with checked counts and signed left-shift overflow;
 - scalar constants, variables, assignments, and numeric casts;
+- scalar `const bit` declarations and supported constant-bit expressions;
 - scalar built-in `exp`, `sqrt`, `log`, `sin`, `cos`, `tan`, `arcsin`, `arccos`,
   `arctan`, `ceiling`, `floor`, `real`, and `imag` calls in constant and runtime
   expressions, including nested calls;
@@ -584,6 +585,55 @@ Other OpenQASM mathematical built-ins, user-defined functions, extern calls,
 and discarded function-call statements remain unsupported. Native bra `ABS`
 and `ARG` are not exposed as OpenQASM function extensions by this converter.
 
+### Scalar bit constants
+
+`const bit` declares an immutable compile-time scalar bit. Initializers may be
+Boolean or scalar-bit constant expressions, or integer constant expressions
+whose value is zero or one. This includes earlier scalar constants and static
+scalar elements of constant bit registers. Existing explicit casts can be used
+within the initializer, for example `bit(bool(2))`; direct `bit(2)` and implicit
+floating-point initializers remain unsupported. A mutable value or measurement
+result cannot initialize a constant. Even `false && live` is nonconstant when
+`live` is mutable: short-circuiting does not remove its type dependency.
+
+Named constants retain scalar BIT type and produce literal values without QCX
+storage. They support the same expression subset as mutable scalar bits:
+logical operations, supported comparisons, scalar-bit `~`, `&`, `|`, and `^`,
+explicit casts, conditions, and copies into mutable scalar bits, indexed bit
+destinations, and Booleans. Bitwise binary operands must both be scalar bits;
+use `bit(true)` when a Boolean operand needs conversion. Arithmetic, numeric
+function arguments, gate parameters, and integer indices/bounds require the
+existing explicit casts. This feature does not broaden the supported operators
+or conversions for scalar bits.
+
+<!-- constant-scalar-bit-example -->
+```qasm
+OPENQASM 3.0;
+const bit ON = true;
+const bit[4] FLAGS = "1011";
+const bit LOW = FLAGS[0];
+const bit MASK = ON ^ LOW;         // zero, still scalar bit type
+const bool READY = ON && !MASK;
+bit live = MASK;
+if (READY) { live = LOW; }          // live becomes one
+bool ready = READY;                // true
+uint value = uint(LOW);            // 1
+```
+
+Scalar `bit` remains distinct from `bit[1]`: `"1"`, a whole constant register,
+or a one-position range/set selection cannot initialize `const bit`. Scalar
+bits cannot be indexed or passed to register-only operations such as
+`popcount` or register rotations.
+
+Declarations retain source-order visibility; self-references, forward references,
+and duplicate names are rejected. Constants are published only after successful
+initialization. All writes, including compound assignments, indexed targets,
+and measurement destinations, are rejected even in skipped branches, empty
+loops, and after loop transfers. Loop iterators can shadow a constant, but are
+themselves read-only; the outer constant is restored afterward. Constant-only
+short-circuit expressions skip unreached value arithmetic while still checking
+names and types. General block-local declarations remain unsupported.
+
 ### Constant bit registers
 
 `const bit[n]` declares an immutable, compile-time register. Its width must be a
@@ -623,7 +673,7 @@ uint count = COUNT;                    // 5
 uint selected = popcount(SELECTED);    // 3
 ```
 
-Scalar `const bit`, runtime-dependent constant-register selections, direct
+Runtime-dependent constant-register selections, direct
 iteration over constant registers, register casts, aliases, concatenation, and
 whole-array constants remain unsupported. Constant registers can nevertheless
 be referenced inside supported loop bodies. General block-local declarations
@@ -3634,7 +3684,7 @@ The current prototype does not reliably support:
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
 - scalar-bit shifts and runtime-dependent register selections,
-  scalar `const bit` declarations, direct iteration over constant bit registers,
+  direct iteration over constant bit registers,
   ordered bit-register comparisons, whole-array bitwise operations, direct
   Boolean bitwise operations, or classical functions other than the
   `exp`/`sqrt`/`log`/`sin`/`cos`/`tan`/`arcsin`/`arccos`/`arctan`/`ceiling`/`floor`/
@@ -3749,6 +3799,14 @@ indexed/self-referencing assignments, runtime loop bounds and steps, typed UINT
 array iterators, skipped and reached errors, and unsigned gate parameters with
 and without fusion. The same driver can be run against optimized and UBSan bra
 builds without native source or build-option changes.
+
+`bra/test/qasm2qcx_constant_scalar_bit_numerical.py` checks scalar constant
+bit truth tables, runtime copies, indexed destinations, casts, array and nested
+function integration, short-circuiting, loops and transfers, iterator shadowing,
+measurement-controlled execution, source preservation, and gate parameters
+with and without fusion. It executes the scalar constant-bit example above.
+Unit tests additionally cover declaration visibility, scalar/register distinctions,
+invalid initializers, writes on skipped paths, and temporary cleanup.
 
 `bra/test/qasm2qcx_constant_bit_register_numerical.py` checks named constant
 registers through 129 bits, folded expressions and selections, runtime copies
@@ -4191,6 +4249,7 @@ python3 bra/test/qasm2qcx_rounding_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_mod_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_popcount_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_bit_register_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_constant_scalar_bit_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_rotation_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_u_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_inverse_numerical.py --bra bra/bin/bra

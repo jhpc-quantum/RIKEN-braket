@@ -7,6 +7,7 @@
 
 import argparse
 import pathlib
+import re
 import resource
 import unittest
 
@@ -138,6 +139,15 @@ class BackendTests(unittest.TestCase):
             rz(pi * float(OFF)) q;'''
         for fused in (False, True):
             BackendAuditTests.check(self, self.program(source, fused=fused), (-1j, 0j))
+
+    def test_documented_example(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx' / 'qasm2qcx.md').read_text()
+        examples = re.findall(r'<!-- constant-scalar-bit-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        for fused in (False, True):
+            self.check(examples[0], (('live', False), ('ready', False), ('value', False)),
+                       (1, 1, 1), fused=fused)
 
 
 def main():
