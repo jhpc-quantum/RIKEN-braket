@@ -793,11 +793,9 @@ class UnsignedPopcountFoundationTests(unittest.TestCase):
         self.converter('const int W = 6; uint[W] u; uint out; '
                        'for int W in [1:0] { out = popcount(u); }')
 
-    def test_constant_runtime_dependency_and_pending_runtime_lowering(self):
+    def test_constant_runtime_dependency(self):
         with self.assertRaises(qasm2qcx.NoConstantExpressionException):
             self.value('popcount(u)', 'uint[6] u = 37;')
-        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'runtime unsigned popcount'):
-            convert('OPENQASM 3; uint[6] u = 37; uint out = popcount(u);')
 
     def test_constant_operand_is_evaluated_once_without_emitting_storage(self):
         converter = self.converter()
@@ -819,6 +817,68 @@ class UnsignedPopcountFoundationTests(unittest.TestCase):
             converter.visit(self.expression('popcount(uint[6](1) / uint[6](0))'))
         self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], previous)
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+
+class UnsignedPopcountRuntimeTests(unittest.TestCase):
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+
+    def test_lowering_uses_unsigned_scratch_and_preserves_source(self):
+        lines = convert('OPENQASM 3; uint[6] u = 37; uint out = popcount(u);')
+        text = '\n'.join(lines)
+        self.assertIn('QASM2QCX_POPCOUNT_0_LOOP', text)
+        self.assertIn('== 0', text)
+        self.assertIn('>>= 1', text)
+        self.assertIn('&= 1', text)
+        self.assertIn('&= 63', text)
+        self.assertNotIn(' INT', text)
+        self.assertNotIn('APPLY ', text)
+        self.assertEqual([line for line in lines if line.startswith('LET U1 ')],
+                         ['LET U1 := 37', 'LET U1 &= 63'])
+
+    def test_operand_is_evaluated_once_and_only_result_storage_survives(self):
+        converter = self.converter('uint[6] u = 37;')
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        expression = self.expression('popcount(~u)')
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            converter.visit(expression)
+        self.assertEqual(sum(call.args[0] is expression.arguments[0] for call in visit.call_args_list), 1)
+        result = converter._QASM2QCXConverter__value
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller, result})
+        info = converter._QASM2QCXConverter__uint_expression_type(expression)
+        self.assertEqual((info.width, info.is_sized),
+                         (qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH, False))
+
+    def test_failure_releases_partial_operand_and_scratch_storage(self):
+        converter = self.converter('uint[6] u = 37;')
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        previous = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        allocate = converter._QASM2QCXConverter__add_new_temporary_variable
+        calls = 0
+        def fail_after_partial_operand(*arguments):
+            nonlocal calls
+            calls += 1
+            if calls == 3:
+                raise RuntimeError('injected allocation failure')
+            return allocate(*arguments)
+        with patch.object(converter, '_QASM2QCXConverter__add_new_temporary_variable',
+                          side_effect=fail_after_partial_operand):
+            with self.assertRaisesRegex(RuntimeError, 'injected allocation failure'):
+                converter.visit(self.expression('popcount(~u)'))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], previous)
+
+    def test_repeated_calls_reuse_scratch_with_unique_labels(self):
+        prefix = 'OPENQASM 3; uint[6] u = 37; uint out; '
+        statement = 'out = popcount(u);'
+        once, repeated = convert(prefix + statement), convert(prefix + statement * 5)
+        self.assertEqual([line for line in once if line.startswith('VAR QASM2QCX_')],
+                         [line for line in repeated if line.startswith('VAR QASM2QCX_')])
+        labels = [line for line in repeated if line.startswith('@')]
+        self.assertEqual(len(labels), len(set(labels)))
 
 
 class PopcountTests(unittest.TestCase):

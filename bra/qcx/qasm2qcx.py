@@ -443,6 +443,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__array_index: int = 0
         self.__register_shift_index: int = 0
         self.__rotation_index: int = 0
+        self.__population_count_index: int = 0
         self.__power_index: int = 0
         self.__gate_power_index: int = 0
         self.__condition_index: int = 0
@@ -5003,8 +5004,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         try:
             argument = expression.arguments[0]
             unsigned_operand = signature.operand_types == (ValueType.UINT,)
-            if unsigned_operand and self.__expression_kind != ExpressionKind.CONST_ARITHMETIC:
-                raise UnsupportedOpenQASMError('runtime unsigned popcount is not implemented yet')
             if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
                 if unsigned_operand:
                     _, uint_type, _ = self.__integer_operand_info(argument, None)
@@ -5018,6 +5017,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     width = self.__bit_register_expression_width(argument)
                     packed = self.__constant_bit_register_value(argument, width)
                 result = packed.bit_count() if self.__evaluate_constant else 0
+            elif unsigned_operand:
+                self.__expression_kind = ExpressionKind.ARITHMETIC
+                result = self.__emit_uint_population_count(argument)
+                kind = ValueKind.TEMPORARY
             else:
                 self.__expression_kind = ExpressionKind.ARITHMETIC
                 with self.__bit_register_expression_value(argument) as values:
@@ -5043,6 +5046,31 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             for temporary in self.__used_temporary_variables - previous_used:
                 if not keep or kind != ValueKind.TEMPORARY or temporary != result:
                     self.__release_temporary_variable(temporary)
+
+    def __emit_uint_population_count(self, argument: ast.Expression) -> str:
+        # The enclosing visitor owns all scratch storage and preserves only
+        # the returned native UINT accumulator, including on failure.
+        _, uint_type, _ = self.__integer_operand_info(argument, None)
+        value, value_type, value_kind = self.__condition_operand(argument)
+        operand, _ = self.__converted_operand(value, value_type, value_kind, ValueType.UINT)
+        remaining = self.__add_new_temporary_variable(ValueType.UINT, uint_type)
+        self.__qcx_lines.append(f'LET {remaining} := {operand}')
+        self.__normalize_uint_storage(remaining, uint_type)
+        result = self.__add_new_temporary_variable(ValueType.UINT)
+        bit = self.__add_new_temporary_variable(ValueType.UINT)
+        prefix = f'QASM2QCX_POPCOUNT_{self.__population_count_index}'
+        self.__population_count_index += 1
+        # Consume a private copy using only unsigned operations. A one-bit
+        # native shift is valid even when the source has declared width one;
+        # no narrowing through INT or shift by the input width is required.
+        self.__qcx_lines.extend([
+            f'LET {result} := 0', f'@{prefix}_LOOP',
+            f'JUMPIF {prefix}_DONE {remaining} == 0',
+            f'LET {bit} := {remaining}', f'LET {bit} &= 1',
+            f'LET {result} += {bit}', f'LET {remaining} >>= 1',
+            f'JUMP {prefix}_LOOP', f'@{prefix}_DONE',
+        ])
+        return result
 
     def __emit_function_real_literal(self, destination: str, value: int | float) -> None:
         # QCX has no portable inf/nan literal. Materialize nonfinite values

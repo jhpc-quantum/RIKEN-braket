@@ -22,6 +22,38 @@ class BackendTests(unittest.TestCase):
     execute = functions.BackendTests.execute
     check = functions.BackendTests.check
 
+    def check_unsigned(self, source, names, expected):
+        lines = self.program(source, tuple((name, False) for name in names))
+        result = self.execute(lines)
+        self.assertEqual(result.returncode, 0, result.stderr + '\n' + '\n'.join(lines))
+        # UINT source preservation must be exact, including at native UINT_MAX.
+        self.assertEqual([int(value) for value in result.stdout.split()], list(expected), source)
+        type(self).checked += 1
+
+    def test_unsigned_widths_constants_literals_and_live_values(self):
+        native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
+        for width in range(1, native + 1):
+            mask = (1 << width) - 1
+            for value in sorted({0, 1, mask, mask >> 1, 1 << (width - 1), 37 & mask}):
+                expected = sum(character == '1' for character in bin(value)[2:])
+                self.check_unsigned(f'''const uint C = popcount(uint[{width}]({value}));
+                    uint[{width}] u = {value}; uint out = popcount(u);
+                    uint folded = C; uint literal = popcount(uint[{width}]({value}));
+                    uint ones = popcount(uint[{width}](-1));
+                    uint[1] narrow = popcount(u);''',
+                                    ('out', 'folded', 'literal', 'ones', 'narrow', 'u'),
+                                    (expected, expected, expected, width, expected & 1, value))
+
+    def test_unsigned_result_width_and_explicit_self_assignment(self):
+        maximum = self.module.QASM2QCXConverter.QCX_UINT_MAX
+        self.check_unsigned('''uint[8] u = 255;
+            uint power = popcount(u) ** 4;
+            uint complement = ~popcount(uint[1](1));
+            uint[3] narrow = popcount(u);
+            u = popcount(u); uint after = popcount(u);''',
+                            ('power', 'complement', 'narrow', 'u', 'after'),
+                            (4096, maximum - 1, 0, 8, 1))
+
     def test_literals_constants_registers_and_widths_beyond_uint(self):
         for width in (1, 2, 3, 8, 32, 65, 129):
             for bits in ('0' * width, '1' * width, ('10' * width)[:width], '1' + '0' * (width - 1)):
