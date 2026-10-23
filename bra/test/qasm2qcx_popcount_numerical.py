@@ -214,12 +214,23 @@ class BackendTests(unittest.TestCase):
         for fused in (False, True):
             BackendAuditTests.check(self, self.program(source, fused=fused), (0j, complex(1)))
 
+    def test_unsigned_gate_parameters_with_and_without_fusion(self):
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        for fused in (False, True):
+            source = '''include "stdgates.inc"; qubit q; uint[6] u = 37;
+                pow(popcount(rotl(u, -2))) @ x q;
+                rx(pi * (popcount(u) - 1)) q;'''
+            # Three X applications followed by RX(2*pi) produce -|1>.
+            BackendAuditTests.check(self, self.program(source, fused=fused), (0j, complex(-1)))
+
     def test_documented_example(self):
         document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
         examples = re.findall(r'<!-- popcount-example -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
         self.assertEqual(len(examples), 1)
         for fused in (False, True):
-            self.check(examples[0], (('count', False), ('selected', False)), (4, 3), fused=fused)
+            self.check(examples[0], (('count', False), ('selected', False),
+                                    ('unsigned_count', False), ('full_count', False), ('value', False)),
+                       (4, 3, 3, 6, 37), fused=fused)
 
 
 def main():
