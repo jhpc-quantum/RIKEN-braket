@@ -19,7 +19,19 @@ int main()
   using type = bra::variable_type;
   using function = bra::classical_function_id;
   auto const& signatures = bra::classical_function_signatures();
-  require(signatures.size() == 17u);
+  require(signatures.size() == 18u);
+  require(bra::classical_function_from_name("ANGLEBITS") == function::anglebits);
+  require(bra::resolve_classical_function(function::anglebits, {type::real, type::integer}).result_types
+            == std::vector<type>{type::unsigned_integer});
+  for (auto const& operands: {std::vector<type>{}, std::vector<type>{type::real},
+                             std::vector<type>{type::real, type::unsigned_integer},
+                             std::vector<type>{type::integer, type::integer}})
+  {
+    auto rejected = false;
+    try { bra::resolve_classical_function(function::anglebits, operands); }
+    catch (std::invalid_argument const&) { rejected = true; }
+    require(rejected);
+  }
   require(bra::classical_function_from_name("MOD") == function::mod);
   require(bra::resolve_classical_function(function::mod, {type::real, type::real}).result_types
             == std::vector<type>{type::real});

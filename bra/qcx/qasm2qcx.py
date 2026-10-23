@@ -3444,7 +3444,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             false_label: str) -> None:
         if isinstance(condition, ast.Cast) and isinstance(condition.type, ast.BoolType):
             value, value_type, value_kind = self.__condition_operand(condition.argument)
-            if value_type not in (ValueType.BOOL, ValueType.BIT, ValueType.INT, ValueType.UINT, ValueType.FLOAT):
+            if value_type not in (ValueType.BOOL, ValueType.BIT, ValueType.INT, ValueType.UINT, ValueType.FLOAT,
+                                   ValueType.ANGLE):
                 raise UnsupportedOpenQASMError('cast to bool from complex or unsupported type')
             if value_kind == ValueKind.LITERAL:
                 self.__qcx_lines.append(f'JUMP {true_label if value != 0 else false_label}')
@@ -3868,8 +3869,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__unsigned_integer_type(expression.type, iterators)
         operand_type, runtime = self.__loop_expression_info(expression.argument, iterators)
         target_type = self.__source_value_type(expression.type)
-        if ValueType.ANGLE in (operand_type, target_type):
-            raise UnsupportedOpenQASMError('angle casts require conversion support')
+        if target_type == ValueType.ANGLE:
+            self.__angle_type(expression.type, iterators)
+            if operand_type not in (ValueType.FLOAT, ValueType.ANGLE):
+                raise UnsupportedOpenQASMError('angle conversion requires float or angle input')
+            return ValueType.ANGLE, runtime
+        if operand_type == ValueType.ANGLE:
+            if target_type != ValueType.BOOL:
+                raise UnsupportedOpenQASMError('angle cast other than angle or bool')
+            return ValueType.BOOL, runtime
         if operand_type == ValueType.COMPLEX and target_type != ValueType.COMPLEX:
             # Constant numeric casts already extract the real component in
             # visit_Cast. Native UINT also supports checked conversion of a
@@ -4915,10 +4923,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__expression_kind is None:
             return
 
+        if isinstance(expression.type, ast.AngleType):
+            angle_type = self.__angle_type(expression.type)
+            self.__visit_angle_conversion(expression.argument, angle_type)
+            self.__angle_expression_types[id(expression)] = (expression, angle_type)
+            return
         if isinstance(expression.type, ast.BoolType):
             if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
                 self.visit(expression.argument)
-                if self.__value_type not in (ValueType.BOOL, ValueType.BIT, ValueType.INT, ValueType.UINT, ValueType.FLOAT):
+                if self.__value_type not in (ValueType.BOOL, ValueType.BIT, ValueType.INT, ValueType.UINT, ValueType.FLOAT,
+                                            ValueType.ANGLE):
                     raise UnsupportedOpenQASMError('cast to bool from complex or unsupported type')
                 self.__value = int(self.__value != 0) if self.__evaluate_constant else 0
                 self.__value_type = ValueType.BOOL
@@ -5543,19 +5557,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     self.__value_kind, self.__evaluate_constant)
         try:
             angle_type = self.__angle_type(statement.type)
-            source_type, runtime = self.__loop_expression_info(statement.init_expression)
+            _, runtime = self.__loop_expression_info(statement.init_expression)
             if runtime:
                 raise NoConstantExpressionException
-            if source_type != ValueType.ANGLE:
-                raise UnsupportedOpenQASMError('angle initialization requires conversion support')
             self.__expression_kind = ExpressionKind.CONST_ARITHMETIC
             self.__evaluate_constant = True
-            self.visit(statement.init_expression)
+            self.__visit_angle_conversion(statement.init_expression, angle_type)
             if self.__value_type != ValueType.ANGLE or self.__value_kind != ValueKind.LITERAL:
                 raise NoConstantExpressionException
-            source_angle_type = self.__angle_expression_type(statement.init_expression)
-            if source_angle_type is None or source_angle_type.width != angle_type.width:
-                raise UnsupportedOpenQASMError('angle width conversion')
             constant = _ConstantAngle(angle_type, int(self.__value))
         finally:
             (self.__expression_kind, self.__value, self.__value_type,
@@ -5754,18 +5763,74 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         entry = self.__angle_expression_types.get(id(expression))
         return entry[1] if entry is not None else None
 
+    @staticmethod
+    def __constant_angle_bits(value: float, angle_type: _AngleType) -> int:
+        if not math.isfinite(value):
+            raise InvalidConstantFunctionException('angle conversion: nonfinite input')
+        # Quantize the exact ratio of stored binary64 values, not a rounded
+        # floating-point quotient. Python round(Fraction) uses ties to even;
+        # masking also handles negative inputs and rounding across a full turn.
+        return round(Fraction(value) / Fraction(math.tau) * (1 << angle_type.width)) & angle_type.mask
+
+    @staticmethod
+    def __resize_angle_bits(value: int, source: _AngleType, target: _AngleType) -> int:
+        difference = target.width - source.width
+        return value << difference if difference >= 0 else value >> -difference
+
+    def __visit_angle_conversion(self, expression: ast.Expression, angle_type: _AngleType) -> None:
+        source_type, runtime = self.__loop_expression_info(expression)
+        if source_type not in (ValueType.FLOAT, ValueType.ANGLE):
+            raise UnsupportedOpenQASMError('angle conversion requires float or angle input')
+        if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC and runtime:
+            raise NoConstantExpressionException
+        previous_used = self.__used_temporary_variables.copy()
+        result = None
+        keep = False
+        try:
+            self.visit(expression)
+            value, value_kind = self.__value, self.__value_kind
+            if source_type == ValueType.FLOAT and self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                self.__value = self.__constant_angle_bits(float(value), angle_type) if self.__evaluate_constant else 0
+                self.__value_type, self.__value_kind = ValueType.ANGLE, ValueKind.LITERAL
+                return
+            source_angle_type = self.__angle_expression_type(expression) if source_type == ValueType.ANGLE else None
+            if source_type == ValueType.ANGLE:
+                if source_angle_type is None:
+                    raise UnsupportedOpenQASMError('angle expression without width metadata')
+                if value_kind == ValueKind.LITERAL:
+                    self.__value = self.__resize_angle_bits(int(value), source_angle_type, angle_type)
+                    self.__value_type, self.__value_kind = ValueType.ANGLE, ValueKind.LITERAL
+                    return
+                if source_angle_type.width == angle_type.width:
+                    # A completed operand may own a temporary. Transfer it
+                    # to the caller rather than releasing it in this scope.
+                    result, keep = str(value), value_kind == ValueKind.TEMPORARY
+                    return
+            result = self.__add_new_temporary_variable(
+                ValueType.UINT, _UnsignedIntegerType(angle_type.width, True))
+            if source_type == ValueType.FLOAT:
+                operand = str(value)
+                if value_kind == ValueKind.LITERAL and not math.isfinite(float(value)):
+                    operand = '+nan' if math.isnan(float(value)) else '-inf' if float(value) < 0 else '+inf'
+                self.__qcx_lines.append(f'APPLY {result} <- ANGLEBITS :REAL:{operand} {angle_type.width}')
+            else:
+                self.__qcx_lines.append(f'LET {result} := {value}')
+                difference = angle_type.width - source_angle_type.width
+                operator = '<<=' if difference > 0 else '>>='
+                self.__qcx_lines.append(f'LET {result} {operator} {abs(difference)}')
+            self.__value, self.__value_type, self.__value_kind = result, ValueType.ANGLE, ValueKind.TEMPORARY
+            keep = True
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                if not keep or temporary != result:
+                    self.__release_temporary_variable(temporary)
+
     def __emit_angle_copy(self, destination: str, angle_type: _AngleType, expression: ast.Expression) -> None:
-        source_type, _ = self.__loop_expression_info(expression)
-        if source_type != ValueType.ANGLE:
-            raise UnsupportedOpenQASMError('angle initialization requires conversion support')
         previous = self.__expression_kind
         previous_used = self.__used_temporary_variables.copy()
         try:
             self.__expression_kind = ExpressionKind.ARITHMETIC
-            self.visit(expression)
-            source_angle_type = self.__angle_expression_type(expression)
-            if source_angle_type is None or source_angle_type.width != angle_type.width:
-                raise UnsupportedOpenQASMError('angle width conversion')
+            self.__visit_angle_conversion(expression, angle_type)
             self.__emit_assignment(destination, ':=', ValueType.ANGLE,
                                    self.__value, self.__value_type, self.__value_kind)
         finally:
