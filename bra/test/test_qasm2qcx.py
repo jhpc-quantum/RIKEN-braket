@@ -21,6 +21,174 @@ def convert(source: str) -> list[str]:
     return qasm2qcx.convert(source)
 
 
+class ScalarAngleFoundationTests(unittest.TestCase):
+    @staticmethod
+    def program(source):
+        return qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ' + source)
+
+    def converter(self, source):
+        program = self.program(source)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        return converter
+
+    def seed_constant(self, converter, name='SEED', width=4, value=5):
+        # Stage 1 tests exact storage independently of the float-to-angle
+        # conversion kernel, which is introduced in Stage 2.
+        constant = qasm2qcx._ConstantAngle(qasm2qcx._AngleType(width, True), value)
+        converter._QASM2QCXConverter__const_angle_values[name] = constant
+        converter._QASM2QCXConverter__declared_constant_variables.add(name)
+        return constant
+
+    def test_immutable_angle_metadata_and_exact_constant_bit_patterns(self):
+        width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        for size, raw in ((1, 0), (1, 1), (4, 5), (width, (1 << width) - 1)):
+            angle_type = qasm2qcx._AngleType(size, True)
+            constant = qasm2qcx._ConstantAngle(angle_type, raw)
+            self.assertEqual(angle_type.mask, (1 << size) - 1)
+            self.assertEqual(constant.value, raw)
+            with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                constant.value = 0
+        for size in (0, -1):
+            with self.assertRaises(ValueError):
+                qasm2qcx._AngleType(size, True)
+        for raw in (-1, 16):
+            with self.assertRaises(ValueError):
+                qasm2qcx._ConstantAngle(qasm2qcx._AngleType(4, True), raw)
+
+    def test_default_and_explicit_widths_use_distinct_angle_metadata(self):
+        width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        converter = self.converter(f'angle a; angle[1] b; angle[{width}] c; uint d;')
+        name = converter._QASM2QCXConverter__capitalize_variable_name
+        metadata = converter._QASM2QCXConverter__angle_variable_types
+        self.assertEqual(metadata[name('a')], qasm2qcx._AngleType(width, False))
+        self.assertEqual(metadata[name('b')], qasm2qcx._AngleType(1, True))
+        self.assertEqual(metadata[name('c')], qasm2qcx._AngleType(width, True))
+        self.assertNotIn(name('a'), converter._QASM2QCXConverter__uint_variable_types)
+        self.assertEqual(converter._QASM2QCXConverter__type_of(name('a')), qasm2qcx.ValueType.ANGLE)
+        self.assertEqual(converter._QASM2QCXConverter__type_of(name('d')), qasm2qcx.ValueType.UINT)
+        lines = list(converter)
+        for source in ('a', 'b', 'c'):
+            self.assertIn(f'VAR {name(source)} UINT', lines)
+
+    def test_same_width_declarations_and_assignments_copy_raw_storage(self):
+        width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        converter = self.converter(f'angle[4] a; angle[4] b = a; b = a; angle c; angle[{width}] d = c;')
+        name = converter._QASM2QCXConverter__capitalize_variable_name
+        lines = list(converter)
+        self.assertEqual(lines.count(f'LET {name("b")} := {name("a")}'), 2)
+        self.assertIn(f'LET {name("d")} := {name("c")}', lines)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        expression = qasm2qcx.ast.Identifier('a')
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        converter.visit(expression)
+        self.assertEqual(converter._QASM2QCXConverter__angle_expression_type(expression), qasm2qcx._AngleType(4, True))
+        self.assertEqual(converter._QASM2QCXConverter__value_type, qasm2qcx.ValueType.ANGLE)
+        self.assertEqual(converter._QASM2QCXConverter__value_kind, qasm2qcx.ValueKind.LVALUE)
+
+    def test_width_validation_rejects_invalid_noninteger_runtime_and_forward_sizes(self):
+        for size in ('1 - 1', '0 - 1', 'true', '1.5', str(qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH + 1)):
+            with self.subTest(size=size), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(f'angle[{size}] a;')
+        for source in ('int n = 4; angle[n] a;', 'angle[WIDTH] a; const int WIDTH = 4;',
+                       'const bit B = true; angle[B] a;', 'angle other; angle[other] a;'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(source)
+
+    def test_width_resolution_preserves_state_and_declaration_scope(self):
+        converter = self.converter('const uint WIDTH = 4; angle[WIDTH] a; angle[WIDTH] b;')
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        converter._QASM2QCXConverter__evaluate_constant = False
+        before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        resolve = converter._QASM2QCXConverter__angle_type
+        ast_type = self.program('angle[WIDTH] temporary;').statements[0].type
+        self.assertEqual(resolve(ast_type), qasm2qcx._AngleType(4, True))
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
+        with converter._QASM2QCXConverter__iterator_binding('WIDTH', 1):
+            with self.assertRaisesRegex(qasm2qcx.InvalidDeclarationException, 'loop iterator'):
+                resolve(ast_type)
+            self.assertEqual(converter._QASM2QCXConverter__identifier_angle_type('a').width, 4)
+        with self.assertRaises(qasm2qcx.ZeroDivisorException):
+            resolve(self.program('angle[1 / 0] temporary;').statements[0].type)
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
+        self.converter('const int WIDTH = 4; angle[WIDTH] a; angle[WIDTH] b; '
+                       'for int WIDTH in [0:1] { b = a; }')
+
+    def test_seeded_constant_copies_are_exact_and_publish_only_after_success(self):
+        converter = self.converter('')
+        self.seed_constant(converter)
+        statement = self.program('const angle[4] COPY = SEED;').statements[0]
+        converter._QASM2QCXConverter__evaluate_constant = False
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        with patch.object(converter, '_QASM2QCXConverter__is_initialization_process', True):
+            converter.visit(statement)
+        self.assertEqual(converter._QASM2QCXConverter__const_angle_values['COPY'],
+                         qasm2qcx._ConstantAngle(qasm2qcx._AngleType(4, True), 5))
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
+        self.assertEqual(list(converter), ['QUBITS 0'])
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            converter._QASM2QCXConverter__condition_operand(qasm2qcx.ast.Identifier('COPY'))
+        converter.visit(statement)  # The emission pass publishes visibility, not storage.
+        self.assertEqual(converter._QASM2QCXConverter__condition_operand(qasm2qcx.ast.Identifier('COPY')),
+                         (5, qasm2qcx.ValueType.ANGLE, qasm2qcx.ValueKind.LITERAL))
+        declaration = self.program('angle[4] live = COPY;').statements[0]
+        with patch.object(converter, '_QASM2QCXConverter__is_initialization_process', True):
+            converter.visit(declaration)
+        converter.visit(declaration)
+        name = converter._QASM2QCXConverter__capitalize_variable_name('live')
+        self.assertIn(f'LET {name} := 5', list(converter))
+
+    def test_declarations_preserve_visibility_and_duplicate_name_checks(self):
+        for source in ('angle[4] b = a; angle[4] a;',
+                       'const angle[4] A = A;', 'const angle[4] A = B; const angle[4] B = A;'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(source)
+        for source in ('angle a; angle a;', 'uint a; angle a;', 'angle a; bit a;',
+                       'const int a = 4; angle a;', 'qubit a; angle a;'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.DuplicateIdentifierException):
+                self.converter(source)
+
+    def test_angle_storage_does_not_enable_implicit_numeric_or_gate_uses(self):
+        for expression in ('a + a', '-a', '~a', 'a << 1', 'a == a', 'a && a',
+                           'int(a)', 'uint(a)', 'float(a)', 'complex(a)', 'bool(a)',
+                           'exp(a)', 'sin(a)', 'popcount(a)'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('angle[4] a; float out = ' + expression + ';')
+        for target in ('int', 'uint', 'float', 'complex', 'bool', 'bit'):
+            with self.subTest(target=target), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(f'angle[4] a; {target} out = a;')
+        for gate in ('p(a) q;', 'rx(a) q;', 'U(a, 0, 0) q;', 'gphase(a);'):
+            with self.subTest(gate=gate), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('include "stdgates.inc"; qubit q; angle[4] a; ' + gate)
+
+    def test_later_stage_initializers_width_changes_and_arrays_remain_guarded(self):
+        for initializer in ('0', '0.0', 'pi', 'true', '"0101"', 'angle[4](pi)'):
+            with self.subTest(initializer=initializer), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(f'angle[4] a = {initializer};')
+        for source in ('angle[4] a; angle[8] b = a;', 'angle[4] a; angle[8] b; b = a;',
+                       'angle[4] a; a += a;', 'angle[4] a; a[0] = true;',
+                       'array[angle[4], 2] values;', 'qubit q; angle a = measure q;'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(source)
+
+    def test_failed_constant_initialization_does_not_publish_or_clobber_state(self):
+        for source in ('const angle[4] BROKEN = SEED;', 'const angle[4] BROKEN = pi;',
+                       'const angle[4] BROKEN = BROKEN;'):
+            converter = self.converter('')
+            self.seed_constant(converter, width=8, value=255)
+            converter._QASM2QCXConverter__evaluate_constant = False
+            fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+            before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+            with patch.object(converter, '_QASM2QCXConverter__is_initialization_process', True):
+                with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    converter.visit(self.program(source).statements[0])
+            self.assertNotIn('BROKEN', converter._QASM2QCXConverter__const_angle_values)
+            self.assertNotIn('BROKEN', converter._QASM2QCXConverter__constant_source_types)
+            self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+
 class ConstantBitRegisterDeclarationTests(unittest.TestCase):
     @staticmethod
     def program(source):
