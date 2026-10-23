@@ -5430,6 +5430,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         name = self.__operand_name(target)
         shadowed = ((iterators is not None and name in iterators)
                     or any(name in scope for scope in self.__loop_bindings))
+        if not shadowed and name in self.__const_bit_variable_values_map:
+            self.__loop_identifier_info(ast.Identifier(name), None)
+            raise InvalidBitOperandException('A constant scalar bit is read-only')
         if not shadowed and name in self.__const_bit_register_values:
             self.__constant_bit_register(name)
             raise InvalidBitOperandException('A constant bit register is read-only')

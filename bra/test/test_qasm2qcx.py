@@ -391,6 +391,77 @@ class ConstantScalarBitExpressionTests(unittest.TestCase):
         self.assertEqual(converter._QASM2QCXConverter__const_bit_variable_values_map, {'ON': 1, 'OFF': 0})
 
 
+class ConstantScalarBitControlFlowTests(unittest.TestCase):
+    program = staticmethod(ConstantBitRegisterDeclarationTests.program)
+    converter = ConstantBitRegisterDeclarationTests.converter
+    prefix = 'qubit q; const bit FLAG = true; '
+
+    def test_writes_are_rejected_on_reached_skipped_and_empty_paths(self):
+        operations = ('FLAG = false;', 'FLAG = FLAG;', 'FLAG &= FLAG;',
+                      'FLAG |= FLAG;', 'FLAG ^= FLAG;', 'FLAG <<= 1;', 'FLAG >>= 1;',
+                      'FLAG += 1;', 'FLAG -= 1;', 'FLAG *= 1;', 'FLAG /= 1;',
+                      'FLAG %= 1;', 'FLAG **= 1;', 'FLAG = measure q;',
+                      'FLAG[0] = false;', 'FLAG[0] = measure q;',
+                      'FLAG[0:0] = "1";', 'FLAG[{0}] ^= "1";')
+        wrappers = ('{}', 'if (false) {{ {} }}', 'while (false) {{ {} }}',
+                    'for int i in [1:0] {{ {} }}',
+                    'for int i in [0:1] {{ continue; {} }}',
+                    'for int i in [0:1] {{ break; {} }}',
+                    'for int i in [1:0] {{ if (false) {{ {} }} }}')
+        for operation in operations:
+            for wrapper in wrappers:
+                with self.subTest(operation=operation, wrapper=wrapper):
+                    with self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException, 'scalar bit is read-only'):
+                        self.converter(self.prefix + wrapper.format(operation))
+
+    def test_assignment_and_measurement_targets_require_declaration_visibility(self):
+        for operation in ('FLAG = false;', 'FLAG = measure q;', 'FLAG[0] = false;'):
+            for wrapper in ('{}', 'for int i in [1:0] {{ {} }}'):
+                with self.subTest(operation=operation, wrapper=wrapper):
+                    with self.assertRaises(qasm2qcx.NoVariableNameException):
+                        self.converter('qubit q; ' + wrapper.format(operation) + 'const bit FLAG = true;')
+
+    def test_iterators_shadow_constants_but_remain_read_only(self):
+        sources = ('for int FLAG in [0:1] { out += FLAG; }',
+                   'int stop = 1; for int FLAG in [0:stop] { out += FLAG; }',
+                   'int value = 1; for int FLAG in {0, value} { out += FLAG; }',
+                   'bit[2] flags = "10"; bit copy; for bit FLAG in flags { copy = FLAG; }',
+                   'array[bool, 2] flags = {false, true}; bit copy; for bool FLAG in flags { copy = FLAG; }',
+                   'array[uint, 2] flags = {0, 1}; for uint FLAG in flags { out += int(FLAG); }')
+        for source in sources:
+            with self.subTest(source=source):
+                converter = self.converter(self.prefix + 'int out; ' + source + 'bool restored = FLAG;')
+                self.assertEqual(converter._QASM2QCXConverter__const_bit_variable_values_map, {'FLAG': 1})
+                self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+                self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        for loop in ('for int FLAG in [1:0]', 'for int FLAG in [0:1]',
+                     'for bit FLAG in flags', 'for bool FLAG in bools'):
+            for operation in ('FLAG = false;', 'FLAG = measure q;'):
+                with self.subTest(loop=loop, operation=operation):
+                    with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'iterator'):
+                        self.converter(self.prefix + 'bit[2] flags; array[bool, 2] bools; '
+                                       + loop + ' { ' + operation + ' }')
+
+    def test_loop_bounds_cast_constants_and_validate_nested_empty_bodies(self):
+        self.converter(self.prefix + '''int out;
+            for int i in [int(!FLAG):int(FLAG)] {
+                for int j in [0:int(FLAG)] { out += int(FLAG); }
+            }
+            for int i in [1:0] { for int j in [0:int(FLAG)] { out += int(FLAG); } }
+            for int i in [1:0] { for int j in {int(FLAG)} { out += int(FLAG); } }''')
+
+    def test_failed_write_does_not_allocate_scratch_or_change_constant(self):
+        converter = self.converter(self.prefix)
+        before = list(converter)
+        statement = self.program('FLAG ^= bit(true);').statements[0]
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.INT)
+        with self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException, 'read-only'):
+            converter.visit(statement)
+        self.assertEqual(converter._QASM2QCXConverter__const_bit_variable_values_map, {'FLAG': 1})
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertFalse(any(line.startswith('LET ') for line in list(converter)[len(before):]))
+
+
 class ConstantBitRegisterExpressionTests(unittest.TestCase):
     program = staticmethod(ConstantBitRegisterDeclarationTests.program)
     converter = ConstantBitRegisterDeclarationTests.converter

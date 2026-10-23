@@ -74,6 +74,71 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(result.stdout, '')
         type(self).checked += 1
 
+    def test_nested_loops_transfers_and_temporary_reuse(self):
+        self.check('''const bit ON = true; const bit OFF = false;
+            int stop = 3; int total = 0; int visits = 0; bit live = OFF;
+            for int i in [0:stop] {
+                if (i == 1 && ON) { continue; }
+                for int j in [0:int(ON)] { total += int(ON ^ live); }
+                live ^= ON; visits += 1;
+                if (i == 2 && ON) { break; }
+            }
+            int count = 0;
+            while (ON && count < 3) { count += 1; if (OFF) { break; } }
+            bool unchanged = ON && !OFF;''',
+                   (('total', False), ('visits', False), ('live', False),
+                    ('count', False), ('unchanged', False)), (2, 2, 0, 3, 1))
+
+    def test_iterator_shadowing_and_binding_restoration(self):
+        self.check('''const bit FLAG = true; int total = 0; int stop = 2;
+            for int FLAG in [0:stop] { total += FLAG; }
+            for int FLAG in {0, stop} { total += FLAG; }
+            bit[2] bits = "10"; bit copy;
+            for bit FLAG in bits { copy = FLAG; }
+            array[bool, 2] bools = {true, false}; bit copied;
+            for bool FLAG in bools { copied = FLAG; }
+            array[uint, 2] integers = {1, 2};
+            for uint FLAG in integers { total += int(FLAG); }
+            for int FLAG in [0:1] {
+                total += FLAG;
+                for int FLAG in [2:3] { total += FLAG; }
+                total += FLAG;
+            }
+            bool restored = FLAG;''',
+                   (('total', False), ('copy', False), ('copied', False), ('restored', False)),
+                   (20, 1, 0, 1))
+
+    def test_constant_casts_in_nested_loop_bounds(self):
+        self.check('''const bit ON = true; int total = 0;
+            for int i in [0:int(ON)] {
+                for int j in [0:int(ON)] { total += int(ON); }
+                for int j in {int(ON), int(!ON)} { total += j; }
+            }
+            for int i in [1:0] { total = 99; }''', (('total', False),), (6,))
+
+    def test_measurement_controlled_execution_and_source_preservation(self):
+        for initial in (0, 1):
+            self.check(f'''include "stdgates.inc"; qubit q;
+                const bit ON = true; const bit OFF = false;
+                {'x q;' if initial else ''} bit measured = measure q;
+                bit out = OFF; uint visits = 0;
+                if (ON && measured) {{ out = ON; }}
+                while (out && ON) {{ visits += uint(ON); out = OFF; }}
+                bool same = measured == bit(bool({initial}));
+                bool unchanged = ON && !OFF;''',
+                       (('visits', False), ('out', False), ('same', False), ('unchanged', False)),
+                       (initial, 0, 1, 1))
+
+    def test_gate_parameters_powers_and_fusion(self):
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        source = '''include "stdgates.inc"; qubit q;
+            const bit ON = true; const bit OFF = false;
+            pow(int(ON)) @ x q;
+            if (ON && !OFF) { rx(pi * float(ON)) q; }
+            rz(pi * float(OFF)) q;'''
+        for fused in (False, True):
+            BackendAuditTests.check(self, self.program(source, fused=fused), (-1j, 0j))
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
