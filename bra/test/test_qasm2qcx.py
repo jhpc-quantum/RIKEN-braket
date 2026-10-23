@@ -72,7 +72,7 @@ class ConstantBitRegisterDeclarationTests(unittest.TestCase):
                          qasm2qcx._ConstantBitRegister(4, 9))
 
     def test_rejects_scalar_mismatched_and_nonconstant_initializers(self):
-        for source in ('const bit FLAGS = 1;', 'const bit[1] FLAGS = 1;',
+        for source in ('const bit[1] FLAGS = 1;',
                        'const bit[1] FLAGS = true;', 'const bit[4] FLAGS = "111";',
                        'const bit[3] FLAGS = "1111";', 'const bit[4] FLAGS = uint[4](3);',
                        'bit[4] live = "1011"; const bit[4] FLAGS = live;',
@@ -167,6 +167,299 @@ class ConstantBitRegisterDeclarationTests(unittest.TestCase):
                          qasm2qcx._ConstantBitRegister(4, 7))
         self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], previous)
         self.assertEqual(list(converter), ['QUBITS 0'])
+
+
+class ConstantScalarBitDeclarationTests(unittest.TestCase):
+    program = staticmethod(ConstantBitRegisterDeclarationTests.program)
+    converter = ConstantBitRegisterDeclarationTests.converter
+
+    def test_literals_and_scalar_constants_have_no_qcx_storage(self):
+        for expression, expected in (('false', 0), ('true', 1), ('0', 0), ('1', 1)):
+            with self.subTest(expression=expression):
+                converter = self.converter(f'const bit FLAG = {expression};')
+                self.assertEqual(converter._QASM2QCXConverter__const_bit_variable_values_map, {'FLAG': expected})
+                self.assertEqual(list(converter), ['QUBITS 0'])
+                self.assertNotIn('FLAG', converter._QASM2QCXConverter__classical_source_types)
+                self.assertNotIn('FLAG', converter._QASM2QCXConverter__const_bool_variable_values_map)
+                self.assertNotIn('FLAG', converter._QASM2QCXConverter__const_bit_register_values)
+                self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_previous_constants_and_constant_register_elements(self):
+        converter = self.converter('''const bool ON = true; const int ONE = 1;
+            const uint ZERO = 0; const bit A = ON; const bit B = ONE;
+            const bit C = ZERO; const bit COPY = A;
+            const bit[4] FLAGS = "1011"; const bit LOW = FLAGS[0];
+            const bit OFF = FLAGS[2]; const bit HIGH = FLAGS[-1];''')
+        self.assertEqual(converter._QASM2QCXConverter__const_bit_variable_values_map,
+                         {'A': 1, 'B': 1, 'C': 0, 'COPY': 1, 'LOW': 1, 'OFF': 0, 'HIGH': 1})
+        self.assertEqual(list(converter), ['QUBITS 0'])
+
+    def test_supported_constant_expressions_and_casts(self):
+        for expression, expected in (('!false', 1), ('1 == 0', 0), ('1 + 0', 1),
+                                     ('bit(true)', 1), ('bit(bool(2))', 1),
+                                     ('int(true)', 1), ('uint(false)', 0),
+                                     ('~bit(false)', 1), ('bit(true) ^ bit(true)', 0),
+                                     ('true && !false', 1)):
+            with self.subTest(expression=expression):
+                converter = self.converter(f'const bit FLAG = {expression};')
+                self.assertEqual(converter._QASM2QCXConverter__const_bit_variable_values_map['FLAG'], expected)
+                self.assertEqual(list(converter), ['QUBITS 0'])
+
+    def test_scalar_identifier_retains_bit_type_and_literal_kind(self):
+        converter = self.converter('const bit FLAG = true;')
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONST_ARITHMETIC
+        converter.visit(qasm2qcx.ast.Identifier('FLAG'))
+        self.assertEqual((converter._QASM2QCXConverter__value,
+                          converter._QASM2QCXConverter__value_type,
+                          converter._QASM2QCXConverter__value_kind),
+                         (1, qasm2qcx.ValueType.BIT, qasm2qcx.ValueKind.LITERAL))
+        self.assertIsNone(converter._QASM2QCXConverter__bit_register_expression_width(
+            qasm2qcx.ast.Identifier('FLAG')))
+
+    def test_rejects_incompatible_and_register_initializers(self):
+        for expression in ('2', '-1', '1.0', '0.0', '1im', '"1"', 'bit(1)', 'bit[1](true)'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(f'const bit FLAG = {expression};')
+        for expression in ('FLAGS', 'FLAGS[0:0]', 'FLAGS[{0}]'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(f'const bit[1] FLAGS = "1"; const bit FLAG = {expression};')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.converter('const bit FLAG = true; const bit[1] FLAGS = FLAG;')
+
+    def test_rejects_runtime_dependencies_even_when_short_circuited(self):
+        for declarations, expression in (('bit live = 1;', 'live'),
+                                         ('bool live = true;', 'live'),
+                                         ('int live = 1;', 'live'),
+                                         ('bit[1] live = "1";', 'live[0]'),
+                                         ('bool live = true;', 'false && live'),
+                                         ('bool live = false;', 'true || live'),
+                                         ('bool live = false;', 'bit(live)')):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(declarations + f'const bit FLAG = {expression};')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.converter('qubit q; const bit FLAG = measure q;')
+
+    def test_rejects_self_forward_references_and_duplicates(self):
+        for source in ('const bit FLAG = FLAG;', 'const bit FLAG = !FLAG;',
+                       'const bit FLAG = false && FLAG;',
+                       'const bit FLAG = NEXT; const bit NEXT = true;',
+                       'const bit FLAG = ON; const bool ON = true;'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(source)
+        for source in ('const bit FLAG = 1; const bit FLAG = 0;',
+                       'const bit FLAG = 1; const bool FLAG = true;',
+                       'const bool FLAG = true; const bit FLAG = 1;',
+                       'const bit FLAG = 1; const bit[1] FLAG = "1";',
+                       'bit FLAG; const bit FLAG = 1;',
+                       'const bit FLAG = 1; bit FLAG;',
+                       'qubit FLAG; const bit FLAG = 1;'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.DuplicateIdentifierException):
+                self.converter(source)
+
+    def test_second_pass_visibility_and_no_reinitialization(self):
+        program = self.program('const bit FLAG = true;')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONST_ARITHMETIC
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            converter.visit(qasm2qcx.ast.Identifier('FLAG'))
+        with patch.object(converter, '_QASM2QCXConverter__declare_constant_scalar_bit',
+                          side_effect=AssertionError('initializer evaluated twice')):
+            converter.visit(program)
+        converter.visit(qasm2qcx.ast.Identifier('FLAG'))
+        self.assertEqual(converter._QASM2QCXConverter__value, 1)
+        self.assertEqual(list(converter), ['QUBITS 0'])
+
+    def test_failed_initialization_preserves_state_without_publishing(self):
+        for expression in ('2', '1 / 0', 'BROKEN', '"1"'):
+            converter = self.converter('')
+            converter._QASM2QCXConverter__evaluate_constant = False
+            converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+            fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+            previous = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+            with self.subTest(expression=expression):
+                with patch.object(converter, '_QASM2QCXConverter__is_initialization_process', True):
+                    with self.assertRaises(qasm2qcx.QASM2QCXError):
+                        converter.visit(self.program(f'const bit BROKEN = {expression};').statements[0])
+                self.assertNotIn('BROKEN', converter._QASM2QCXConverter__const_bit_variable_values_map)
+                self.assertNotIn('BROKEN', converter._QASM2QCXConverter__constant_source_types)
+                self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], previous)
+                self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_missing_initializer_and_successful_initialization_preserve_state(self):
+        converter = self.converter('')
+        statement = self.program('const bit FLAG = true;').statements[0]
+        converter._QASM2QCXConverter__evaluate_constant = False
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        previous = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        with patch.object(converter, '_QASM2QCXConverter__is_initialization_process', True):
+            with self.assertRaises(qasm2qcx.NoConstantExpressionException):
+                converter._QASM2QCXConverter__declare_constant_scalar_bit(
+                    qasm2qcx.dataclasses.replace(statement, init_expression=None))
+            self.assertNotIn('FLAG', converter._QASM2QCXConverter__const_bit_variable_values_map)
+            converter.visit(statement)
+        self.assertEqual(converter._QASM2QCXConverter__const_bit_variable_values_map['FLAG'], 1)
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], previous)
+        self.assertEqual(list(converter), ['QUBITS 0'])
+
+
+class ConstantScalarBitExpressionTests(unittest.TestCase):
+    program = staticmethod(ConstantBitRegisterDeclarationTests.program)
+    converter = ConstantBitRegisterDeclarationTests.converter
+    prefix = 'const bit ON = true; const bit OFF = false; '
+
+    def test_named_constants_in_folded_scalar_expressions(self):
+        expressions = (('ON & OFF', 0, qasm2qcx.ValueType.BIT),
+                       ('ON | OFF', 1, qasm2qcx.ValueType.BIT),
+                       ('ON ^ ON', 0, qasm2qcx.ValueType.BIT),
+                       ('~OFF', 1, qasm2qcx.ValueType.BIT),
+                       ('!ON', 0, qasm2qcx.ValueType.BOOL),
+                       ('ON && !OFF', 1, qasm2qcx.ValueType.BOOL),
+                       ('ON == true', 1, qasm2qcx.ValueType.BOOL),
+                       ('ON != OFF', 1, qasm2qcx.ValueType.BOOL),
+                       ('int(ON) + int(OFF)', 1, qasm2qcx.ValueType.INT))
+        for expression, value, value_type in expressions:
+            with self.subTest(expression=expression):
+                converter = self.converter(self.prefix)
+                converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONST_ARITHMETIC
+                converter.visit(self.program(f'bool out = {expression};').statements[0].init_expression)
+                self.assertEqual((converter._QASM2QCXConverter__value,
+                                  converter._QASM2QCXConverter__value_type), (value, value_type))
+                self.assertEqual(list(converter), ['QUBITS 0'])
+        self.converter(self.prefix + '''const bit COPY = ON; const bit FLIPPED = ~OFF;
+            const bool READY = ON && !OFF; const uint COUNT = uint(ON);''')
+
+    def test_scalar_and_indexed_bit_destinations_use_literal_values(self):
+        converter = self.converter(self.prefix + '''bit live = ON; live = OFF;
+            bit[3] bits; bits[1] = ON; int index = 2; bits[index] = OFF;
+            bool ready = ON; ready = OFF;''')
+        lines = list(converter)
+        name = converter._QASM2QCXConverter__capitalize_variable_name('live')
+        self.assertIn(f'LET {name} := 1', lines)
+        self.assertIn(f'LET {name} := 0', lines)
+        for source in ('ON', 'OFF'):
+            self.assertFalse(any(converter._QASM2QCXConverter__capitalize_variable_name(source) in line
+                                 for line in lines))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_condition_operand_and_dependency_metadata(self):
+        converter = self.converter(self.prefix + 'bit live;')
+        self.assertEqual(converter._QASM2QCXConverter__condition_operand(qasm2qcx.ast.Identifier('ON')),
+                         (1, qasm2qcx.ValueType.BIT, qasm2qcx.ValueKind.LITERAL))
+        for source, runtime in (('ON', False), ('ON ^ OFF', False), ('ON ^ live', True),
+                                ('ON && live', True), ('exp(float(ON))', False)):
+            expression = self.program(f'bool out = {source};').statements[0].init_expression
+            self.assertEqual(converter._QASM2QCXConverter__loop_expression_info(expression)[1], runtime)
+
+    def test_forward_uses_rejected_in_runtime_and_validation_contexts(self):
+        for use in ('bit live = ON;', 'bool ready = ON;', 'int out = int(ON);',
+                    'if (ON) { }', 'bool ready = false && ON;',
+                    'float value = exp(float(ON));',
+                    'int out; for int i in [1:0] { out = int(ON); }'):
+            with self.subTest(use=use), self.assertRaises(qasm2qcx.NoVariableNameException):
+                self.converter(use + self.prefix)
+
+    def test_scalar_register_distinctions_in_runtime_and_empty_bodies(self):
+        for source in ('bit[1] live = ON;', 'bit live = ON[0];',
+                       'bool ready = ON == "1";', 'uint count = popcount(ON);',
+                       'bit live = rotl(ON, 1);',
+                       'bit[1] live; for int i in [1:0] { live = ON; }'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix + source)
+
+    def test_existing_operator_and_function_restrictions_are_preserved(self):
+        for expression in ('ON & true', 'ON + OFF', '-ON', 'ON << 1',
+                           'exp(ON)', 'bit[1](ON)'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix + f'bit out = {expression};')
+
+    def test_constant_short_circuiting_and_skipped_type_validation(self):
+        self.converter(self.prefix + '''const bool A = OFF && bool(1 / 0);
+            const bool B = ON || bool(1 / 0);''')
+        for expression in ('OFF && MISSING', 'ON || (ON & true)'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix + f'const bool out = {expression};')
+
+    def test_failed_mixed_expression_preserves_caller_temporary(self):
+        converter = self.converter(self.prefix + 'bit live; array[int, 2] values;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.INT)
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        expression = self.program('bit out = (ON ^ live) ^ bit(bool(values[99]));').statements[0].init_expression
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            converter.visit(expression)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(converter._QASM2QCXConverter__const_bit_variable_values_map, {'ON': 1, 'OFF': 0})
+
+
+class ConstantScalarBitControlFlowTests(unittest.TestCase):
+    program = staticmethod(ConstantBitRegisterDeclarationTests.program)
+    converter = ConstantBitRegisterDeclarationTests.converter
+    prefix = 'qubit q; const bit FLAG = true; '
+
+    def test_writes_are_rejected_on_reached_skipped_and_empty_paths(self):
+        operations = ('FLAG = false;', 'FLAG = FLAG;', 'FLAG &= FLAG;',
+                      'FLAG |= FLAG;', 'FLAG ^= FLAG;', 'FLAG <<= 1;', 'FLAG >>= 1;',
+                      'FLAG += 1;', 'FLAG -= 1;', 'FLAG *= 1;', 'FLAG /= 1;',
+                      'FLAG %= 1;', 'FLAG **= 1;', 'FLAG = measure q;',
+                      'FLAG[0] = false;', 'FLAG[0] = measure q;',
+                      'FLAG[0:0] = "1";', 'FLAG[{0}] ^= "1";')
+        wrappers = ('{}', 'if (false) {{ {} }}', 'while (false) {{ {} }}',
+                    'for int i in [1:0] {{ {} }}',
+                    'for int i in [0:1] {{ continue; {} }}',
+                    'for int i in [0:1] {{ break; {} }}',
+                    'for int i in [1:0] {{ if (false) {{ {} }} }}')
+        for operation in operations:
+            for wrapper in wrappers:
+                with self.subTest(operation=operation, wrapper=wrapper):
+                    with self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException, 'scalar bit is read-only'):
+                        self.converter(self.prefix + wrapper.format(operation))
+
+    def test_assignment_and_measurement_targets_require_declaration_visibility(self):
+        for operation in ('FLAG = false;', 'FLAG = measure q;', 'FLAG[0] = false;'):
+            for wrapper in ('{}', 'for int i in [1:0] {{ {} }}'):
+                with self.subTest(operation=operation, wrapper=wrapper):
+                    with self.assertRaises(qasm2qcx.NoVariableNameException):
+                        self.converter('qubit q; ' + wrapper.format(operation) + 'const bit FLAG = true;')
+
+    def test_iterators_shadow_constants_but_remain_read_only(self):
+        sources = ('for int FLAG in [0:1] { out += FLAG; }',
+                   'int stop = 1; for int FLAG in [0:stop] { out += FLAG; }',
+                   'int value = 1; for int FLAG in {0, value} { out += FLAG; }',
+                   'bit[2] flags = "10"; bit copy; for bit FLAG in flags { copy = FLAG; }',
+                   'array[bool, 2] flags = {false, true}; bit copy; for bool FLAG in flags { copy = FLAG; }',
+                   'array[uint, 2] flags = {0, 1}; for uint FLAG in flags { out += int(FLAG); }')
+        for source in sources:
+            with self.subTest(source=source):
+                converter = self.converter(self.prefix + 'int out; ' + source + 'bool restored = FLAG;')
+                self.assertEqual(converter._QASM2QCXConverter__const_bit_variable_values_map, {'FLAG': 1})
+                self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+                self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        for loop in ('for int FLAG in [1:0]', 'for int FLAG in [0:1]',
+                     'for bit FLAG in flags', 'for bool FLAG in bools'):
+            for operation in ('FLAG = false;', 'FLAG = measure q;'):
+                with self.subTest(loop=loop, operation=operation):
+                    with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'iterator'):
+                        self.converter(self.prefix + 'bit[2] flags; array[bool, 2] bools; '
+                                       + loop + ' { ' + operation + ' }')
+
+    def test_loop_bounds_cast_constants_and_validate_nested_empty_bodies(self):
+        self.converter(self.prefix + '''int out;
+            for int i in [int(!FLAG):int(FLAG)] {
+                for int j in [0:int(FLAG)] { out += int(FLAG); }
+            }
+            for int i in [1:0] { for int j in [0:int(FLAG)] { out += int(FLAG); } }
+            for int i in [1:0] { for int j in {int(FLAG)} { out += int(FLAG); } }''')
+
+    def test_failed_write_does_not_allocate_scratch_or_change_constant(self):
+        converter = self.converter(self.prefix)
+        before = list(converter)
+        statement = self.program('FLAG ^= bit(true);').statements[0]
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.INT)
+        with self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException, 'read-only'):
+            converter.visit(statement)
+        self.assertEqual(converter._QASM2QCXConverter__const_bit_variable_values_map, {'FLAG': 1})
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertFalse(any(line.startswith('LET ') for line in list(converter)[len(before):]))
 
 
 class ConstantBitRegisterExpressionTests(unittest.TestCase):
