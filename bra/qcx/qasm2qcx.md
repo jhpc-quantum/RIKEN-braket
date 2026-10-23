@@ -92,6 +92,8 @@ The converter currently covers:
   equal-width register operands and bit-string literals;
 - whole-bit-register shifts with constant or runtime integer counts,
   including `<<=` and `>>=` assignments;
+- circular rotations with `rotl` and `rotr` for bit registers and sized
+  `uint[n]`, with constant or runtime signed distances;
 - static bit-register range/set selections as bitwise and shift operands
   and overlap-safe assignment destinations;
 - equal-width bit-register `==` and `!=` comparisons, including static
@@ -158,6 +160,8 @@ from the input types, never from the assignment destination:
 | `mod(x, y)` | `int`, `int` | `int` | Copy dividend to a temporary, then `LET temporary %= divisor` |
 | `mod(x, y)` | `float`, `float` | `float` | `APPLY result <- MOD dividend divisor` |
 | `popcount(bits)` | `bit[n]` | `uint` | Unsigned accumulation over register bits |
+| `rotl(value, distance)` / `rotr(value, distance)` | `bit[n]`, `int` | `bit[n]` | Snapshot and circular indexed copy |
+| `rotl(value, distance)` / `rotr(value, distance)` | `uint[n]`, `int` | `uint[n]` | Guarded native shifts, bitwise OR, and width masking |
 | `real(z)` | `complex` | `float` | `LET result := :REAL:operand` |
 | `imag(z)` | `complex` | `float` | `LET result := :IMAG:operand` |
 
@@ -175,7 +179,7 @@ Scalar `bit` arguments require an explicit numeric cast.
 Calls can be nested and used in assignments, indexed array elements and
 initializers, gate parameters, numeric comparisons, explicit casts, and
 supported loop expressions. Whole arrays and bit registers are not scalar
-arguments; `popcount` explicitly accepts a register rather than a scalar.
+arguments; `popcount`, `rotl`, and `rotr` explicitly accept register values.
 A floating-point result is not itself a Boolean condition: compare
 it with a number or use `bool(...)`.
 
@@ -336,8 +340,8 @@ unchanged. Floating-point `%` and `%=` remain unsupported.
 `popcount(bits)` counts the set (`1`) bits of a bit register without modifying
 it. It returns native, unspecified-width `uint`, independently of the destination
 type. Inputs can be bit-string literals, whole registers (including `bit[1]`),
-static range/set selections, or supported register `~`, `&`, `|`, `^`, `<<`, and
-`>>` expressions. Repeated positions in a discrete selection are counted each
+static range/set selections, or supported register `~`, `&`, `|`, `^`, `<<`, `>>`,
+`rotl`, and `rotr` expressions. Repeated positions in a discrete selection are counted each
 time they appear. Scalar `bit`, scalar register elements, integers, Booleans,
 and whole classical arrays are not register arguments; use a one-position range
 such as `bits[0:0]` when a one-bit register selection is intended.
@@ -366,6 +370,65 @@ bit[8] flags = "10110100";
 uint count = popcount(flags);          // 4
 uint selected = popcount(flags[2:5]); // 3
 ```
+
+#### Circular bit rotations
+
+`rotl(value, distance)` moves bits toward higher indices and `rotr` toward lower
+indices, wrapping displaced bits around to the other end. Both preserve the
+input type and width, independently of the destination. Supported inputs are
+bit-string literals, whole `bit[n]` registers (including `bit[1]`), static
+range/set selections, nested register bitwise/shift/rotation expressions, and
+explicitly sized `uint[n]` expressions within the supported native width.
+Scalar `bit`, signed integers, unspecified-width `uint`, whole classical arrays,
+and `angle` inputs are not supported. An indexed UINT array element is a scalar
+input; a one-position bit range is a register input, unlike a scalar bit element.
+
+The distance parameter is `int`, with the usual built-in input promotions from
+`bool` and `uint`. UINT-to-INT conversion is checked before normalization;
+a UINT distance above native `INT_MAX` is an error, even if its remainder
+would fit. Distances are reduced modulo the input width: negative values reverse
+the direction, zero and multiples of the width leave the value unchanged, and
+oversized magnitudes are valid within native INT range. For example, rotating
+an eight-bit value left by `10` is equivalent to rotating left by `2`, and
+rotating left by `-2` is equivalent to rotating right by `2`.
+
+Constant calls use exact integer arithmetic. Literal register expressions can
+be constant inputs, but named registers remain runtime values and `const bit[n]`
+declarations remain unsupported. Runtime calls evaluate each operand once and
+hold temporary results through the operation. Register snapshots protect
+self-assignment and partially overlapping or reordered destinations. Selection
+order defines bit significance, and repeated source positions remain distinct
+positions in the selected value.
+
+Unsigned rotations use existing QCX shifts and bitwise OR, masking narrow
+results before subsequent operations. A zero-distance guard avoids shifting by
+the width. Register rotations do not pack into integers, so registers wider
+than native UINT are supported. Runtime register distances require a register
+width at most native `INT_MAX`; constant distances use direct bit remapping.
+Signed-distance normalization does not negate the distance, so `INT_MIN` is
+valid. No new bra instruction is required.
+
+Types, names, widths, and static selections are validated even in empty loops.
+Runtime conversions, distance arithmetic, and copy loops stay on reached paths,
+including under Boolean short-circuiting. Existing arithmetic-overflow rules
+still apply when computing a distance. Computed-result indexing, dynamic bit
+selections, register casts, and register-valued conditions or loop bounds remain
+unsupported; compare register results using `==`/`!=`, or use `popcount` when a
+numeric result is needed.
+
+<!-- rotation-example -->
+```qasm
+OPENQASM 3.0;
+bit[8] flags = "10001111";
+int distance = -2;
+bit[8] rotated = rotl(flags, distance); // "11100011"
+bool restored = rotr(rotated, distance) == flags; // true
+uint[6] value = 37;
+uint[6] turned = rotl(value, 3); // 44 ("101100")
+uint count = popcount(rotated); // 5
+```
+
+#### Complex construction and mathematical examples
 
 The converter uses native `APPLY ... <- COMPLEX real imaginary` to construct
 nontrivial complex literals directly, preserving component signs and avoiding
@@ -754,12 +817,12 @@ are checked even in skipped branches and empty loop bodies. Register sizes
 remain tied to declaration scope when iterators shadow size constants, and
 active iterators remain read-only.
 
-Register values are supported in `popcount`, register assignments, and the equality
+Register values are supported in `popcount`, `rotl`/`rotr`, register assignments, and the equality
 comparisons described below; they are not bare conditions. Integer/register casts,
 indexing of computed results, or register expressions as loop bounds or
 iteration collections remain unsupported. Static selection operations are described below.
-Concatenation, aliases, `const bit[n]` declarations,
-and register rotations remain outside this subset. Existing direct
+Concatenation, aliases, and `const bit[n]` declarations
+remain outside this subset. Existing direct
 bit-register copies and indexed scalar-bit operations retain their behavior.
 
 ### Whole-bit-register shifts
@@ -822,7 +885,8 @@ iterators remain read-only, and bit-register iteration retains live element
 reads when a shift modifies the iterated register.
 
 Shifts on scalar bits and computed-result indexing remain unsupported. Static
-selection shifts are described below. This does not add rotations, aliases, concatenation, register
+selection shifts are described below; rotations have their own rules above.
+This does not add aliases, concatenation, register
 casts or ordered comparisons, `const bit[n]` declarations, or register-valued scalar
 conditions/loop bounds. General count-expression overflow checks remain
 separate work.
@@ -3496,7 +3560,7 @@ The current prototype does not reliably support:
   ordered bit-register comparisons, whole-array bitwise operations, direct
   Boolean bitwise operations, or classical functions other than the
   `exp`/`sqrt`/`log`/`sin`/`cos`/`tan`/`arcsin`/`arccos`/`arctan`/`ceiling`/`floor`/
-  `real`/`imag` subset above;
+  `mod`/`popcount`/`rotl`/`rotr`/`real`/`imag` subset above;
 - `angle` declarations and `angle`-typed trigonometric arguments; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
 
@@ -3601,6 +3665,13 @@ array assignments, nested functions, loops, measurement, skipped shift errors,
 and the example above with and without fusion. Unit tests also cover scalar
 versus register typing, result-width metadata, non-evaluating validation, iterator
 shadowing, and temporary cleanup on failure.
+
+`bra/test/qasm2qcx_rotation_numerical.py` compares constant and runtime rotations
+against a textual circular-rotation reference. It covers native and narrow UINT,
+wide bit registers, negative and boundary distances, nested calls, selections,
+overlapping assignments, arithmetic promotions, loops, measurement and fusion,
+skipped and reached errors, and the rotation example above. Unit tests check
+width metadata, empty-loop validation, temporary ownership, and failure cleanup.
 
 `bra/test/qasm2qcx_u_phase_numerical.py` independently transcribes the published
 built-in `U` matrix and the mathematical active block of `cu`. It verifies the
@@ -4027,6 +4098,7 @@ python3 bra/test/qasm2qcx_inverse_trigonometric_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_rounding_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_mod_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_popcount_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_rotation_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_u_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_inverse_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_control_numerical.py --bra bra/bin/bra

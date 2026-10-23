@@ -7,6 +7,7 @@
 
 import argparse
 import pathlib
+import re
 import resource
 import unittest
 
@@ -127,6 +128,19 @@ class BackendTests(unittest.TestCase):
                         bool selfok = b == "{expected}";''',
                                ('sourceok', 'outok', 'literalok', 'runtimeok', 'foldedok', 'selfok'), (1,) * 6)
 
+    def test_register_zero_full_and_single_bit_patterns(self):
+        for width in (1, 3, 7, 33, 66):
+            for value in sorted({0, (1 << width) - 1, 1, 1 << (width - 1)}):
+                bits = format(value, f'0{width}b')
+                for distance in (-1, 2, -2147483648):
+                    left = format(reference(value, width, distance, 'rotl'), f'0{width}b')
+                    right = format(reference(value, width, distance, 'rotr'), f'0{width}b')
+                    self.check(f'''bit[{width}] b = "{bits}"; int d = {distance};
+                        bool leftok = rotl(b, d) == "{left}";
+                        bool rightok = rotr(b, d) == "{right}";
+                        bool literalok = rotl("{bits}", {distance}) == "{left}";''',
+                               ('leftok', 'rightok', 'literalok'), (1, 1, 1))
+
     def test_register_selections_overlap_and_operator_composition(self):
         for distance in (0, 1, -2, 9):
             selected = 0b1101  # flags[7:-2:1], low-index-first selection
@@ -188,6 +202,52 @@ class BackendTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn(diagnostic, result.stderr)
             type(self).checked += 1
+
+    def test_documented_example_measurement_and_fused_parameters(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- rotation-example -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        for fused in (False, True):
+            lines = self.program(examples[0], (('restored', False), ('turned', False), ('count', False)), fused=fused)
+            result = self.execute(lines)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.split(), ['1', '44', '5'])
+            type(self).checked += 1
+            # Measurement is nonunitary and must stay outside fusion. Only
+            # the subsequent classical rotation runs inside the fused region.
+            lines = self.program('''include "stdgates.inc"; qubit[4] q; x q[0]; x q[2];
+                bit[4] bits = measure q; int d = -1;
+                bit[4] out = rotl(bits, d); bool correct = out == "1010";
+                uint[4] u = 5; bool same = out == "1010";
+                uint turns = rotl(u, d);''', (('correct', False), ('same', False), ('turns', False)))
+            if fused:
+                measurement = max(index for index, line in enumerate(lines) if line.startswith('M '))
+                lines.insert(measurement + 1, 'BEGIN FUSION')
+                lines.append('END FUSION')
+            result = self.execute(lines)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.split(), ['1', '1', '10'])
+            type(self).checked += 1
+            source = '''include "stdgates.inc"; qubit q; uint[3] u = 1;
+                bit[4] bits = "0011"; int d = 1;
+                pow(rotl(u, d)) @ x q;
+                pow(popcount(rotr(bits, d))) @ x q;
+                rx(pi * rotl(u, d) / 2) q;'''
+            BackendAuditTests.check(self, self.program(source, fused=fused), (0j, -1j))
+
+    def test_loop_transfers_live_iteration_and_declaration_scope(self):
+        self.check('''const int WIDTH = 4; bit[WIDTH] bits = "1011"; uint[WIDTH] u = 11;
+            uint total = 0; int visits = 0;
+            for int WIDTH in [0:2] { total += popcount(rotl(bits, WIDTH)); u = rotl(u, 1); }
+            for bit b in bits { visits += int(b); bits = rotl(bits, 1); }
+            int count = 0; int d = -1;
+            while (true) {
+                count += 1; if (count == 2) { continue; }
+                bits = rotr(bits, d); if (count == 4) { break; }
+            }
+            bool correct = bits == "1101";''',
+                   ('total', 'u', 'visits', 'count', 'correct'), (9, 13, 4, 4, 1))
 
 
 def main():
