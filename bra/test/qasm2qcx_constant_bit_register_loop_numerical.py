@@ -7,6 +7,7 @@
 
 import argparse
 import pathlib
+import re
 import resource
 import unittest
 
@@ -157,6 +158,15 @@ class BackendTests(unittest.TestCase):
             for bit value in FLAGS { rx(pi * float(value)) q; }'''
         for fused in (False, True):
             BackendAuditTests.check(self, self.program(source, fused=fused), (-1 + 0j, 0j))
+
+    def test_documented_example(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx' / 'qasm2qcx.md').read_text()
+        examples = re.findall(r'<!-- constant-bit-register-loop-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        for fused in (False, True):
+            self.check(examples[0], (('count', False), ('visits', False), ('unchanged', False)),
+                       (5, 8, 1), fused=fused)
 
 
 def main():
