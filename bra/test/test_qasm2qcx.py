@@ -585,8 +585,7 @@ class RotationFoundationTests(unittest.TestCase):
             self.value('rotl(uint[6](37), uint(4294967295))')
         with self.assertRaises(qasm2qcx.NoConstantExpressionException):
             self.value('rotl(u, 1)', 'uint[6] u = 37;')
-        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
-            convert('OPENQASM 3; uint[6] u = 37; u = rotl(u, 1);')
+        convert('OPENQASM 3; uint[6] u = 37; u = rotl(u, 1);')
         with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
             convert('OPENQASM 3; bit[8] b; b = rotl(b, 1);')
 
@@ -616,6 +615,46 @@ class RotationFoundationTests(unittest.TestCase):
         expression = self.expression('rotl(uint[6](37), d)')
         _, info, runtime = converter._QASM2QCXConverter__integer_operand_info(expression, None)
         self.assertEqual((info.width, info.is_sized, runtime), (6, True, True))
+
+
+class RuntimeUnsignedRotationTests(unittest.TestCase):
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+
+    def test_emits_checked_normalization_and_zero_guard(self):
+        lines = convert('OPENQASM 3; uint[6] u = 37; int d = -2; uint[6] out = rotl(u, d);')
+        text = '\n'.join(lines)
+        self.assertIn('%= 6', text)
+        self.assertIn('>= 0', text)
+        self.assertIn('+= 6', text)
+        self.assertIn('== 0', text)
+        self.assertIn('<<=', text)
+        self.assertIn('>>=', text)
+        self.assertIn('&= 63', text)
+        self.assertLess(text.index('== 0'), text.index('<<='))
+
+    def test_nested_operands_preserve_width_and_release_scratch_storage(self):
+        converter = self.converter('uint[6] u = 37; int d = 2;')
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        expression = self.expression('rotr(rotl(u, d), int(rotl(u, d)))')
+        converter.visit(expression)
+        result = converter._QASM2QCXConverter__value
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {result})
+        info = converter._QASM2QCXConverter__uint_expression_type(expression)
+        self.assertEqual((info.width, info.is_sized), (6, True))
+        converter._QASM2QCXConverter__release_temporary_variable(result)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_failed_distance_releases_operand_storage_and_restores_state(self):
+        converter = self.converter('uint[6] u = 37; array[int, 2] counts;')
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        previous = (converter._QASM2QCXConverter__value, converter._QASM2QCXConverter__value_type,
+                    converter._QASM2QCXConverter__value_kind)
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            converter.visit(self.expression('rotl(rotl(u, 1), counts[999])'))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual((converter._QASM2QCXConverter__value, converter._QASM2QCXConverter__value_type,
+                          converter._QASM2QCXConverter__value_kind), previous)
 
 
 class PopcountTests(unittest.TestCase):

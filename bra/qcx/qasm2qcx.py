@@ -441,6 +441,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__branch_index: int = 0
         self.__array_index: int = 0
         self.__register_shift_index: int = 0
+        self.__rotation_index: int = 0
         self.__power_index: int = 0
         self.__gate_power_index: int = 0
         self.__condition_index: int = 0
@@ -4837,7 +4838,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def visit_FunctionCall(self, expression: ast.FunctionCall) -> None:
         signature, runtime = self.__function_call_info(expression)
         if signature.rotation:
-            self.__visit_constant_rotation(expression, signature, runtime)
+            self.__visit_rotation(expression, signature, runtime)
             return
         if signature.population_count:
             self.__visit_population_count(expression, runtime)
@@ -4898,17 +4899,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise InvalidConstantFunctionException('Rotation distance outside QCX INT range')
         return distance
 
-    def __visit_constant_rotation(
+    def __visit_rotation(
             self, expression: ast.FunctionCall, signature: _BuiltinFunctionSignature, runtime: bool) -> None:
         if signature.result_type == ValueType.BIT_REGISTER:
             raise InvalidBitOperandException('A rotation register result requires a register context')
         if self.__expression_kind not in (
                 ExpressionKind.CONST_ARITHMETIC, ExpressionKind.ARITHMETIC, ExpressionKind.CONDITIONAL):
             raise UnsupportedOpenQASMError('function call outside a value expression')
+        if self.__expression_kind != ExpressionKind.CONST_ARITHMETIC:
+            self.__visit_runtime_uint_rotation(expression)
+            return
         if runtime:
-            if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
-                raise NoConstantExpressionException
-            raise UnsupportedOpenQASMError('runtime unsigned rotation is not implemented yet')
+            raise NoConstantExpressionException
         previous = (self.__expression_kind, self.__value, self.__value_type, self.__value_kind)
         try:
             self.__expression_kind = ExpressionKind.CONST_ARITHMETIC
@@ -4927,6 +4929,58 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         except Exception:
             self.__expression_kind, self.__value, self.__value_type, self.__value_kind = previous
             raise
+
+    def __visit_runtime_uint_rotation(self, expression: ast.FunctionCall) -> None:
+        previous = (self.__expression_kind, self.__value, self.__value_type, self.__value_kind)
+        previous_used = self.__used_temporary_variables.copy()
+        keep = None
+        prefix = f'QASM2QCX_ROTATION_{self.__rotation_index}'
+        self.__rotation_index += 1
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            argument, distance_expression = expression.arguments
+            _, uint_type, _ = self.__integer_operand_info(argument, None)
+            value, value_type, value_kind = self.__condition_operand(argument)
+            # Snapshot the value before evaluating the distance, and keep all
+            # nested operand/index storage reserved until the result is ready.
+            result = self.__add_new_temporary_variable(ValueType.UINT, uint_type)
+            operand, _ = self.__converted_operand(value, value_type, value_kind, ValueType.UINT)
+            self.__qcx_lines.append(f'LET {result} := {operand}')
+            value, value_type, value_kind = self.__condition_operand(distance_expression)
+            operand, _ = self.__converted_operand(value, value_type, value_kind, ValueType.INT)
+            count = self.__add_new_temporary_variable(ValueType.INT)
+            complement = self.__add_new_temporary_variable(ValueType.INT)
+            tail = self.__add_new_temporary_variable(ValueType.UINT, uint_type)
+            self.__qcx_lines.extend([
+                # UINT-to-INT conversion is checked before normalization. Do
+                # not negate a signed distance: INT_MIN must remain valid.
+                f'LET {count} := {operand}', f'LET {count} %= {uint_type.width}',
+                f'JUMPIF {prefix}_NORMALIZED {count} >= 0',
+                f'LET {count} += {uint_type.width}', f'@{prefix}_NORMALIZED',
+                # Both native-width and width-one inputs must avoid a shift
+                # by their width when the normalized distance is zero.
+                f'JUMPIF {prefix}_DONE {count} == 0',
+                f'LET {complement} := {uint_type.width}', f'LET {complement} -= {count}',
+                f'LET {tail} := {result}',
+            ])
+            operator, opposite = ('<<=', '>>=') if expression.name.name == 'rotl' else ('>>=', '<<=')
+            self.__qcx_lines.extend([
+                f'LET {result} {operator} {count}', f'LET {tail} {opposite} {complement}',
+                f'LET {result} |= {tail}',
+            ])
+            self.__normalize_uint_storage(result, uint_type)
+            self.__qcx_lines.append(f'@{prefix}_DONE')
+            self.__uint_expression_types[id(expression)] = (expression, uint_type)
+            self.__expression_kind = previous[0]
+            self.__value, self.__value_type, self.__value_kind = result, ValueType.UINT, ValueKind.TEMPORARY
+            keep = result
+        except Exception:
+            self.__expression_kind, self.__value, self.__value_type, self.__value_kind = previous
+            raise
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                if temporary != keep:
+                    self.__release_temporary_variable(temporary)
 
     def __visit_population_count(self, expression: ast.FunctionCall, runtime: bool) -> None:
         if self.__expression_kind not in (
