@@ -160,6 +160,7 @@ from the input types, never from the assignment destination:
 | `mod(x, y)` | `int`, `int` | `int` | Copy dividend to a temporary, then `LET temporary %= divisor` |
 | `mod(x, y)` | `float`, `float` | `float` | `APPLY result <- MOD dividend divisor` |
 | `popcount(bits)` | `bit[n]` | `uint` | Unsigned accumulation over register bits |
+| `popcount(value)` | `uint[n]` | `uint` | Low-bit accumulation and right shifts of a private UINT copy |
 | `rotl(value, distance)` / `rotr(value, distance)` | `bit[n]`, `int` | `bit[n]` | Snapshot and circular indexed copy |
 | `rotl(value, distance)` / `rotr(value, distance)` | `uint[n]`, `int` | `uint[n]` | Guarded native shifts, bitwise OR, and width masking |
 | `real(z)` | `complex` | `float` | `LET result := :REAL:operand` |
@@ -337,22 +338,49 @@ arithmetic that has already flushed an operand cannot be repaired. Declared
 floating-point widths, compiler options, and floating-point control modes remain
 unchanged. Floating-point `%` and `%=` remain unsupported.
 
-`popcount(bits)` counts the set (`1`) bits of a bit register without modifying
-it. It returns native, unspecified-width `uint`, independently of the destination
-type. Inputs can be bit-string literals, whole registers (including `bit[1]`),
+`popcount(value)` counts the set (`1`) bits of a bit register or an explicitly
+sized `uint[n]` without modifying it. It returns native, unspecified-width
+`uint`, independently of the input width and destination type.
+
+Register inputs can be bit-string literals, whole registers (including `bit[1]`),
 static range/set selections, or supported register `~`, `&`, `|`, `^`, `<<`, `>>`,
 `rotl`, and `rotr` expressions. Repeated positions in a discrete selection are counted each
-time they appear. Scalar `bit`, scalar register elements, integers, Booleans,
-and whole classical arrays are not register arguments; use a one-position range
+time they appear. Scalar `bit`, scalar bit-register elements, signed integers,
+Booleans, and whole classical arrays are not accepted; use a one-position range
 such as `bits[0:0]` when a one-bit register selection is intended.
 
-Constant calls accept literal register expressions, using exact bit counting.
+Constant calls accept literal register expressions and constant sized-UINT
+expressions, using exact bit counting.
 Named bit registers are runtime values even if their initializers are literals;
-`const bit[n]` declarations remain unsupported. Runtime calls use a `UINT`
+`const bit[n]` declarations remain unsupported. Runtime register calls use a `UINT`
 temporary initialized to the literal-bit subtotal, then add each live bit with
 an explicit unsigned cast. Registers wider than native `UINT` are supported
 without packing their contents into an integer; the register/selection width
 must fit the native `UINT` range so the count cannot overflow.
+
+Unsigned inputs support all existing sized-UINT widths, from one bit through
+native QCX UINT width. Constants, variables, indexed UINT array elements,
+and supported arithmetic, bitwise, shift, and rotation expressions are accepted
+when their resulting type is explicitly sized `uint[n]`. Input expressions obey
+their existing promotion and width-normalization rules before counting; no bits
+above that resulting width contribute. For example, `popcount(uint[6](127))` is
+six, and `popcount(uint[6](63) + uint[6](1))` is zero.
+
+Unspecified-width `uint` inputs remain unsupported, including the native UINT
+result of another `popcount` call. An explicit `uint[n](...)` cast can supply
+the desired input width. Likewise, mixing a sized UINT with a native integer
+literal can produce an unspecified-width result: `popcount(u + 0)` is rejected,
+while `popcount(uint[6](u + 0))` and `popcount(u + uint[6](0))` accept a six-bit
+input when `u` is `uint[6]`.
+
+Runtime unsigned counting evaluates the input once, snapshots it into private
+UINT storage, and repeatedly adds its low bit to a native UINT accumulator before
+shifting the copy right by one. Zero inputs take no counting iterations; all-one
+native UINT inputs require at most the native width. No signed conversion or
+shift by the input width is used, including for `uint[1]`. The result retains
+native UINT arithmetic semantics, and only assignment or an explicit cast to a
+narrow destination masks the count. Indexed and self-referencing assignments
+retain their existing checked-index and snapshot behavior.
 
 The result works in unsigned arithmetic, powers, casts, numeric conditions,
 indexed assignments, and supported loop expressions. As with other numeric
@@ -369,6 +397,10 @@ OPENQASM 3.0;
 bit[8] flags = "10110100";
 uint count = popcount(flags);          // 4
 uint selected = popcount(flags[2:5]); // 3
+uint[6] value = 37;                   // "100101"
+uint unsigned_count = popcount(value); // 3; value remains 37
+const uint FULL_COUNT = popcount(uint[6](-1)); // 6
+uint full_count = FULL_COUNT;
 ```
 
 #### Circular bit rotations
@@ -3665,6 +3697,12 @@ array assignments, nested functions, loops, measurement, skipped shift errors,
 and the example above with and without fusion. Unit tests also cover scalar
 versus register typing, result-width metadata, non-evaluating validation, iterator
 shadowing, and temporary cleanup on failure.
+It also checks every supported sized-UINT width, exact source preservation at
+native UINT_MAX, masked intermediate expressions, arithmetic promotions,
+indexed/self-referencing assignments, runtime loop bounds and steps, typed UINT
+array iterators, skipped and reached errors, and unsigned gate parameters with
+and without fusion. The same driver can be run against optimized and UBSan bra
+builds without native source or build-option changes.
 
 `bra/test/qasm2qcx_rotation_numerical.py` compares constant and runtime rotations
 against a textual circular-rotation reference. It covers native and narrow UINT,

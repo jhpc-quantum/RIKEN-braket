@@ -321,7 +321,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         'floor': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='FLOOR'),),
         'mod': (_BuiltinFunctionSignature((ValueType.INT, ValueType.INT), ValueType.INT, integer_remainder=True),
                 _BuiltinFunctionSignature((ValueType.FLOAT, ValueType.FLOAT), ValueType.FLOAT, qcx_function='MOD')),
-        'popcount': (_BuiltinFunctionSignature((ValueType.BIT_REGISTER,), ValueType.UINT, population_count=True),),
+        'popcount': (_BuiltinFunctionSignature((ValueType.BIT_REGISTER,), ValueType.UINT, population_count=True),
+                     _BuiltinFunctionSignature((ValueType.UINT,), ValueType.UINT, population_count=True)),
         'rotl': (_BuiltinFunctionSignature((ValueType.BIT_REGISTER, ValueType.INT), ValueType.BIT_REGISTER, rotation=True),
                  _BuiltinFunctionSignature((ValueType.UINT, ValueType.INT), ValueType.UINT, rotation=True)),
         'rotr': (_BuiltinFunctionSignature((ValueType.BIT_REGISTER, ValueType.INT), ValueType.BIT_REGISTER, rotation=True),
@@ -442,6 +443,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__array_index: int = 0
         self.__register_shift_index: int = 0
         self.__rotation_index: int = 0
+        self.__population_count_index: int = 0
         self.__power_index: int = 0
         self.__gate_power_index: int = 0
         self.__condition_index: int = 0
@@ -3715,7 +3717,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             argument = expression.arguments[0]
             width = self.__bit_register_expression_width(argument, iterators)
             if width is None:
-                raise InvalidFunctionCallException('Function popcount requires a bit-register operand')
+                source_type, uint_type, runtime = self.__integer_operand_info(argument, iterators)
+                if source_type != ValueType.UINT or uint_type is None or not uint_type.is_sized:
+                    raise InvalidFunctionCallException(
+                        'Function popcount requires a bit-register operand or sized uint[n]')
+                return self.__resolve_builtin_function(name, (ValueType.UINT,)), runtime
             if width > self.QCX_UINT_MAX:
                 raise InvalidFunctionCallException('Function popcount operand width exceeds QCX UINT range')
             return overloads[0], self.__register_expression_runtime(argument, iterators)
@@ -4841,7 +4847,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__visit_rotation(expression, signature, runtime)
             return
         if signature.population_count:
-            self.__visit_population_count(expression, runtime)
+            self.__visit_population_count(expression, signature, runtime)
             return
         if self.__expression_kind != ExpressionKind.CONST_ARITHMETIC:
             if self.__expression_kind not in (ExpressionKind.ARITHMETIC, ExpressionKind.CONDITIONAL):
@@ -4982,7 +4988,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if temporary != keep:
                     self.__release_temporary_variable(temporary)
 
-    def __visit_population_count(self, expression: ast.FunctionCall, runtime: bool) -> None:
+    def __visit_population_count(
+            self, expression: ast.FunctionCall, signature: _BuiltinFunctionSignature, runtime: bool) -> None:
         if self.__expression_kind not in (
                 ExpressionKind.CONST_ARITHMETIC, ExpressionKind.ARITHMETIC, ExpressionKind.CONDITIONAL):
             raise UnsupportedOpenQASMError('function call outside a value expression')
@@ -4996,10 +5003,24 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         keep = False
         try:
             argument = expression.arguments[0]
+            unsigned_operand = signature.operand_types == (ValueType.UINT,)
             if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
-                width = self.__bit_register_expression_width(argument)
-                packed = self.__constant_bit_register_value(argument, width)
+                if unsigned_operand:
+                    _, uint_type, _ = self.__integer_operand_info(argument, None)
+                    self.visit(argument)
+                    if self.__value_kind != ValueKind.LITERAL:
+                        raise NoConstantExpressionException
+                    # Input expressions already apply their unsigned width
+                    # rules. Mask explicitly at the counting boundary as well.
+                    packed = int(self.__value) & uint_type.mask if self.__evaluate_constant else 0
+                else:
+                    width = self.__bit_register_expression_width(argument)
+                    packed = self.__constant_bit_register_value(argument, width)
                 result = packed.bit_count() if self.__evaluate_constant else 0
+            elif unsigned_operand:
+                self.__expression_kind = ExpressionKind.ARITHMETIC
+                result = self.__emit_uint_population_count(argument)
+                kind = ValueKind.TEMPORARY
             else:
                 self.__expression_kind = ExpressionKind.ARITHMETIC
                 with self.__bit_register_expression_value(argument) as values:
@@ -5025,6 +5046,31 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             for temporary in self.__used_temporary_variables - previous_used:
                 if not keep or kind != ValueKind.TEMPORARY or temporary != result:
                     self.__release_temporary_variable(temporary)
+
+    def __emit_uint_population_count(self, argument: ast.Expression) -> str:
+        # The enclosing visitor owns all scratch storage and preserves only
+        # the returned native UINT accumulator, including on failure.
+        _, uint_type, _ = self.__integer_operand_info(argument, None)
+        value, value_type, value_kind = self.__condition_operand(argument)
+        operand, _ = self.__converted_operand(value, value_type, value_kind, ValueType.UINT)
+        remaining = self.__add_new_temporary_variable(ValueType.UINT, uint_type)
+        self.__qcx_lines.append(f'LET {remaining} := {operand}')
+        self.__normalize_uint_storage(remaining, uint_type)
+        result = self.__add_new_temporary_variable(ValueType.UINT)
+        bit = self.__add_new_temporary_variable(ValueType.UINT)
+        prefix = f'QASM2QCX_POPCOUNT_{self.__population_count_index}'
+        self.__population_count_index += 1
+        # Consume a private copy using only unsigned operations. A one-bit
+        # native shift is valid even when the source has declared width one;
+        # no narrowing through INT or shift by the input width is required.
+        self.__qcx_lines.extend([
+            f'LET {result} := 0', f'@{prefix}_LOOP',
+            f'JUMPIF {prefix}_DONE {remaining} == 0',
+            f'LET {bit} := {remaining}', f'LET {bit} &= 1',
+            f'LET {result} += {bit}', f'LET {remaining} >>= 1',
+            f'JUMP {prefix}_LOOP', f'@{prefix}_DONE',
+        ])
+        return result
 
     def __emit_function_real_literal(self, destination: str, value: int | float) -> None:
         # QCX has no portable inf/nan literal. Materialize nonfinite values

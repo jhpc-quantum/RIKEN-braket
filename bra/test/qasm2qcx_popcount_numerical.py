@@ -22,6 +22,117 @@ class BackendTests(unittest.TestCase):
     execute = functions.BackendTests.execute
     check = functions.BackendTests.check
 
+    def check_unsigned(self, source, names, expected):
+        lines = self.program(source, tuple((name, False) for name in names))
+        result = self.execute(lines)
+        self.assertEqual(result.returncode, 0, result.stderr + '\n' + '\n'.join(lines))
+        # UINT source preservation must be exact, including at native UINT_MAX.
+        self.assertEqual([int(value) for value in result.stdout.split()], list(expected), source)
+        type(self).checked += 1
+
+    def test_unsigned_widths_constants_literals_and_live_values(self):
+        native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
+        for width in range(1, native + 1):
+            mask = (1 << width) - 1
+            for value in sorted({0, 1, mask, mask >> 1, 1 << (width - 1), 37 & mask}):
+                expected = sum(character == '1' for character in bin(value)[2:])
+                self.check_unsigned(f'''const uint C = popcount(uint[{width}]({value}));
+                    uint[{width}] u = {value}; uint out = popcount(u);
+                    uint folded = C; uint literal = popcount(uint[{width}]({value}));
+                    uint ones = popcount(uint[{width}](-1));
+                    uint[1] narrow = popcount(u);''',
+                                    ('out', 'folded', 'literal', 'ones', 'narrow', 'u'),
+                                    (expected, expected, expected, width, expected & 1, value))
+
+    def test_unsigned_result_width_and_explicit_self_assignment(self):
+        maximum = self.module.QASM2QCXConverter.QCX_UINT_MAX
+        self.check_unsigned('''uint[8] u = 255;
+            uint power = popcount(u) ** 4;
+            uint complement = ~popcount(uint[1](1));
+            uint[3] narrow = popcount(u);
+            u = popcount(u); uint after = popcount(u);''',
+                            ('power', 'complement', 'narrow', 'u', 'after'),
+                            (4096, maximum - 1, 0, 8, 1))
+
+    def test_unsigned_nested_expression_inputs(self):
+        for expression, expected in (
+                ('~u', 3), ('u + uint[6](31)', 1), ('u * uint[6](3)', 5),
+                ('u / uint[6](2)', 2), ('u % uint[6](3)', 1),
+                ('(u & v) | uint[6](8)', 3), ('u ^ v', 2),
+                ('u << d', 2), ('u >> d', 2), ('u ** uint[6](2)', 3),
+                ('rotl(u, d)', 3), ('rotr(rotl(u, d), -1)', 3),
+                ('uint[3](popcount(u))', 2), ('uint[6](popcount("1011"))', 2)):
+            with self.subTest(expression=expression):
+                self.check_unsigned('uint[6] u = 37; uint[6] v = 7; int d = 2; '
+                                    f'uint out = popcount({expression}); uint sum = popcount(u) + popcount(v);',
+                                    ('out', 'sum', 'u', 'v', 'd'), (expected, 6, 37, 7, 2))
+        self.check('''uint[6] u = 37; float root = sqrt(popcount(u) + 1);
+            uint remainder = uint(mod(popcount(u), 2));
+            bit[4] flags = "1011"; uint mixed = popcount(rotl(flags, int(popcount(u))));''',
+                   (('root', False), ('remainder', False), ('mixed', False)), (2, 1, 3))
+
+    def test_unsigned_indexed_operands_and_overlapping_assignments(self):
+        self.check_unsigned('''array[uint[6], 3] a = {1, 37, 63}; int i = 0;
+            a[a[i]] = popcount(a[a[i]]); a[i] = popcount(a[a[i]]);
+            uint first = a[0]; uint second = a[1]; uint third = a[2];
+            uint last = popcount(a[-1]); uint nested = popcount(rotl(a[i], int(a[1])));''',
+                            ('first', 'second', 'third', 'last', 'nested', 'i'), (2, 3, 63, 6, 1, 0))
+        self.check_unsigned('''array[uint[6], 2] a = {37, 63}; int i = 1;
+            uint out = popcount(a[i - 1]) + popcount(a[i]);
+            a[i] += popcount(a[i]); uint saved = a[i];''', ('out', 'saved'), (9, 5))
+
+    def test_unsigned_conditions_loops_and_scoped_iterators(self):
+        self.check_unsigned('''uint[6] u = 37; uint total = 0; int visits = 0;
+            while (popcount(u) > 0) { u >>= 1; total += popcount(u); visits += 1; }
+            bool ready = bool(popcount(u));''', ('total', 'visits', 'u', 'ready'), (7, 6, 0, 0))
+        self.check_unsigned('''uint[6] u = 37; int visits = 0; uint total = 0;
+            for int i in [0:popcount(u)] { visits += 1; }
+            for int i in [0:popcount(u):6] { visits += 1; }
+            for int n in {popcount(u), popcount(~u)} { total += n; }
+            array[uint[6], 3] a = {37, 63, 0};
+            for uint[6] value in a { total += popcount(value); }
+            bool same = popcount(u) == popcount("1011");''',
+                            ('visits', 'total', 'same'), (7, 15, 1))
+        self.check_unsigned('''uint[6] u = 63; uint total = 0; int visits = 0;
+            while (popcount(u) > 0) {
+                u >>= 1; visits += 1;
+                if (popcount(u) == 4) { continue; }
+                if (popcount(u) == 2) { break; }
+                total += popcount(u);
+            }''', ('total', 'visits', 'u'), (8, 4, 3))
+        self.check_unsigned('''const int W = 6; uint[W] u = 37; uint total = 0;
+            for int W in [0:1] { total += popcount(u); }
+            array[uint[3], 2] a = {7, 1};
+            for uint[3] u in a { total += popcount(u); }
+            total += popcount(u);
+            for int i in [1:0] { for uint[3] u in a { total += popcount(u); } }''',
+                            ('total', 'u'), (13, 37))
+
+    def test_unsigned_short_circuiting_and_reached_errors(self):
+        self.check_unsigned('''uint[6] u = 37; uint[6] zero = 0; int bad = 6;
+            uint out = 7; array[uint[6], 2] a = {1, 2}; int index = 99;
+            if (false) { out = popcount(u / zero); out = popcount(a[index]); }
+            bool off = false && (popcount(u << bad) > 0);
+            bool on = true || (popcount(uint[6](1) / uint[6](0)) > 0);
+            while (false) { out = popcount(u << -1); }
+            for int i in [1:0] { out = popcount(u / zero); }
+            for int i in [1:0] { out = popcount(a[index]); }''',
+                            ('out', 'off', 'on', 'u'), (7, 0, 1, 37))
+        for expression, diagnostic in (
+                ('popcount(u / zero)', 'integer division by zero'),
+                ('popcount(uint[6](1) / uint[6](0))', 'integer division by zero'),
+                ('popcount(u << bad)', 'assertion failed in ASSERT'),
+                ('popcount(u << -1)', 'assertion failed in ASSERT'),
+                ('popcount(a[index])', 'assertion failed in ASSERT')):
+            lines = self.program('uint[6] u = 37; uint[6] zero = 0; int bad = 6; '
+                                 'array[uint[6], 2] a = {1, 2}; int index = 99; '
+                                 f'uint out = {expression};', (('out', False),))
+            result = self.execute(lines)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(diagnostic, result.stderr)
+            self.assertEqual(result.stdout, '')
+            type(self).checked += 1
+
     def test_literals_constants_registers_and_widths_beyond_uint(self):
         for width in (1, 2, 3, 8, 32, 65, 129):
             for bits in ('0' * width, '1' * width, ('10' * width)[:width], '1' + '0' * (width - 1)):
@@ -103,12 +214,23 @@ class BackendTests(unittest.TestCase):
         for fused in (False, True):
             BackendAuditTests.check(self, self.program(source, fused=fused), (0j, complex(1)))
 
+    def test_unsigned_gate_parameters_with_and_without_fusion(self):
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        for fused in (False, True):
+            source = '''include "stdgates.inc"; qubit q; uint[6] u = 37;
+                pow(popcount(rotl(u, -2))) @ x q;
+                rx(pi * (popcount(u) - 1)) q;'''
+            # Three X applications followed by RX(2*pi) produce -|1>.
+            BackendAuditTests.check(self, self.program(source, fused=fused), (0j, complex(-1)))
+
     def test_documented_example(self):
         document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
         examples = re.findall(r'<!-- popcount-example -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
         self.assertEqual(len(examples), 1)
         for fused in (False, True):
-            self.check(examples[0], (('count', False), ('selected', False)), (4, 3), fused=fused)
+            self.check(examples[0], (('count', False), ('selected', False),
+                                    ('unsigned_count', False), ('full_count', False), ('value', False)),
+                       (4, 3, 3, 6, 37), fused=fused)
 
 
 def main():
