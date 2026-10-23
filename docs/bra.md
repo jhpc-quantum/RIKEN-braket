@@ -269,6 +269,7 @@ not literals, casts, or built-in constants.
 | `FLOOR` | `REAL` | `REAL` |
 | `MOD` | `REAL`, `REAL` | `REAL` |
 | `COMPLEX` | `REAL`, `REAL` | `COMPLEX` |
+| `ANGLEBITS` | `REAL`, `INT` | `UINT` |
 
 Only operand types select an overload. Destination types must then match the
 result types exactly; they never select an overload. There is no implicit
@@ -282,6 +283,12 @@ point or exponent has type `REAL`. Explicit typed operands such as `:UINT:1`,
 indexed elements, and built-in symbols retain their declared types. `:REAL:Z`
 and `:IMAG:Z` continue to extract real and imaginary components of a complex
 operand; they are not new functions.
+
+Within `APPLY`, the signed typed literals `:REAL:+inf`, `:REAL:-inf`, and
+`:REAL:+nan` capture nonfinite representations for execution-time function
+validation. They cannot collide with variable identifiers; bare `inf` and `nan`
+retain normal identifier lookup. Functions reject these inputs without updating
+destinations. Calls skipped by a jump do not evaluate them.
 
 `APPLY` rejects a variable name declared in more than one type-specific storage
 map as ambiguous; casts convert values rather than select a storage map.
@@ -464,6 +471,27 @@ reduction avoids library calculations that could mistake it for zero under DAZ.
 Final subnormal results may still flush to signed zero according to the existing
 underflow environment, and operands already flushed by earlier arithmetic cannot
 be recovered. No compiler options or floating-point control modes are changed.
+
+`ANGLEBITS` converts a finite radian value to an unsigned fixed-point angle bit
+pattern: `APPLY BITS <- ANGLEBITS RADIANS WIDTH`. Its signature is
+`(REAL, INT) -> UINT`, with width in `[1, native UINT width]`. It does not declare
+a native ANGLE storage type. A stored result `m` represents a fraction
+`m / 2^WIDTH` of a full turn.
+
+The full turn is the configured REAL representation of `:TWO_PI`. Quantization
+uses the exact ratio of the stored input and that full turn, rounds to nearest
+with ties to even, and wraps modulo `2^WIDTH`. Negative inputs and rounding
+across the full-turn boundary wrap naturally. Integer significand arithmetic
+avoids a prematurely rounded floating-point quotient, including for huge finite
+values. Both signs of zero produce zero. Invalid widths and nonfinite inputs
+are errors, leave the destination unchanged, and identify `ANGLEBITS` in the
+diagnostic. Calls do not change rounding direction or floating-point controls.
+
+`bra/test/classical_function_angle_numerical.py` compares the kernel with an
+independent exact-rational oracle in all three REAL precisions and debug,
+release, and mixed-release modes; `--sanitize` adds UBSan. It covers rounding
+ties and adjacent inputs, wraparound, huge values, stored subnormals, invalid
+inputs, and preservation of floating-point controls.
 
 `ARG` computes the complex argument in radians and rejects zero, including all
 combinations of signed-zero components. For a negative real component,

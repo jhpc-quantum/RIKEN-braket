@@ -285,6 +285,26 @@ int main()
   state.invoke_assign_operation("CRESULT", bra::assign_operation_type::multiplies_assign, ":COMPLEX:RESULT");
   state.invoke_assign_operation("CRESULT", bra::assign_operation_type::plus_assign, ":COMPLEX:RESULT");
   check_call({"R:N"}, function::abs, {"CRESULT"}, "overflow/nonfinite result");
+  state.generate_new_variable("ANGLE_OUT", type::unsigned_integer, 1);
+  state.invoke_apply_operation({"ANGLE_OUT"}, function::anglebits, {":HALF_PI", "4"});
+  state.invoke_assert_operation("ANGLE_OUT", bra::compare_operation_type::equal_to, "4");
+  for (auto const& input: {":REAL:+inf", ":REAL:-inf", ":REAL:+nan", ":REAL:+INF", ":REAL:-INF", ":REAL:+NAN"})
+  {
+    expect_failure([&] { state.invoke_apply_operation({"ANGLE_OUT"}, function::anglebits, {input, "4"}); },
+                   "ANGLEBITS domain error: nonfinite input");
+    state.invoke_assert_operation("ANGLE_OUT", bra::compare_operation_type::equal_to, "4");
+  }
+  for (auto const& width: {"0", "-1", "999"})
+  {
+    expect_failure([&] { state.invoke_apply_operation({"ANGLE_OUT"}, function::anglebits, {":PI", width}); },
+                   "ANGLEBITS width must be");
+    state.invoke_assert_operation("ANGLE_OUT", bra::compare_operation_type::equal_to, "4");
+  }
+  // Bare names are still variables, not special nonfinite literals.
+  state.generate_new_variable("inf", type::real, 1);
+  state.invoke_assign_operation("inf", bra::assign_operation_type::assign, ":HALF_PI");
+  state.invoke_apply_operation({"ANGLE_OUT"}, function::anglebits, {":REAL:inf", "4"});
+  state.invoke_assert_operation("ANGLE_OUT", bra::compare_operation_type::equal_to, "4");
   state.generate_new_variable("R", type::integer, 1);
   expect_failure([&] { state.invoke_apply_operation({"Z"}, function::exp, {"R"}); }, "ambiguous variable type");
 

@@ -7,10 +7,12 @@
 #include <cstring>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 
 #include <boost/math/special_functions/fpclassify.hpp>
 #include <boost/math/special_functions/sign.hpp>
 #include <boost/math/constants/constants.hpp>
+#include <boost/multiprecision/cpp_int.hpp>
 
 #include <bra/classical_function_call.hpp>
 
@@ -28,6 +30,77 @@ namespace bra
       // subnormal from zero, even when the hardware treats it as zero in
       // arithmetic. Do not use value == 0 under fast-math/DAZ.
       return boost::math::fpclassify(value) == FP_ZERO;
+    }
+
+    auto binary_significand(::bra::real_type const magnitude)
+      -> std::pair<boost::multiprecision::cpp_int, int>
+    {
+      using limits = std::numeric_limits< ::bra::real_type >;
+      auto argument = magnitude;
+      auto offset = 0;
+      if (boost::math::fpclassify(magnitude) == FP_SUBNORMAL)
+      {
+        if (not limits::is_iec559)
+          throw std::domain_error{"ANGLEBITS cannot normalize subnormal input with this REAL representation"};
+        // Normalize a stored subnormal without arithmetic on it: DAZ must
+        // not erase its representation before extracting the significand.
+        auto const unit = ::bra::real_type{1};
+        unsigned char bits[sizeof(magnitude)], unit_bits[sizeof(unit)];
+        std::memcpy(bits, &magnitude, sizeof(magnitude));
+        std::memcpy(unit_bits, &unit, sizeof(unit));
+        for (auto index = std::size_t{0u}; index < sizeof(magnitude); ++index)
+          bits[index] |= unit_bits[index];
+        std::memcpy(&argument, bits, sizeof(argument));
+        argument -= unit;
+        offset = limits::min_exponent - 1;
+      }
+      auto exponent = 0;
+      auto fraction = std::frexp(argument, &exponent);
+      boost::multiprecision::cpp_int significand = 0;
+      // These operations are exact binary scalings/subtractions on normal
+      // values. No division or rounding-sensitive floating-point reduction.
+      for (auto bit = 0; bit < limits::digits; ++bit)
+      {
+        fraction *= ::bra::real_type{2};
+        significand <<= 1;
+        if (fraction >= ::bra::real_type{1})
+        {
+          ++significand;
+          fraction -= ::bra::real_type{1};
+        }
+      }
+      return {significand, exponent + offset - limits::digits};
+    }
+
+    auto angle_bits(::bra::real_type const value, ::bra::int_type const width) -> ::bra::uint_type
+    {
+      if (width < 1 or width > std::numeric_limits< ::bra::uint_type >::digits)
+        throw std::domain_error{"ANGLEBITS width must be in [1, native UINT width]"};
+      if (not boost::math::isfinite(value))
+        throw std::domain_error{"ANGLEBITS domain error: nonfinite input"};
+      if (std::numeric_limits< ::bra::real_type >::radix != 2)
+        throw std::domain_error{"ANGLEBITS requires binary REAL storage"};
+      if (zero(value)) return ::bra::uint_type{0u};
+      volatile auto const negative = boost::math::signbit(value);
+      auto const magnitude = negative ? boost::math::changesign(value) : value;
+      auto const input = binary_significand(magnitude);
+      auto const turn = binary_significand(boost::math::constants::two_pi< ::bra::real_type >());
+      auto numerator = input.first;
+      auto denominator = turn.first;
+      auto const shift = input.second - turn.second + width;
+      if (shift >= 0) numerator <<= shift;
+      else denominator <<= -shift;
+      // Quantize the exact ratio of the two stored REAL values. Keeping the
+      // quotient/remainder integral avoids double rounding at half-grid ties
+      // and lost remainders for huge finite inputs under fast-math.
+      boost::multiprecision::cpp_int rounded = numerator / denominator;
+      boost::multiprecision::cpp_int const twice_remainder = (numerator % denominator) << 1;
+      if (twice_remainder > denominator or (twice_remainder == denominator and (rounded & 1) != 0))
+        ++rounded;
+      boost::multiprecision::cpp_int const modulus = boost::multiprecision::cpp_int{1} << width;
+      rounded %= modulus;
+      if (negative and rounded != 0) rounded = modulus - rounded;
+      return rounded.convert_to< ::bra::uint_type >();
     }
 
     auto bounded_exp_argument(::bra::real_type const value) -> ::bra::real_type
@@ -258,6 +331,9 @@ namespace bra
     auto const& registered = ::bra::resolve_classical_function(signature.function, signature.operand_types);
     if (signature.result_types != registered.result_types)
       throw std::invalid_argument{"unsupported result signature"};
+    if (signature.function == ::bra::classical_function_id::anglebits)
+      return {angle_bits(boost::get< ::bra::real_type >(call.operands()[0u]),
+                         boost::get< ::bra::int_type >(call.operands()[1u]))};
     if (signature.function == ::bra::classical_function_id::mod)
     {
       auto const dividend = boost::get< ::bra::real_type >(call.operands()[0u]);

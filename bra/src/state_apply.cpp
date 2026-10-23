@@ -197,6 +197,14 @@ namespace bra
       }
       if (name != ":INT" and name != ":UINT" and name != ":REAL" and name != ":IMAG" and name != ":COMPLEX")
         throw std::invalid_argument{"symbol takes no argument: " + operand};
+      // Signed spellings cannot collide with variable identifiers. Capture
+      // these REAL representations so the selected function can diagnose
+      // nonfinite inputs on execution, including behind classical jumps.
+      if (name == ":REAL" and (argument == "+inf" or argument == "-inf" or argument == "+INF" or argument == "-INF"))
+        return argument.front() == '-' ? -std::numeric_limits<real_type>::infinity()
+                                       : std::numeric_limits<real_type>::infinity();
+      if (name == ":REAL" and (argument == "+nan" or argument == "+NAN"))
+        return std::numeric_limits<real_type>::quiet_NaN();
       if (starts_literal(argument))
       {
         auto const argument_type = literal_type(argument);

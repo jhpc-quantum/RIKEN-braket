@@ -15,7 +15,7 @@ import openqasm3.visitor as visitor
 
 ValueType = enum.Enum(
     'ValueType', [('INT', 1), ('FLOAT', 2), ('BIT', 3), ('COMPLEX', 4), ('BOOL', 5), ('UINT', 6),
-                  ('BIT_REGISTER', 7)])  # Signature marker, not scalar QCX storage.
+                  ('BIT_REGISTER', 7), ('ANGLE', 8)])  # BIT_REGISTER is a signature marker.
 ValueKind = enum.Enum('ValueKind', [('LITERAL', 1), ('TEMPORARY', 2), ('LVALUE', 3)])
 # CONST_ARITHMETIC => ARITHMETIC
 ExpressionKind = enum.Enum('ExpressionKind', [('ARITHMETIC', 1), ('CONST_ARITHMETIC', 2), ('CONDITIONAL', 3)])
@@ -211,6 +211,30 @@ class _UnsignedIntegerType:
 
     def normalize(self, value: int) -> int:
         return value & self.mask
+
+
+@dataclasses.dataclass(frozen=True)
+class _AngleType:
+    width: int
+    is_sized: bool
+
+    def __post_init__(self) -> None:
+        if self.width <= 0:
+            raise ValueError('angle width must be positive')
+
+    @property
+    def mask(self) -> int:
+        return (1 << self.width) - 1
+
+
+@dataclasses.dataclass(frozen=True)
+class _ConstantAngle:
+    angle_type: _AngleType
+    value: int
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.value <= self.angle_type.mask:
+            raise ValueError('constant angle bit pattern must fit its width')
 
 
 @dataclasses.dataclass(frozen=True)
@@ -431,6 +455,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # Retain the node as well as its id: synthetic compound-assignment
         # expressions must not leave entries whose ids can later be reused.
         self.__uint_expression_types: dict[int, tuple[ast.Expression, _UnsignedIntegerType]] = {}
+        self.__angle_variable_types: dict[str, _AngleType] = {}
+        self.__angle_variable_names: set[str] = set()
+        self.__angle_expression_types: dict[int, tuple[ast.Expression, _AngleType]] = {}
         self.__array_element_types: dict[str, ValueType] = {}
         self.__float_variable_name_size_map: dict[str, int] = {}
         self.__bit_variable_name_size_map: dict[str, int] = {}
@@ -445,6 +472,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__const_complex_variable_name_values_map: dict[str, list[complex]] = {}
         self.__const_bool_variable_values_map: dict[str, int] = {}
         self.__const_bit_variable_values_map: dict[str, int] = {}
+        self.__const_angle_values: dict[str, _ConstantAngle] = {}
         self.__const_bit_register_values: dict[str, _ConstantBitRegister] = {}
         self.__declared_constant_variables: set[str] = set()
 
@@ -504,6 +532,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise InvalidLoopRangeException(
                     f'For-loop expansion exceeds {self.MAX_EXPANDED_LOOP_STATEMENTS} statements')
         result = super().visit(node, context)
+        if isinstance(node, ast.Identifier) and self.__value_type == ValueType.ANGLE:
+            info = self.__identifier_angle_type(node.name)
+            if info is not None:
+                self.__angle_expression_types[id(node)] = (node, info)
         if isinstance(node, ast.Expression) and self.__value_type == ValueType.UINT:
             if isinstance(node, ast.Identifier):
                 info = self.__identifier_uint_type(node.name)
@@ -556,6 +588,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError('indexed or register use of a for-loop iterator')
         if identifier_name in self.__bool_variable_names:
             return ValueType.BOOL
+        elif identifier_name in self.__angle_variable_names:
+            return ValueType.ANGLE
         elif identifier_name in self.__bit_variable_name_size_map:
             return ValueType.BIT
         elif identifier_name in self.__int_variable_name_size_map:
@@ -587,6 +621,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __add_new_temporary_variable(
             self, value_type: ValueType,
             uint_type: _UnsignedIntegerType | None = None) -> str:
+        if value_type == ValueType.ANGLE:
+            raise UnsupportedOpenQASMError('angle temporaries require UINT storage and angle width metadata')
         if uint_type is not None and value_type != ValueType.UINT:
             raise ValueError('unsigned width supplied for a non-UINT temporary')
         match value_type:
@@ -648,6 +684,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__const_complex_variable_name_values_map,
                 self.__const_bool_variable_values_map,
                 self.__const_bit_variable_values_map,
+                self.__const_angle_values,
                 self.__const_bit_register_values,
             )
         )
@@ -672,6 +709,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__value_type = ValueType.FLOAT
         elif expression.name in self.__const_bit_register_values:
             raise UnsupportedOpenQASMError('constant bit register requires a register-expression context')
+        elif expression.name in self.__const_angle_values:
+            self.__value = self.__const_angle_values[expression.name].value
+            self.__value_type, self.__value_kind = ValueType.ANGLE, ValueKind.LITERAL
         elif expression.name in self.__const_bit_variable_values_map:
             self.__value = self.__const_bit_variable_values_map[expression.name]
             self.__value_type = ValueType.BIT
@@ -730,6 +770,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise
         if self.__value is None or self.__value_type is None or self.__value_kind is None:
             raise UninitializedValueException
+        if self.__value_type == ValueType.ANGLE:
+            if self.__value_kind == ValueKind.TEMPORARY:
+                self.__release_temporary_variable(str(self.__value))
+            raise UnsupportedOpenQASMError('angle unary arithmetic')
         if self.__value_type in (ValueType.BIT, ValueType.BOOL):
             if self.__value_kind == ValueKind.TEMPORARY:
                 self.__release_temporary_variable(str(self.__value))
@@ -1132,6 +1176,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __converted_operand(
             self, value: str | int | float | complex, value_type: ValueType,
             value_kind: ValueKind, result_type: ValueType) -> tuple[str, set[str]]:
+        if ValueType.ANGLE in (value_type, result_type):
+            if value_type == result_type:
+                return str(value), set()
+            raise NoImplicitCastException
         if result_type == ValueType.BOOL:
             if value_type in (ValueType.BOOL, ValueType.BIT):
                 return str(value), set()
@@ -1975,6 +2023,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, target: ast.Identifier | ast.IndexedIdentifier, *,
             role: str = 'Bit operand') -> Iterator[tuple[list[str], bool]]:
         self.__reject_constant_bit_target(target)
+        self.__reject_constant_angle_target(target)
         if isinstance(target, ast.IndexedIdentifier) and len(target.indices) == 1:
             source_name = target.name.name
             variable_name = self.__capitalize_variable_name(source_name)
@@ -2021,6 +2070,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             parameter: tuple[
                 str | int | float | complex, ValueType, ValueKind]) -> str:
         value, value_type, value_kind = parameter
+        if value_type == ValueType.ANGLE:
+            raise UnsupportedOpenQASMError('angle-typed gate parameters')
         if value_type in (ValueType.INT, ValueType.UINT) and value_kind != ValueKind.LITERAL:
             return f':REAL:{value}'
         return str(value)
@@ -3396,7 +3447,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             false_label: str) -> None:
         if isinstance(condition, ast.Cast) and isinstance(condition.type, ast.BoolType):
             value, value_type, value_kind = self.__condition_operand(condition.argument)
-            if value_type not in (ValueType.BOOL, ValueType.BIT, ValueType.INT, ValueType.UINT, ValueType.FLOAT):
+            if value_type not in (ValueType.BOOL, ValueType.BIT, ValueType.INT, ValueType.UINT, ValueType.FLOAT,
+                                   ValueType.ANGLE):
                 raise UnsupportedOpenQASMError('cast to bool from complex or unsupported type')
             if value_kind == ValueKind.LITERAL:
                 self.__qcx_lines.append(f'JUMP {true_label if value != 0 else false_label}')
@@ -3670,7 +3722,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         for types, value_type in (
                 ((ast.IntType,), ValueType.INT), ((ast.UintType,), ValueType.UINT),
                 ((ast.FloatType,), ValueType.FLOAT), ((ast.ComplexType,), ValueType.COMPLEX),
-                ((ast.BoolType,), ValueType.BOOL), ((ast.BitType,), ValueType.BIT)):
+                ((ast.BoolType,), ValueType.BOOL), ((ast.BitType,), ValueType.BIT),
+                ((ast.AngleType,), ValueType.ANGLE)):
             if isinstance(variable_type, types):
                 return value_type
         raise UnsupportedOpenQASMError('non-scalar loop operand')
@@ -3786,7 +3839,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 binding = scope[name]
                 return ((binding.value_type, True) if isinstance(binding, _RuntimeIteratorBinding)
                         else (ValueType.INT, False))
-        if (name in self.__const_bit_variable_values_map
+        if ((name in self.__const_bit_variable_values_map or name in self.__const_angle_values)
                 and not self.__is_initialization_process
                 and name not in self.__declared_constant_variables):
             raise NoVariableNameException(name)
@@ -3796,7 +3849,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 (self.__const_float_variable_name_values_map, ValueType.FLOAT),
                 (self.__const_complex_variable_name_values_map, ValueType.COMPLEX),
                 (self.__const_bool_variable_values_map, ValueType.BOOL),
-                (self.__const_bit_variable_values_map, ValueType.BIT)):
+                (self.__const_bit_variable_values_map, ValueType.BIT),
+                (self.__const_angle_values, ValueType.ANGLE)):
             if name in constants:
                 return value_type, False
         if name in ('pi', 'tau', 'euler'):
@@ -3807,6 +3861,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if name not in self.__classical_source_types:
             raise NoVariableNameException(name)
         variable_type = self.__classical_source_types[name]
+        if (isinstance(variable_type, ast.AngleType) and not self.__is_initialization_process
+                and self.__capitalize_variable_name(name) not in self.__angle_variable_names):
+            raise NoVariableNameException(name)
         if isinstance(variable_type, ast.BitType) and variable_type.size is not None:
             raise UnsupportedOpenQASMError('whole bit register in loop expression')
         return self.__source_value_type(variable_type), True
@@ -3818,6 +3875,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__unsigned_integer_type(expression.type, iterators)
         operand_type, runtime = self.__loop_expression_info(expression.argument, iterators)
         target_type = self.__source_value_type(expression.type)
+        if target_type == ValueType.ANGLE:
+            self.__angle_type(expression.type, iterators)
+            if operand_type not in (ValueType.FLOAT, ValueType.ANGLE):
+                raise UnsupportedOpenQASMError('angle conversion requires float or angle input')
+            return ValueType.ANGLE, runtime
+        if operand_type == ValueType.ANGLE:
+            if target_type != ValueType.BOOL:
+                raise UnsupportedOpenQASMError('angle cast other than angle or bool')
+            return ValueType.BOOL, runtime
         if operand_type == ValueType.COMPLEX and target_type != ValueType.COMPLEX:
             # Constant numeric casts already extract the real component in
             # visit_Cast. Native UINT also supports checked conversion of a
@@ -4014,7 +4080,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if isinstance(node, ast.UnaryExpression) and node.op.name not in ('-', '!', '~'):
             raise UnsupportedOpenQASMError(f'unary operator {node.op.name}')
         if isinstance(node, ast.Cast) and not isinstance(node.type, (
-                ast.IntType, ast.UintType, ast.FloatType, ast.ComplexType, ast.BoolType, ast.BitType)):
+                ast.IntType, ast.UintType, ast.FloatType, ast.ComplexType, ast.BoolType, ast.BitType,
+                ast.AngleType)):
             raise UnsupportedOpenQASMError(f'loop cast {type(node.type).__name__}')
         for field in dataclasses.fields(node):
             value = getattr(node, field.name)
@@ -4066,7 +4133,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                      | set(self.__const_float_variable_name_values_map)
                      | set(self.__const_complex_variable_name_values_map)
                      | set(self.__const_bool_variable_values_map)
-                     | set(self.__const_bit_variable_values_map))
+                     | set(self.__const_bit_variable_values_map)
+                     | set(self.__const_angle_values))
         runtime_range = False
         runtime_step = False
         for expression, part in expressions:
@@ -4136,6 +4204,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise UnsupportedOpenQASMError(f'assignment operator {child.op.name}')
             if isinstance(child, ast.ClassicalAssignment) and child.op.name in ('&=', '|=', '^=', '<<=', '>>=', '**='):
                 self.__validate_integer_operator_assignment_types(child, iterators)
+            if isinstance(child, (ast.QuantumGate, ast.QuantumPhase)):
+                arguments = child.arguments if isinstance(child, ast.QuantumGate) else [child.argument]
+                for argument in arguments:
+                    if (self.__expression_mentions_angle(argument)
+                            and self.__loop_expression_info(argument, iterators)[0] == ValueType.ANGLE):
+                        raise UnsupportedOpenQASMError('angle-valued gate parameter')
             if (isinstance(child, (ast.QuantumGate, ast.QuantumPhase))
                     and any(modifier.modifier == ast.GateModifierName.pow for modifier in child.modifiers)):
                 # A skipped loop must still reject an invalid powered gate's
@@ -4318,7 +4392,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__validate_bitwise_types(node.set_declaration, iterators)
             return
         if (isinstance(node, ast.Identifier)
-                and node.name in self.__const_bit_variable_values_map):
+                and (node.name in self.__const_bit_variable_values_map
+                     or node.name in self.__const_angle_values
+                     or isinstance(self.__classical_source_types.get(node.name), ast.AngleType))):
             # A skipped plain copy or numeric cast might never otherwise
             # inspect its operand. Still enforce source-order visibility,
             # while letting iterator bindings shadow the constant.
@@ -4328,6 +4404,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                   else node.target if isinstance(node, ast.QuantumMeasurementStatement) else None)
         if target is not None:
             self.__reject_constant_bit_target(target, iterators)
+            self.__reject_constant_angle_target(target, iterators)
+            if (isinstance(node, ast.QuantumMeasurementStatement)
+                    and self.__is_angle_identifier(self.__operand_name(target), iterators)):
+                raise InvalidBitOperandException('A measurement target must be a bit variable')
+        if isinstance(node, ast.ClassicalAssignment):
+            self.__validate_angle_assignment(node, iterators)
         # Register values need register-aware contexts, not accidental use as
         # scalar loop bounds, casts, or indices.
         if isinstance(node, ast.FunctionCall) and node.name.name in ('popcount', 'rotl', 'rotr'):
@@ -4351,9 +4433,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # empty; this inspects types without executing skipped arithmetic.
         if (isinstance(node, ast.FunctionCall)
                 or (isinstance(node, ast.UnaryExpression) and node.op.name in ('~', '-', '!'))
-                or (isinstance(node, ast.Cast) and isinstance(node.type, (ast.BoolType, ast.BitType)))
+                or (isinstance(node, ast.Cast)
+                    and (isinstance(node.type, (ast.BoolType, ast.BitType, ast.AngleType))
+                         or self.__expression_mentions_angle(node)))
                 or (isinstance(node, ast.BinaryExpression) and node.op.name in (
-                    '&', '|', '^', '<<', '>>', '**', '%', '&&', '||', '==', '!=', '<', '<=', '>', '>='))):
+                    '&', '|', '^', '<<', '>>', '**', '%', '&&', '||', '==', '!=', '<', '<=', '>', '>='))
+                or (isinstance(node, ast.BinaryExpression) and self.__expression_mentions_angle(node))):
             self.__loop_expression_info(node, iterators)
             self.__validate_bitwise_indices(node, iterators)
         for field in dataclasses.fields(node):
@@ -4863,10 +4948,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__expression_kind is None:
             return
 
+        if isinstance(expression.type, ast.AngleType):
+            angle_type = self.__angle_type(expression.type)
+            self.__visit_angle_conversion(expression.argument, angle_type)
+            self.__angle_expression_types[id(expression)] = (expression, angle_type)
+            return
         if isinstance(expression.type, ast.BoolType):
             if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
                 self.visit(expression.argument)
-                if self.__value_type not in (ValueType.BOOL, ValueType.BIT, ValueType.INT, ValueType.UINT, ValueType.FLOAT):
+                if self.__value_type not in (ValueType.BOOL, ValueType.BIT, ValueType.INT, ValueType.UINT, ValueType.FLOAT,
+                                            ValueType.ANGLE):
                     raise UnsupportedOpenQASMError('cast to bool from complex or unsupported type')
                 self.__value = int(self.__value != 0) if self.__evaluate_constant else 0
                 self.__value_type = ValueType.BOOL
@@ -4905,6 +4996,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__value is None or self.__value_type is None or self.__value_kind is None:
             raise UninitializedValueException
 
+        if self.__value_type == ValueType.ANGLE:
+            if self.__value_kind == ValueKind.TEMPORARY:
+                self.__release_temporary_variable(str(self.__value))
+            raise UnsupportedOpenQASMError('angle cast other than angle or bool')
         if self.__value_type == ValueType.BOOL:
             self.__value_type = ValueType.INT
         if (target_type == ValueType.INT and self.__value_type == ValueType.UINT
@@ -5396,6 +5491,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__const_complex_variable_name_values_map[variable_name] = [complex()] * num_elements
 
     def __set_constant_variable(self, variable_name: str, variable_type) -> None:
+        if self.__value_type == ValueType.ANGLE:
+            raise NoImplicitCastException
         if isinstance(variable_type, ast.BoolType):
             if (self.__value_type not in (ValueType.BOOL, ValueType.BIT)
                     and not (self.__value_type in (ValueType.INT, ValueType.UINT) and self.__value in (0, 1))):
@@ -5479,6 +5576,74 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__constant_bit_register(name)
             raise InvalidBitOperandException('A constant bit register is read-only')
 
+    def __expression_mentions_angle(self, expression: ast.Expression) -> bool:
+        if isinstance(expression, ast.Cast) and isinstance(expression.type, ast.AngleType):
+            return True
+        if isinstance(expression, ast.Identifier):
+            return (expression.name in self.__const_angle_values
+                    or isinstance(self.__classical_source_types.get(expression.name), ast.AngleType))
+        for field in dataclasses.fields(expression):
+            value = getattr(expression, field.name)
+            children = value if isinstance(value, list) else [value]
+            if any(isinstance(child, ast.Expression) and self.__expression_mentions_angle(child)
+                   for child in children):
+                return True
+        return False
+
+    def __is_angle_identifier(self, name: str, iterators: dict[str, ValueType]) -> bool:
+        # Do not ask scalar expression lookup about unrelated register/array
+        # names. Active iterators can shadow either angle kind.
+        return ((name in self.__const_angle_values
+                 or isinstance(self.__classical_source_types.get(name), ast.AngleType))
+                and self.__loop_identifier_info(ast.Identifier(name), iterators)[0] == ValueType.ANGLE)
+
+    def __validate_angle_assignment(
+            self, statement: ast.ClassicalAssignment, iterators: dict[str, ValueType]) -> None:
+        if self.__is_angle_identifier(self.__operand_name(statement.lvalue), iterators):
+            if isinstance(statement.lvalue, ast.IndexedIdentifier) or statement.op.name != '=':
+                raise UnsupportedOpenQASMError('angle indexing or compound assignment')
+            source_type, _ = self.__loop_expression_info(statement.rvalue, iterators)
+            if source_type not in (ValueType.FLOAT, ValueType.ANGLE):
+                raise UnsupportedOpenQASMError('angle conversion requires float or angle input')
+        elif ((isinstance(statement.rvalue, ast.Cast) and isinstance(statement.rvalue.type, ast.AngleType))
+              or (isinstance(statement.rvalue, ast.Identifier)
+                  and self.__is_angle_identifier(statement.rvalue.name, iterators))):
+            raise NoImplicitCastException
+
+    def __reject_constant_angle_target(
+            self, target: ast.Identifier | ast.IndexedIdentifier,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> None:
+        name = self.__operand_name(target)
+        if ((iterators is not None and name in iterators)
+                or any(name in scope for scope in self.__loop_bindings)):
+            return
+        if name in self.__const_angle_values:
+            self.__loop_identifier_info(ast.Identifier(name), iterators)
+            raise InvalidDeclarationException('A constant angle is read-only')
+
+    def __declare_constant_angle(self, statement: ast.ConstantDeclaration) -> None:
+        name = statement.identifier.name
+        if statement.init_expression is None:
+            raise NoConstantExpressionException
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        try:
+            angle_type = self.__angle_type(statement.type)
+            _, runtime = self.__loop_expression_info(statement.init_expression)
+            if runtime:
+                raise NoConstantExpressionException
+            self.__expression_kind = ExpressionKind.CONST_ARITHMETIC
+            self.__evaluate_constant = True
+            self.__visit_angle_conversion(statement.init_expression, angle_type)
+            if self.__value_type != ValueType.ANGLE or self.__value_kind != ValueKind.LITERAL:
+                raise NoConstantExpressionException
+            constant = _ConstantAngle(angle_type, int(self.__value))
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+        self.__const_angle_values[name] = constant
+        self.__constant_source_types[name] = statement.type
+
     def __declare_constant_scalar_bit(self, statement: ast.ConstantDeclaration) -> None:
         name = statement.identifier.name
         if statement.init_expression is None:
@@ -5543,6 +5708,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         variable_type = statement.type
         variable_name = statement.identifier.name
         self.__register_source_identifier(variable_name)
+        if isinstance(variable_type, ast.AngleType):
+            self.__declare_constant_angle(statement)
+            return
         if isinstance(variable_type, ast.BitType):
             if variable_type.size is None:
                 self.__declare_constant_scalar_bit(statement)
@@ -5582,6 +5750,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 f'Classical variable {variable_name} must have a positive size')
 
         match variable_type:
+            case ast.AngleType():
+                if num_elements != 1 or variable_name in self.__angle_variable_names:
+                    raise InvalidDeclarationException('only scalar angle storage is supported')
+                self.__angle_variable_names.add(variable_name)
+                self.__qcx_lines.append(f'VAR {variable_name} UINT')
+
             case ast.BoolType():
                 self.__bool_variable_names.add(variable_name)
                 self.__qcx_lines.append(f'VAR {variable_name} INT' + (f' {num_elements}' if num_elements > 1 else ''))
@@ -5619,6 +5793,122 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
                 self.__complex_variable_name_size_map[variable_name] = num_elements
                 self.__qcx_lines.append(f'VAR {variable_name} COMPLEX' + (f' {num_elements}' if num_elements > 1 else ''))
+
+    def __angle_type(
+            self, variable_type: ast.AngleType,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _AngleType:
+        if variable_type.size is None:
+            return _AngleType(self.QCX_UINT_WIDTH, False)
+        names = self.__loop_bound_names(variable_type.size)
+        active = set(iterators or ()) | {name for scope in self.__loop_bindings for name in scope}
+        if names & active:
+            raise InvalidDeclarationException('Angle width must be a constant integer, not a loop iterator')
+        value_type, runtime = self.__loop_expression_info(variable_type.size)
+        if value_type not in (ValueType.INT, ValueType.UINT) or runtime:
+            raise InvalidDeclarationException('Angle width must be a constant integer')
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        try:
+            self.__expression_kind = ExpressionKind.CONST_ARITHMETIC
+            self.__evaluate_constant = True
+            self.visit(variable_type.size)
+            if self.__value_kind != ValueKind.LITERAL or self.__value_type not in (ValueType.INT, ValueType.UINT):
+                raise InvalidDeclarationException('Angle width must be a constant integer')
+            width = int(self.__value)
+            if not 1 <= width <= self.QCX_UINT_WIDTH:
+                raise InvalidDeclarationException(f'Angle width must be in [1, {self.QCX_UINT_WIDTH}]')
+            return _AngleType(width, True)
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+
+    def __identifier_angle_type(self, name: str) -> _AngleType | None:
+        if any(name in scope for scope in self.__loop_bindings):
+            return None
+        constant = self.__const_angle_values.get(name)
+        return (constant.angle_type if constant is not None
+                else self.__angle_variable_types.get(self.__capitalize_variable_name(name)))
+
+    def __angle_expression_type(self, expression: ast.Expression) -> _AngleType | None:
+        if isinstance(expression, ast.Identifier):
+            return self.__identifier_angle_type(expression.name)
+        entry = self.__angle_expression_types.get(id(expression))
+        return entry[1] if entry is not None else None
+
+    @staticmethod
+    def __constant_angle_bits(value: float, angle_type: _AngleType) -> int:
+        if not math.isfinite(value):
+            raise InvalidConstantFunctionException('angle conversion: nonfinite input')
+        # Quantize the exact ratio of stored binary64 values, not a rounded
+        # floating-point quotient. Python round(Fraction) uses ties to even;
+        # masking also handles negative inputs and rounding across a full turn.
+        return round(Fraction(value) / Fraction(math.tau) * (1 << angle_type.width)) & angle_type.mask
+
+    @staticmethod
+    def __resize_angle_bits(value: int, source: _AngleType, target: _AngleType) -> int:
+        difference = target.width - source.width
+        return value << difference if difference >= 0 else value >> -difference
+
+    def __visit_angle_conversion(self, expression: ast.Expression, angle_type: _AngleType) -> None:
+        source_type, runtime = self.__loop_expression_info(expression)
+        if source_type not in (ValueType.FLOAT, ValueType.ANGLE):
+            raise UnsupportedOpenQASMError('angle conversion requires float or angle input')
+        if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC and runtime:
+            raise NoConstantExpressionException
+        previous_used = self.__used_temporary_variables.copy()
+        result = None
+        keep = False
+        try:
+            self.visit(expression)
+            value, value_kind = self.__value, self.__value_kind
+            if source_type == ValueType.FLOAT and self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                self.__value = self.__constant_angle_bits(float(value), angle_type) if self.__evaluate_constant else 0
+                self.__value_type, self.__value_kind = ValueType.ANGLE, ValueKind.LITERAL
+                return
+            source_angle_type = self.__angle_expression_type(expression) if source_type == ValueType.ANGLE else None
+            if source_type == ValueType.ANGLE:
+                if source_angle_type is None:
+                    raise UnsupportedOpenQASMError('angle expression without width metadata')
+                if value_kind == ValueKind.LITERAL:
+                    self.__value = self.__resize_angle_bits(int(value), source_angle_type, angle_type)
+                    self.__value_type, self.__value_kind = ValueType.ANGLE, ValueKind.LITERAL
+                    return
+                if source_angle_type.width == angle_type.width:
+                    # A completed operand may own a temporary. Transfer it
+                    # to the caller rather than releasing it in this scope.
+                    result, keep = str(value), value_kind == ValueKind.TEMPORARY
+                    return
+            result = self.__add_new_temporary_variable(
+                ValueType.UINT, _UnsignedIntegerType(angle_type.width, True))
+            if source_type == ValueType.FLOAT:
+                operand = str(value)
+                if value_kind == ValueKind.LITERAL and not math.isfinite(float(value)):
+                    operand = '+nan' if math.isnan(float(value)) else '-inf' if float(value) < 0 else '+inf'
+                self.__qcx_lines.append(f'APPLY {result} <- ANGLEBITS :REAL:{operand} {angle_type.width}')
+            else:
+                self.__qcx_lines.append(f'LET {result} := {value}')
+                difference = angle_type.width - source_angle_type.width
+                operator = '<<=' if difference > 0 else '>>='
+                self.__qcx_lines.append(f'LET {result} {operator} {abs(difference)}')
+            self.__value, self.__value_type, self.__value_kind = result, ValueType.ANGLE, ValueKind.TEMPORARY
+            keep = True
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                if not keep or temporary != result:
+                    self.__release_temporary_variable(temporary)
+
+    def __emit_angle_copy(self, destination: str, angle_type: _AngleType, expression: ast.Expression) -> None:
+        previous = self.__expression_kind
+        previous_used = self.__used_temporary_variables.copy()
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            self.__visit_angle_conversion(expression, angle_type)
+            self.__emit_assignment(destination, ':=', ValueType.ANGLE,
+                                   self.__value, self.__value_type, self.__value_kind)
+        finally:
+            self.__expression_kind = previous
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
 
     def __unsigned_integer_type(
             self, variable_type: ast.UintType,
@@ -6221,6 +6511,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 # a later loop iterator can shadow their dimension constants.
                 self.__uint_variable_types[self.__capitalize_variable_name(statement.identifier.name)] = (
                     self.__unsigned_integer_type(base_type))
+            if isinstance(statement.type, ast.AngleType):
+                self.__angle_variable_types[self.__capitalize_variable_name(statement.identifier.name)] = (
+                    self.__angle_type(statement.type))
             self.__classical_source_types[statement.identifier.name] = statement.type
             if isinstance(statement.type, ast.ArrayType):
                 # Resolve dimensions in declaration scope, before loop iterators
@@ -6245,7 +6538,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if not isinstance(
                 variable_type,
                 (ast.IntType, ast.UintType, ast.FloatType, ast.BitType,
-                 ast.ComplexType, ast.BoolType)):
+                 ast.ComplexType, ast.BoolType, ast.AngleType)):
             raise UnsupportedOpenQASMError(
                 f'classical type {type(variable_type).__name__}')
         num_elements = (
@@ -6258,6 +6551,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__sized_bit_variables.add(variable_name)
 
         if statement.init_expression is None:
+            return
+
+        if isinstance(variable_type, ast.AngleType):
+            if not isinstance(statement.init_expression, ast.Expression):
+                raise UnsupportedOpenQASMError('angle initializer other than an expression')
+            self.__emit_angle_copy(variable_name, self.__angle_variable_types[variable_name], statement.init_expression)
             return
 
         match statement.init_expression:
@@ -6296,8 +6595,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         source_name = self.__operand_name(statement.lvalue)
         self.__reject_constant_bit_target(statement.lvalue)
+        self.__reject_constant_angle_target(statement.lvalue)
         variable_name: str = self.__capitalize_variable_name(source_name)
         variable_type: ValueType = self.__type_of(variable_name)
+        if variable_type == ValueType.ANGLE:
+            if isinstance(statement.lvalue, ast.IndexedIdentifier) or statement.op.name != '=':
+                raise UnsupportedOpenQASMError('angle indexing or compound assignment')
+            self.__emit_angle_copy(variable_name, self.__angle_variable_types[variable_name], statement.rvalue)
+            return
         if variable_name in self.__array_element_types:
             if not isinstance(statement.lvalue, ast.IndexedIdentifier):
                 raise UnsupportedOpenQASMError('whole classical array assignment')
