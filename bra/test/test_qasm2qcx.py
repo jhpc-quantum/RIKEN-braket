@@ -311,6 +311,91 @@ class ConstantBitRegisterExpressionTests(unittest.TestCase):
             converter._QASM2QCXConverter__static_bit_selection(selector, destination=True)
 
 
+class ConstantBitRegisterRuntimeTests(unittest.TestCase):
+    program = staticmethod(ConstantBitRegisterDeclarationTests.program)
+    converter = ConstantBitRegisterDeclarationTests.converter
+    prefix = 'const bit[8] FLAGS = "10001111"; '
+
+    def test_runtime_uses_literal_bits_without_mutable_constant_storage(self):
+        converter = self.converter(self.prefix + '''bit[8] live = FLAGS;
+            bit[4] selected = FLAGS[7:-2:1]; bit scalar = FLAGS[4];
+            scalar = FLAGS[0]; uint count = popcount(FLAGS);
+            bool ready = FLAGS[0] && !FLAGS[4];''')
+        lines = list(converter)
+        self.assertFalse(any('FLAGS0' in line for line in lines))
+        live = converter._QASM2QCXConverter__capitalize_variable_name('live')
+        self.assertEqual([line for line in lines if line.startswith(f'LET {live}:')],
+                         [f'LET {live}:{index} := {value}' for index, value in enumerate((1, 1, 1, 1, 0, 0, 0, 1))])
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(converter._QASM2QCXConverter__const_bit_register_values['FLAGS'],
+                         qasm2qcx._ConstantBitRegister(8, 0x8f))
+
+    def test_mutations_are_rejected_even_in_skipped_and_empty_bodies(self):
+        operations = ('FLAGS = "00000000";', 'FLAGS = FLAGS;', 'FLAGS ^= "11111111";', 'FLAGS <<= 1;',
+                      'FLAGS += 1;', 'FLAGS[0] = false;', 'FLAGS[0] ^= true;',
+                      'FLAGS[0:1] = "00";', 'FLAGS[{0, 1}] &= "11";',
+                      'FLAGS = measure q;', 'FLAGS[0] = measure q[0];',
+                      'FLAGS[0:1] = measure q[0:1];')
+        for operation in operations:
+            for wrapper in ('{}', 'if (false) {{ {} }}', 'while (false) {{ {} }}',
+                            'for int i in [1:0] {{ {} }}'):
+                with self.subTest(operation=operation, wrapper=wrapper):
+                    with self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException, 'read-only'):
+                        self.converter('qubit[8] q; ' + self.prefix + wrapper.format(operation))
+
+    def test_empty_loops_check_constant_source_shapes_and_selection_types(self):
+        prefix = self.prefix + 'bit[4] small; bit scalar; bit[8] live; '
+        for body in ('small = FLAGS;', 'scalar = FLAGS;', 'live = FLAGS[0];',
+                     'small = FLAGS[0:2];', 'scalar = FLAGS[0:0];',
+                     'scalar = FLAGS[999];'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(prefix + 'for int i in [1:0] { ' + body + ' }')
+        for body in ('small = FLAGS[0:3];', 'scalar = FLAGS[0];',
+                     'live = FLAGS;', 'live ^= FLAGS;'):
+            self.converter(prefix + 'for int i in [1:0] { ' + body + ' }')
+
+    def test_forward_references_dynamic_selections_and_collection_iteration_are_rejected(self):
+        for source in ('bit[8] live = FLAGS;', 'bit scalar = FLAGS[0];',
+                       'uint count = popcount(FLAGS);', 'bool ready = FLAGS[0];'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(source + self.prefix)
+        for source in ('int n = 0; bit scalar = FLAGS[n];',
+                       'int n = 0; bool ready = FLAGS[n];',
+                       'int n = 3; bit[4] live = FLAGS[0:n];'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                self.converter(self.prefix + source)
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'iteration over constant bit registers'):
+            self.converter(self.prefix + 'int out; for bit b in FLAGS { out += int(b); }')
+
+    def test_iterator_shadowing_preserves_iterator_read_only_rules(self):
+        self.converter(self.prefix + 'int out; for int FLAGS in [0:1] { out += FLAGS; }')
+        self.converter(self.prefix + 'bit[2] live; bit out; for bit FLAGS in live { out = FLAGS; }')
+        for source in ('for int FLAGS in [1:0] { FLAGS = 0; }',
+                       'bit[2] live; for bit FLAGS in live { FLAGS = false; }'):
+            with self.subTest(source=source), self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'iterator'):
+                self.converter(self.prefix + source)
+
+    def test_constant_operand_context_does_not_release_caller_storage(self):
+        converter = self.converter(self.prefix + 'bit[8] live;')
+        expression = self.program('bit[8] out = FLAGS ^ live;').statements[0].init_expression
+        context = converter._QASM2QCXConverter__bit_register_expression_value
+        with context(expression) as values:
+            self.assertEqual(len(values), 8)
+            caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.INT)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+
+    def test_failed_mixed_expression_releases_scratch_without_mutating_constants(self):
+        converter = self.converter(self.prefix + 'bit[8] live; array[int, 2] counts;')
+        expression = self.program('bit[8] out = (FLAGS ^ live) << counts[999];').statements[0].init_expression
+        context = converter._QASM2QCXConverter__bit_register_expression_value
+        constant = converter._QASM2QCXConverter__const_bit_register_values['FLAGS']
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            with context(expression):
+                pass
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertIs(converter._QASM2QCXConverter__const_bit_register_values['FLAGS'], constant)
+
+
 class BuiltinFunctionSignatureTests(unittest.TestCase):
     @staticmethod
     def expression(source):
