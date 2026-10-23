@@ -3786,6 +3786,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 binding = scope[name]
                 return ((binding.value_type, True) if isinstance(binding, _RuntimeIteratorBinding)
                         else (ValueType.INT, False))
+        if (name in self.__const_bit_variable_values_map
+                and not self.__is_initialization_process
+                and name not in self.__declared_constant_variables):
+            raise NoVariableNameException(name)
         for constants, value_type in (
                 (self.__const_int_variable_name_values_map, ValueType.INT),
                 (self.__const_uint_variable_name_values_map, ValueType.UINT),
@@ -4061,7 +4065,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                      | set(self.__const_uint_variable_name_values_map)
                      | set(self.__const_float_variable_name_values_map)
                      | set(self.__const_complex_variable_name_values_map)
-                     | set(self.__const_bool_variable_values_map))
+                     | set(self.__const_bool_variable_values_map)
+                     | set(self.__const_bit_variable_values_map))
         runtime_range = False
         runtime_step = False
         for expression, part in expressions:
@@ -4311,6 +4316,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # by __validate_loop_body. Never invent values for an empty loop.
         if isinstance(node, ast.ForInLoop):
             self.__validate_bitwise_types(node.set_declaration, iterators)
+            return
+        if (isinstance(node, ast.Identifier)
+                and node.name in self.__const_bit_variable_values_map):
+            # A skipped plain copy or numeric cast might never otherwise
+            # inspect its operand. Still enforce source-order visibility,
+            # while letting iterator bindings shadow the constant.
+            self.__loop_identifier_info(node, iterators)
             return
         target = (node.lvalue if isinstance(node, ast.ClassicalAssignment)
                   else node.target if isinstance(node, ast.QuantumMeasurementStatement) else None)
@@ -5406,7 +5418,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __is_constant_bit_source(self, expression: ast.Expression) -> bool:
         return ((isinstance(expression, ast.Identifier)
-                 and expression.name in self.__const_bit_register_values)
+                 and (expression.name in self.__const_bit_register_values
+                      or expression.name in self.__const_bit_variable_values_map))
                 or (isinstance(expression, ast.IndexExpression)
                     and isinstance(expression.collection, ast.Identifier)
                     and expression.collection.name in self.__const_bit_register_values))
@@ -5890,8 +5903,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
         if constant_source:
             value, value_type, value_kind = self.__condition_operand(expression)
-            if value_type != ValueType.BIT:
-                raise InvalidBitOperandException('Scalar bit assignment requires a scalar bit value')
+            if value_type not in (ValueType.BIT, ValueType.BOOL):
+                raise InvalidBitOperandException('Scalar bit assignment requires a bit or Boolean value')
             self.__emit_assignment(target_names[0], ':=', ValueType.BIT, value, value_type, value_kind)
             return
         boolean_identifier = isinstance(expression, ast.Identifier) and (
