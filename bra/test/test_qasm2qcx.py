@@ -10507,6 +10507,87 @@ class ConstantBitRegisterLoopLoweringTests(unittest.TestCase):
                                      'for int i in [1:0] { for bit value in FLAGS {} }'), ['QUBITS 0'])
 
 
+class ConstantBitRegisterLoopIntegrationTests(unittest.TestCase):
+    program = staticmethod(ConstantBitRegisterDeclarationTests.program)
+    converter = ConstantBitRegisterDeclarationTests.converter
+    prefix = 'const bit[4] FLAGS = "1011"; '
+
+    def test_iterator_and_source_writes_are_rejected_on_skipped_paths(self):
+        iterator_operations = ('value = true;', 'value ^= bit(true);', 'value[0] = false;',
+                               'value = measure q;', 'value[0] = measure q;')
+        source_operations = ('FLAGS = "0000";', 'FLAGS[0] = false;', 'FLAGS ^= "0000";',
+                             'FLAGS = measure wires;')
+        for operations, error in ((iterator_operations, 'iterator'), (source_operations, 'read-only')):
+            for operation in operations:
+                for wrapper in ('{}', 'if (false) {{ {} }}', 'while (false) {{ {} }}',
+                                'continue; {}', 'break; {}', 'for int i in [1:0] {{ {} }}'):
+                    with self.subTest(operation=operation, wrapper=wrapper):
+                        with self.assertRaisesRegex(qasm2qcx.QASM2QCXError, error):
+                            self.converter(self.prefix + 'qubit q; qubit[4] wires; '
+                                + 'for bit value in FLAGS { ' + wrapper.format(operation) + ' }')
+
+    def test_mixed_nesting_keeps_distinct_storage_and_unique_labels(self):
+        converter = self.converter(self.prefix + '''bit[2] live = "01";
+            array[int, 2] numbers = {1, 2}; int stop = 1; int total = 0;
+            for int i in [0:stop] {
+                for bit value in FLAGS {
+                    for bit inner in live { if (inner) { continue; } total += int(value); }
+                    for int number in numbers { if (number == 2) { break; } total += number; }
+                }
+            }''')
+        lines = list(converter)
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+        labels = [line for line in lines if line.startswith('@')]
+        self.assertEqual(len(labels), len(set(labels)))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
+        self.assertEqual(converter._QASM2QCXConverter__expanded_loop_depth, 0)
+
+    def test_shadowed_register_source_is_not_reinterpreted_as_a_collection(self):
+        for body in ('for bit inner in FLAGS {}', 'bitcopy = FLAGS[0];',
+                     'FLAGS = false;', 'FLAGS = measure q;'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                self.converter(self.prefix + 'qubit q; bit bitcopy; for bit FLAGS in FLAGS { ' + body + ' }')
+        self.converter(self.prefix + '''uint total = 0;
+            for bit FLAGS in FLAGS {
+                for int FLAGS in [0:1] { total += uint(FLAGS); }
+                total += uint(FLAGS);
+            }
+            total += popcount(FLAGS);''')
+
+    def test_known_source_bits_do_not_enable_static_qubit_or_register_indices(self):
+        for body in ('x q[int(value)];', 'copy = FLAGS[int(value)];',
+                     'for int i in {value} {}', 'for int i in [0:value] {}'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix + 'include "stdgates.inc"; qubit[2] q; bit copy; '
+                               + 'for bit value in FLAGS { ' + body + ' }')
+
+    def test_failed_nested_body_releases_scratch_but_preserves_caller_and_source(self):
+        program = self.program(self.prefix + '''int out = 0;
+            for bit value in FLAGS {
+                for bit inner in FLAGS { out = int(value ^ inner) + missing; }
+            }''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        source = converter._QASM2QCXConverter__const_bit_register_values['FLAGS']
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.INT)
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            converter.visit(program)
+        self.assertIs(converter._QASM2QCXConverter__const_bit_register_values['FLAGS'], source)
+        self.assertEqual(source, qasm2qcx._ConstantBitRegister(4, 11))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
+        self.assertEqual(converter._QASM2QCXConverter__expanded_loop_depth, 0)
+
+    def test_static_width_stays_in_declaration_scope(self):
+        converter = self.converter('''const uint WIDTH = 4; const bit[WIDTH] FLAGS = "1011";
+            int total = 0;
+            for int WIDTH in [0:1] { for bit value in FLAGS { total += int(value); } }''')
+        self.assertEqual(converter._QASM2QCXConverter__const_bit_register_values['FLAGS'].width, 4)
+        self.assertEqual(converter._QASM2QCXConverter__loop_iterations, 10)
+
+
 class BitRegisterLoopLoweringTests(unittest.TestCase):
     def test_body_is_generated_once_with_live_indexed_bit_load(self) -> None:
         lines = convert('OPENQASM 3.0; bit[3] flags = "101"; int total = 0; '

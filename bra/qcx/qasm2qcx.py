@@ -4363,8 +4363,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     @contextlib.contextmanager
     def __expanded_loop_scope(self) -> Iterator[None]:
-        # Runtime-valued sets still emit one body copy per source element.
-        # Account for those copies without inventing a constant iterator value.
+        # Runtime-valued sets and constant bit registers emit one body copy
+        # per element without making their iterators compile-time constants.
         self.__expanded_loop_depth += 1
         try:
             yield

@@ -73,6 +73,91 @@ class BackendTests(unittest.TestCase):
             bool restored = FLAGS == "1011";''',
                    (('count', False), ('copy', False), ('restored', False)), (3, 1, 1))
 
+    def test_runtime_reentry_and_mixed_loop_nesting(self):
+        self.check('''const bit[3] FLAGS = "101"; bit[2] live = "10";
+            array[int, 2] numbers = {1, 2}; int stop = 1; int total = 0; int visits = 0;
+            for int outer in [0:stop] {
+                for bit value in FLAGS {
+                    for bit inner in live { total += int(value && inner); }
+                    for int number in numbers { total += number * int(value); }
+                    visits += 1;
+                }
+            }
+            int rounds = 0;
+            while (rounds < 2) { for bit value in FLAGS { total += int(value); } rounds += 1; }
+            bool unchanged = FLAGS == "101";''',
+                   (('total', False), ('visits', False), ('rounds', False), ('unchanged', False)), (20, 6, 2, 1))
+
+    def test_live_mutable_inner_register_and_nearest_transfers(self):
+        self.check('''const bit[4] FLAGS = "1011"; bit[3] live = "001";
+            int outervisits = 0; int innervisits = 0; int ones = 0;
+            for bit value in FLAGS {
+                outervisits += 1;
+                for bit inner in live {
+                    innervisits += 1;
+                    if (inner) { live[1] = true; ones += int(inner); continue; }
+                    break;
+                }
+                if (!value) { continue; }
+                ones += int(value);
+            }
+            bool changed = live == "011"; bool unchanged = FLAGS == "1011";''',
+                   (('outervisits', False), ('innervisits', False), ('ones', False),
+                    ('changed', False), ('unchanged', False)), (4, 12, 11, 1, 1))
+
+    def test_shadowing_and_declaration_scope_width(self):
+        self.check('''const uint WIDTH = 4; const bit[WIDTH] FLAGS = "1011";
+            const bit value = false; int total = 0;
+            for int WIDTH in [0:1] {
+                for bit value in FLAGS { total += int(value); }
+            }
+            for bit FLAGS in FLAGS {
+                for int FLAGS in [0:1] { total += FLAGS; }
+                total += int(FLAGS);
+            }
+            bool scalar = !value; bool restored = FLAGS == "1011";
+            uint width = WIDTH;''',
+                   (('total', False), ('scalar', False), ('restored', False), ('width', False)), (13, 1, 1, 4))
+
+    def test_measurement_controlled_execution(self):
+        for initial in (0, 1):
+            self.check(f'''include "stdgates.inc"; qubit q;
+                const bit[4] FLAGS = "1011"; {'x q;' if initial else ''}
+                bit measured = measure q; int count = 0; int visits = 0;
+                for bit value in FLAGS {{
+                    if (measured && value) {{ count += int(value); }}
+                    if (measured) {{ continue; }} visits += 1;
+                }}
+                bool unchanged = FLAGS == "1011";''',
+                       (('count', False), ('visits', False), ('unchanged', False)),
+                       (3 * initial, 4 * (1 - initial), 1))
+
+    def test_skipped_and_reached_errors_and_temporary_reuse(self):
+        self.check('''const bit[4] FLAGS = "1011"; int zero = 0; int total = 0;
+            for bit value in FLAGS {
+                if (false) { total += int(value) / zero; }
+                if (!value) { continue; }
+                if (false && bool(int(value) / zero)) { total = 99; }
+                total += int(value & ~bit(false));
+            }
+            for bit value in FLAGS { if (value) { break; } total = 99; }
+            bool unchanged = FLAGS == "1011";''',
+                   (('total', False), ('unchanged', False)), (3, 1))
+        result = self.execute(self.program('''const bit[3] FLAGS = "101"; int zero = 0; int out = 0;
+            for bit value in FLAGS { if (!value) { out = int(value) / zero; } }'''))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('integer division by zero', result.stderr)
+        self.assertEqual(result.stdout, '')
+        type(self).checked += 1
+
+    def test_gate_parameters_modifiers_and_fusion(self):
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        source = '''include "stdgates.inc"; qubit q; const bit[3] FLAGS = "101";
+            for bit value in FLAGS { pow(int(value)) @ x q; }
+            for bit value in FLAGS { rx(pi * float(value)) q; }'''
+        for fused in (False, True):
+            BackendAuditTests.check(self, self.program(source, fused=fused), (-1 + 0j, 0j))
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
