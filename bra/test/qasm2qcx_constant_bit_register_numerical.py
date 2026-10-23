@@ -7,6 +7,7 @@
 
 import argparse
 import pathlib
+import re
 import resource
 import unittest
 
@@ -132,6 +133,30 @@ class BackendTests(unittest.TestCase):
             self.assertIn(diagnostic, result.stderr)
             self.assertEqual(result.stdout, '')
             type(self).checked += 1
+
+    def test_documented_example(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx' / 'qasm2qcx.md').read_text()
+        examples = re.findall(r'<!-- constant-bit-register-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        for fused in (False, True):
+            self.check(examples[0], (('restored', False), ('count', False), ('selected', False)),
+                       (1, 5, 3), fused=fused)
+
+    def test_gate_parameters_with_and_without_fusion(self):
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        source = '''include "stdgates.inc"; qubit q; const bit[4] FLAGS = "1011";
+            pow(popcount(FLAGS)) @ x q;
+            rx(pi * int(FLAGS[0])) q;'''
+        for fused in (False, True):
+            BackendAuditTests.check(self, self.program(source, fused=fused), (-1j, 0j))
+
+    def test_measurement_controlled_constant_register_use(self):
+        self.check('''include "stdgates.inc"; qubit q; x q; bit measured = measure q;
+            const bit[4] FLAGS = "1011"; bit[4] live;
+            if (measured && FLAGS[0]) { live = FLAGS; }
+            bool same = live == FLAGS; uint count = popcount(live & FLAGS);''',
+                   (('same', False), ('count', False)), (1, 3))
 
 
 def main():

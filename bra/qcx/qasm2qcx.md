@@ -107,6 +107,7 @@ The converter currently covers:
 - fixed-size, one-dimensional `int`, `uint`, `float`, `bool`, and `complex` arrays
   with static and runtime element reads and writes;
 - scalar and register `bit` values, including bit-string initialization;
+- compile-time `const bit[n]` registers, expressions, and static selections;
 - runtime-indexed bit-register element reads, assignments, and scalar
   measurement destinations;
 - scalar `bool` variables and constants, Boolean literals, and expression
@@ -123,7 +124,7 @@ The converter currently covers:
 - integer-set `for` loops with runtime-valued elements captured at loop entry;
 - runtime iteration over one-dimensional `int`, `uint`, `float`, `bool`, and
   `complex` arrays;
-- runtime iteration over bit registers with scalar `bit` iterators;
+- runtime iteration over mutable bit registers with scalar `bit` iterators;
 - runtime `while` loops, including nested loops, `break`, and `continue`;
 - scalar expressions used as gate parameters; and
 - final-state amplitude output through a namespaced pragma.
@@ -133,7 +134,7 @@ Narrow `uint[n]` values use the same native storage with explicit masks, as
 described below. Declared signed-integer and floating-point widths generally
 remain unenforced; shifted signed operands and mixed signed/unsigned operations
 have the explicit width restrictions documented below.
-OpenQASM `bit` values are represented by QCX `INT` variables whose elements
+Mutable OpenQASM `bit` values are represented by QCX `INT` variables whose elements
 are restricted to zero or one by the converter. A measurement is emitted as a
 QCX `M` operation followed immediately by assignment from `:OUTCOME`.
 
@@ -349,10 +350,9 @@ time they appear. Scalar `bit`, scalar bit-register elements, signed integers,
 Booleans, and whole classical arrays are not accepted; use a one-position range
 such as `bits[0:0]` when a one-bit register selection is intended.
 
-Constant calls accept literal register expressions and constant sized-UINT
-expressions, using exact bit counting.
-Named bit registers are runtime values even if their initializers are literals;
-`const bit[n]` declarations remain unsupported. Runtime register calls use a `UINT`
+Constant calls accept literal or named constant-register expressions and constant
+sized-UINT expressions, using exact bit counting. Mutable named bit registers are
+runtime values even if their initializers are literals. Runtime register calls use a `UINT`
 temporary initialized to the literal-bit subtotal, then add each live bit with
 an explicit unsigned cast. Registers wider than native `UINT` are supported
 without packing their contents into an integer; the register/selection width
@@ -424,9 +424,9 @@ oversized magnitudes are valid within native INT range. For example, rotating
 an eight-bit value left by `10` is equivalent to rotating left by `2`, and
 rotating left by `-2` is equivalent to rotating right by `2`.
 
-Constant calls use exact integer arithmetic. Literal register expressions can
-be constant inputs, but named registers remain runtime values and `const bit[n]`
-declarations remain unsupported. Runtime calls evaluate each operand once and
+Constant calls use exact integer arithmetic. Literal and named constant-register
+expressions can be constant inputs; mutable registers remain runtime values.
+Runtime calls evaluate each operand once and
 hold temporary results through the operation. Register snapshots protect
 self-assignment and partially overlapping or reordered destinations. Selection
 order defines bit significance, and repeated source positions remain distinct
@@ -583,6 +583,51 @@ without `sqrt` calls.
 Other OpenQASM mathematical built-ins, user-defined functions, extern calls,
 and discarded function-call statements remain unsupported. Native bra `ABS`
 and `ARG` are not exposed as OpenQASM function extensions by this converter.
+
+### Constant bit registers
+
+`const bit[n]` declares an immutable, compile-time register. Its width must be a
+positive constant integer, and its initializer must be a constant register
+expression of exactly that width. Bit-string literals and earlier constant
+registers support `~`, `&`, `|`, `^`, `<<`, `>>`, `rotl`, and `rotr`, static
+selections, `popcount`, and equal-width `==`/`!=` comparisons. Widths above the
+native integer width are supported. No QCX storage is allocated for the constant;
+runtime uses supply literal bits, including in mixed constant/mutable register
+expressions, copies into mutable registers, conditions, and gate parameters.
+
+As for mutable registers, index zero is the least significant bit. Range bounds
+are inclusive, negative static indices count from the end, and the first position
+in a range/set selection becomes the least significant selected bit. Repeated
+source positions are allowed. `FLAGS[0]` is a scalar bit, whereas `FLAGS[0:0]`
+and `FLAGS[{0}]` are one-bit registers.
+
+Declarations retain source-order visibility: self-references, forward references,
+and duplicate names are rejected. Widths are fixed in declaration scope, even
+when loop iterators later shadow width constants. An iterator can also shadow
+the register name without changing the original constant. All assignments,
+compound assignments, indexed writes, and measurement destinations targeting
+the constant are rejected, including in skipped branches and empty loops.
+Short-circuiting suppresses unreached value arithmetic, but names, types, widths,
+and static selection bounds are still validated.
+
+<!-- constant-bit-register-example -->
+```qasm
+OPENQASM 3.0;
+const bit[8] FLAGS = "10001111";
+const bit[8] ROTATED = rotl(FLAGS, 2);
+const bit[4] SELECTED = FLAGS[7:-2:1]; // "1101"
+const uint COUNT = popcount(FLAGS);
+bit[8] live = ROTATED;
+bool restored = rotr(live, 2) == FLAGS; // true
+uint count = COUNT;                    // 5
+uint selected = popcount(SELECTED);    // 3
+```
+
+Scalar `const bit`, runtime-dependent constant-register selections, direct
+iteration over constant registers, register casts, aliases, concatenation, and
+whole-array constants remain unsupported. Constant registers can nevertheless
+be referenced inside supported loop bodies. General block-local declarations
+remain unsupported.
 
 ### Unsigned integers
 
@@ -853,8 +898,7 @@ Register values are supported in `popcount`, `rotl`/`rotr`, register assignments
 comparisons described below; they are not bare conditions. Integer/register casts,
 indexing of computed results, or register expressions as loop bounds or
 iteration collections remain unsupported. Static selection operations are described below.
-Concatenation, aliases, and `const bit[n]` declarations
-remain outside this subset. Existing direct
+Concatenation and aliases remain outside this subset. Existing direct
 bit-register copies and indexed scalar-bit operations retain their behavior.
 
 ### Whole-bit-register shifts
@@ -919,7 +963,7 @@ reads when a shift modifies the iterated register.
 Shifts on scalar bits and computed-result indexing remain unsupported. Static
 selection shifts are described below; rotations have their own rules above.
 This does not add aliases, concatenation, register
-casts or ordered comparisons, `const bit[n]` declarations, or register-valued scalar
+casts or ordered comparisons, or register-valued scalar
 conditions/loop bounds. General count-expression overflow checks remain
 separate work.
 
@@ -1009,8 +1053,8 @@ Results can initialize or be assigned to Boolean variables or scalar bits, be
 compared with Boolean/scalar-bit values, and be used in `if`/`else`, `while`,
 and logical `!`, `&&`, and `||` expressions. Supported explicit casts can convert
 the Boolean result; this does not introduce casts of register values themselves.
-Constant Boolean declarations accept comparisons of literal register expressions
-with constant shift counts. `const bit[n]` variables remain unsupported.
+Constant Boolean declarations accept comparisons of literal and named constant
+register expressions with constant shift counts.
 
 Both complete operands are evaluated left to right before any mismatching bit
 can end the comparison. Outer logical operators retain short-circuit evaluation,
@@ -3406,7 +3450,8 @@ outside this subset.
 ## Bit-register for loops
 
 The converter supports `for bit name in flags` when `flags` is a previously
-declared `bit[N]` register. Elements are visited in increasing index order,
+declared mutable `bit[N]` register. Direct iteration over `const bit[N]`
+registers remains unsupported. Elements are visited in increasing index order,
 including repeated values. Bit zero is the rightmost bit in a source bit string:
 
 ```qasm
@@ -3589,6 +3634,7 @@ The current prototype does not reliably support:
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
 - scalar-bit shifts and runtime-dependent register selections,
+  scalar `const bit` declarations, direct iteration over constant bit registers,
   ordered bit-register comparisons, whole-array bitwise operations, direct
   Boolean bitwise operations, or classical functions other than the
   `exp`/`sqrt`/`log`/`sin`/`cos`/`tan`/`arcsin`/`arccos`/`arctan`/`ceiling`/`floor`/
@@ -3703,6 +3749,14 @@ indexed/self-referencing assignments, runtime loop bounds and steps, typed UINT
 array iterators, skipped and reached errors, and unsigned gate parameters with
 and without fusion. The same driver can be run against optimized and UBSan bra
 builds without native source or build-option changes.
+
+`bra/test/qasm2qcx_constant_bit_register_numerical.py` checks named constant
+registers through 129 bits, folded expressions and selections, runtime copies
+and mixed expressions, scalar extraction, loop shadowing, short-circuiting,
+source preservation, reached errors, gate parameters, measurement-controlled
+execution, and the constant-register example with and without fusion.
+Unit tests additionally check declaration visibility, immutability on skipped
+paths, width/shape validation, and temporary cleanup.
 
 `bra/test/qasm2qcx_rotation_numerical.py` compares constant and runtime rotations
 against a textual circular-rotation reference. It covers native and narrow UINT,
@@ -4136,6 +4190,7 @@ python3 bra/test/qasm2qcx_inverse_trigonometric_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_rounding_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_mod_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_popcount_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_constant_bit_register_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_rotation_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_u_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_inverse_numerical.py --bra bra/bin/bra
