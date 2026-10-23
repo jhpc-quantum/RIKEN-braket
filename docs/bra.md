@@ -602,6 +602,11 @@ that round to zero at native floating-point precision; this also handles
 unfused execution and ensure `S`, `T`, and their controlled/adjoint forms work
 on small states as well.
 
+The OpenQASM converter uses these existing instructions to decompose scalar
+angle-valued phase gates into binary phase contributions. See
+[angle-valued phase gates](../bra/qcx/qasm2qcx.md#angle-valued-phase-gates) for
+the supported gates, modifiers, runtime bit tests, and conversion semantics.
+
 The native regression suite checks complex amplitudes on one- through four-qubit
 states, including cache boundaries, signed exponents, integer endpoints, variable
 operands, and fusion:

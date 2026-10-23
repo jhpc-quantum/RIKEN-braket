@@ -481,6 +481,16 @@ class AnglePhaseModifierTests(unittest.TestCase):
     program = staticmethod(ScalarAngleFoundationTests.program)
     prefix = 'include "stdgates.inc"; qubit[5] q; const angle[4] A = 5 * pi / 8; '
 
+    def test_documented_angle_phase_example(self):
+        document = (CONVERTER_PATH.parent / 'qasm2qcx.md').read_text()
+        examples = re.findall(r'<!-- angle-phase-example -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        program = qasm2qcx.openqasm3.parser.parse(examples[0])
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(list(converter)[-1], 'DO AMPLITUDES')
+
     def test_constant_inverses_and_powers_are_reduced_without_gate_repetition(self):
         for modifiers, bits, inverse in (('inv @', 5, True), ('inv @ inv @', 5, False),
                                          ('pow(3) @', 15, False), ('pow(-3) @', 15, True),

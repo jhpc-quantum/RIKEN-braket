@@ -74,6 +74,29 @@ class BackendTests(unittest.TestCase):
                         with self.subTest(gate=gate, width=width, bits=bits, basis=basis):
                             self.check_phase(source, width, bits, (wires,), basis=basis)
 
+    def test_documented_angle_phase_example(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx' / 'qasm2qcx.md').read_text()
+        examples = re.findall(r'<!-- angle-phase-example -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        for fused in (False, True):
+            lines = self.program(examples[0])
+            if fused:
+                lines.insert(1, 'BEGIN FUSION')
+                lines.insert(len(lines) - 1, 'END FUSION')  # Flush before pragma-requested output.
+            result = self.execute(lines)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            actual = {int(index, 2): complex(float(real), float(imaginary)) for index, real, imaginary in
+                      re.findall(r'^([01]+) => (\S+) \+ (\S+) i$', result.stdout, re.MULTILINE)}
+            self.assertEqual(set(actual), set(range(8)))
+            for index in range(8):
+                # Directly apply the three documented diagonal operations.
+                eighths = (5 if index & 1 else 0)
+                eighths += 1 if not index & 4 and index & 2 else 0
+                eighths += 5 if index & 1 and index & 4 else 0
+                expected = cmath.exp(1j * eighths * math.pi / 8) / math.sqrt(8)
+                self.assertTrue(cmath.isclose(actual[index], expected, rel_tol=1e-5, abs_tol=2e-6))
+            type(self).checked += 1
+
     def test_constant_width_casts_and_wrapped_inputs(self):
         for fused in (False, True):
             for expression, width, bits in (('angle[8](A)', 8, 80), ('angle[2](A)', 2, 1),
@@ -208,6 +231,37 @@ class BackendTests(unittest.TestCase):
                           + f'negctrl @ inv @ pow(negative) @ pow(positive) @ pow({(1 << 100) + 1}) @ p(live) q[2], q[0];')
                 expected = (-bits * (signed_min + 1) * factor * ((1 << 100) + 1)) % (1 << width)
                 self.check_phase(source, width, expected, (((2, 0), 0),), fused=fused, preserved=(('live', bits),))
+
+    def test_exact_powered_bits_at_every_width(self):
+        native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
+        minimum = self.module.QASM2QCXConverter.QCX_INT_MIN
+        maximum = self.module.QASM2QCXConverter.QCX_UINT_MAX
+        huge = (1 << 100) + 1
+        cases = (('int a = -1;', 'pow(a) @', -1, 1),
+                 (f'int a = {minimum};', 'inv @ pow(a) @', minimum, -1),
+                 (f'uint a = {maximum};', 'pow(a) @ pow(3) @', maximum, 3),
+                 (f'int a = {minimum + 1}; uint b = {maximum};',
+                  f'pow(a) @ pow(b) @ pow({huge}) @', (minimum + 1) * maximum, huge),
+                 ('int a = -1;', 'pow(0) @ pow(a) @', -1, 0))
+        for width in range(1, native + 1):
+            for bits in sorted({1, (1 << width) - 1}):
+                radians = math.ldexp(math.tau * bits, -width)
+                for declarations, modifiers, runtime_power, constant_power in cases:
+                    source = (f'include "stdgates.inc"; qubit q; const angle[{width}] A = {radians!r}; '
+                              + f'angle[{width}] live = A; {declarations} {modifiers} p(live) q;')
+                    lines = self.program(source, (('live', False),))
+                    # Observe the actual production snapshot after all modular
+                    # arithmetic/sign handling and before its first bit test.
+                    # This checks bits that six-digit amplitude printing hides.
+                    jump = next(index for index, line in enumerate(lines)
+                                if line.startswith('JUMPIF ') and '_ANGLE_0_0_SKIP ' in line)
+                    snapshot = lines[jump - 2].split()[-1]
+                    lines.insert(jump - 2, f'PRINTLN {snapshot}')
+                    result = self.execute(lines)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    expected = (bits * runtime_power * abs(constant_power)) % (1 << width)
+                    self.assertEqual(result.stdout.split(), [str(expected), str(bits)], source)
+                    type(self).checked += 1
 
     def test_power_capture_array_iterators_and_skipped_checks(self):
         for fused in (False, True):
