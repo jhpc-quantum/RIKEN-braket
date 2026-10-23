@@ -647,7 +647,7 @@ class ConstantBitRegisterRuntimeTests(unittest.TestCase):
                      'live = FLAGS;', 'live ^= FLAGS;'):
             self.converter(prefix + 'for int i in [1:0] { ' + body + ' }')
 
-    def test_forward_references_dynamic_selections_and_collection_iteration_are_rejected(self):
+    def test_forward_references_and_dynamic_selections_are_rejected(self):
         for source in ('bit[8] live = FLAGS;', 'bit scalar = FLAGS[0];',
                        'uint count = popcount(FLAGS);', 'bool ready = FLAGS[0];'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -657,8 +657,6 @@ class ConstantBitRegisterRuntimeTests(unittest.TestCase):
                        'int n = 3; bit[4] live = FLAGS[0:n];'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                 self.converter(self.prefix + source)
-        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'iteration over constant bit registers'):
-            self.converter(self.prefix + 'int out; for bit b in FLAGS { out += int(b); }')
 
     def test_iterator_shadowing_preserves_iterator_read_only_rules(self):
         self.converter(self.prefix + 'int out; for int FLAGS in [0:1] { out += FLAGS; }')
@@ -10408,15 +10406,105 @@ class ConstantBitRegisterLoopValidationTests(unittest.TestCase):
                 convert('OPENQASM 3; ' + self.prefix + 'const bit ON = true; bit scalar; '
                         + f'for bit value in {source} {{}}')
 
-    def test_emission_remains_explicitly_guarded_until_lowering_stage(self):
+    def test_empty_body_emission_preserves_source_and_releases_storage(self):
         program = self.program(self.prefix + 'for bit value in FLAGS {}')
         converter = qasm2qcx.QASM2QCXConverter(program)
-        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'lowering is not implemented'):
-            converter.visit(program)
-        self.assertEqual(list(converter), ['QUBITS 0'])
+        source = converter._QASM2QCXConverter__const_bit_register_values['FLAGS']
+        converter.visit(program)
+        self.assertIs(converter._QASM2QCXConverter__const_bit_register_values['FLAGS'], source)
+        self.assertFalse(any('FLAGS' in line for line in list(converter)))
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
         self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
         self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
+
+
+class ConstantBitRegisterLoopLoweringTests(unittest.TestCase):
+    program = staticmethod(ConstantBitRegisterDeclarationTests.program)
+    converter = ConstantBitRegisterDeclarationTests.converter
+
+    def test_literal_bits_are_emitted_low_index_first_without_source_storage(self):
+        for bits in ('0', '1', '1011', '1' + '0' * 64, ('101100' * 22)[:129]):
+            with self.subTest(width=len(bits)):
+                converter = self.converter(f'const bit[{len(bits)}] FLAGS = "{bits}"; '
+                                           'for bit value in FLAGS {}')
+                lines = list(converter)
+                iterator = next(line.split()[1] for line in lines if line.startswith('VAR '))
+                self.assertEqual([line for line in lines if line.startswith('LET ')],
+                                 [f'LET {iterator} := {bit}' for bit in reversed(bits)])
+                self.assertEqual(sum(line.startswith('VAR ') for line in lines), 1)
+                self.assertFalse(any('FLAGS' in line for line in lines))
+                self.assertEqual(converter._QASM2QCXConverter__loop_iterations, len(bits))
+                self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_iterator_binding_stays_runtime_bit_in_every_expanded_body(self):
+        program = self.program('const bit[3] FLAGS = "101"; bit copy; '
+                               'for bit value in FLAGS { copy = value; }')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        visit_assignment = converter.visit_ClassicalAssignment
+        observed = []
+        def capture(statement):
+            info = converter._QASM2QCXConverter__loop_expression_info(statement.rvalue)
+            observed.append(info)
+            visit_assignment(statement)
+        with patch.object(converter, 'visit_ClassicalAssignment', side_effect=capture):
+            converter.visit(program)
+        self.assertEqual(observed, [(qasm2qcx.ValueType.BIT, True)] * 3)
+
+    def test_transfers_have_unique_resolved_labels_and_hoisted_storage(self):
+        lines = convert('''OPENQASM 3; const bit[4] FLAGS = "1011"; int count;
+            for bit value in FLAGS {
+                if (!value) { continue; }
+                count += int(value);
+                if (count == 2) { break; }
+            }''')
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+        labels = [line for line in lines if line.startswith('@')]
+        self.assertEqual(len(labels), len(set(labels)))
+        first_let = next(index for index, line in enumerate(lines) if line.startswith('LET '))
+        self.assertTrue(all(index < first_let for index, line in enumerate(lines)
+                            if line.startswith('VAR QASM2QCX_')))
+
+    def test_iteration_budget_is_checked_before_any_emission(self):
+        program = self.program('const bit[4] FLAGS = "1011"; for bit value in FLAGS {}')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        with patch.object(converter, 'MAX_LOOP_ITERATIONS', 3):
+            with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'iterations'):
+                converter.visit(program)
+        self.assertEqual(list(converter), ['QUBITS 0'])
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_LOOP_ITERATIONS', 4):
+            convert('OPENQASM 3; const bit[4] FLAGS = "1011"; for bit value in FLAGS {}')
+
+    def test_conversion_wide_iteration_and_statement_budgets(self):
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_LOOP_ITERATIONS', 5):
+            with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'iterations'):
+                convert('OPENQASM 3; const bit[3] FLAGS = "101"; '
+                        'for bit value in FLAGS {} for bit value in FLAGS {}')
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_LOOP_ITERATIONS', 4):
+            with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'iterations'):
+                convert('OPENQASM 3; const bit[2] FLAGS = "10"; '
+                        'for bit value in FLAGS { for bit inner in FLAGS {} }')
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_EXPANDED_LOOP_STATEMENTS', 2):
+            with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'statements'):
+                convert('OPENQASM 3; const bit[3] FLAGS = "101"; int count; '
+                        'for bit value in FLAGS { count += int(value); }')
+
+    def test_output_budget_failure_restores_context_and_caller_temporaries(self):
+        program = self.program('const bit[4] FLAGS = "1011"; for bit value in FLAGS {}')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.INT)
+        with patch.object(converter, 'MAX_LOOP_OUTPUT_LINES', 4):
+            with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'QCX lines'):
+                converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
+        self.assertEqual(converter._QASM2QCXConverter__expanded_loop_depth, 0)
+
+    def test_empty_outer_loop_does_not_expand_constant_source(self):
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_LOOP_ITERATIONS', 0):
+            self.assertEqual(convert('OPENQASM 3; const bit[4] FLAGS = "1011"; '
+                                     'for int i in [1:0] { for bit value in FLAGS {} }'), ['QUBITS 0'])
 
 
 class BitRegisterLoopLoweringTests(unittest.TestCase):

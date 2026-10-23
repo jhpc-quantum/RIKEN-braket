@@ -4504,16 +4504,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         body_label = f'QASM2QCX_LOOP_{loop_index}_BODY'
         next_label = f'QASM2QCX_LOOP_{loop_index}_NEXT'
         end_label = f'QASM2QCX_LOOP_{loop_index}_END'
+        if isinstance(source, _ConstantBitRegister):
+            self.__visit_constant_bit_register_for(statement, source, loop_index)
+            return
         if self.__is_initialization_process:
             with self.__iterator_binding(statement.identifier.name, binding), self.__loop_context(end_label, next_label):
                 for child in statement.block:
                     self.visit(child)
             return
-
-        if isinstance(source, _ConstantBitRegister):
-            # Source validation is shared with mutable collection loops;
-            # literal-bit unrolling is added separately from this foundation.
-            raise UnsupportedOpenQASMError('iteration over constant bit registers: lowering is not implemented')
 
         previous_temporaries = self.__declared_temporary_variables.copy()
         previous_used = self.__used_temporary_variables.copy()
@@ -4540,6 +4538,41 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # No expression result escapes a collection loop. Also release
             # body temporaries left behind by failed expression lowering,
             # without disturbing storage reserved by enclosing callers.
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
+    def __visit_constant_bit_register_for(
+            self, statement: ast.ForInLoop, source: _ConstantBitRegister, loop_index: int) -> None:
+        count = source.width
+        if count > self.MAX_LOOP_ITERATIONS - self.__loop_iterations:
+            raise InvalidLoopRangeException(
+                f'For-loop expansion exceeds {self.MAX_LOOP_ITERATIONS} iterations')
+        self.__loop_iterations += count
+        end_label = f'QASM2QCX_LOOP_{loop_index}_END'
+        previous_temporaries = self.__declared_temporary_variables.copy()
+        previous_used = self.__used_temporary_variables.copy()
+        iterator = (f'QASM2QCX_LOOP_{loop_index}_ITERATOR' if self.__is_initialization_process
+                    else self.__add_new_temporary_variable(ValueType.BIT))
+        try:
+            # Keep BIT/runtime dependency semantics even though each source
+            # bit is known. A plain integer binding would change typing and
+            # incorrectly permit compile-time uses of the loop variable.
+            with self.__iterator_binding(statement.identifier.name, _RuntimeIteratorBinding(iterator, ValueType.BIT)), \
+                    self.__expanded_loop_scope():
+                for index in range(count):
+                    if not self.__is_initialization_process:
+                        self.__qcx_lines.append(f'LET {iterator} := {(source.value >> index) & 1}')
+                    with self.__loop_context(end_label, f'QASM2QCX_LOOP_{loop_index}_NEXT_{index}') as frame:
+                        for child in statement.block:
+                            self.visit(child)
+                    if not self.__is_initialization_process:
+                        self.__qcx_lines.append(f'@{frame.continue_label}')
+                        self.__check_loop_output_limit()
+            if not self.__is_initialization_process:
+                self.__qcx_lines.append(f'@{end_label}')
+                self.__hoist_temporary_declarations(previous_temporaries)
+                self.__check_loop_output_limit()
+        finally:
             for temporary in self.__used_temporary_variables - previous_used:
                 self.__release_temporary_variable(temporary)
 
