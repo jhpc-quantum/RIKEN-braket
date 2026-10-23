@@ -24,24 +24,27 @@ class BackendTests(unittest.TestCase):
     program = functions.BackendTests.program
     execute = functions.BackendTests.execute
 
-    def check_phase(self, source, width, bits, conditions, *, basis=None, fused=False, preserved=()):
+    def check_phase(self, source, width, bits, conditions, *, basis=None, fused=False, preserved=(), qubits=3):
         # Reference the whole diagonal phase, not a product of the emitted R
         # gates. Use a signed representative to resolve phases near one turn.
         signed = bits if bits <= (1 << (width - 1)) else bits - (1 << width)
         phase = cmath.exp(1j * math.ldexp(math.tau * signed, -width))
         if basis is None:
-            preparation = 'h q; s q[0]; t q[2]; '
-            initial = [(1j if index & 1 else 1) * (cmath.exp(1j * math.pi / 4) if index & 4 else 1)
-                       / math.sqrt(8) for index in range(8)]
+            preparation = f'h q; s q[0]; t q[{qubits - 1}]; '
+            initial = [(1j if index & 1 else 1)
+                       * (cmath.exp(1j * math.pi / 4) if index & (1 << (qubits - 1)) else 1)
+                       / math.sqrt(1 << qubits) for index in range(1 << qubits)]
         else:
-            preparation = ''.join(f'x q[{bit}]; ' for bit in range(3) if basis & (1 << bit))
-            initial = [complex(index == basis) for index in range(8)]
+            preparation = ''.join(f'x q[{bit}]; ' for bit in range(qubits) if basis & (1 << bit))
+            initial = [complex(index == basis) for index in range(1 << qubits)]
         expected = initial[:]
         for wires in conditions:
-            mask = sum(1 << wire for wire in wires)
-            expected = [value * phase if index & mask == mask else value
+            controls = [(wire, 1) if isinstance(wire, int) else wire for wire in wires]
+            mask = sum(1 << wire for wire, _ in controls)
+            required = sum(1 << wire for wire, value in controls if value)
+            expected = [value * phase if index & mask == required else value
                         for index, value in enumerate(expected)]
-        lines = self.program('include "stdgates.inc"; qubit[3] q; ' + preparation + source,
+        lines = self.program(f'include "stdgates.inc"; qubit[{qubits}] q; ' + preparation + source,
                              tuple((name, False) for name, _ in preserved), fused=fused)
         lines.append('DO AMPLITUDES')
         result = self.execute(lines)
@@ -51,7 +54,7 @@ class BackendTests(unittest.TestCase):
                              [str(value) for _, value in preserved])
         actual = {int(index, 2): complex(float(real), float(imaginary)) for index, real, imaginary in
                   re.findall(r'^([01]+) => (\S+) \+ (\S+) i$', result.stdout, re.MULTILINE)}
-        self.assertEqual(set(actual), set(range(8)), result.stdout)
+        self.assertEqual(set(actual), set(range(1 << qubits)), result.stdout)
         for index, value in enumerate(expected):
             self.assertTrue(cmath.isclose(actual[index], value, rel_tol=1e-5, abs_tol=2e-6),
                             (source, index, actual[index], value))
@@ -150,6 +153,81 @@ class BackendTests(unittest.TestCase):
                 lines = self.program(source, fused=fused)
                 lines.append('DO AMPLITUDES')
                 result = self.execute(lines)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn(' => ', result.stdout)
+                type(self).checked += 1
+
+    def test_inverse_and_mixed_control_modifiers(self):
+        for gate in ('p', 'phase', 'u1', 'cp', 'cphase'):
+            controlled = gate in ('cp', 'cphase')
+            combinations = (('inv @', (2, 0) if controlled else (1,), -1),
+                            ('inv @ inv @', (2, 0) if controlled else (1,), 1),
+                            ('negctrl @ inv @', ((2, 0), 0, 1) if controlled else ((2, 0), 1), -1))
+            for modifiers, wires, power in combinations:
+                operands = ', '.join(f'q[{wire if isinstance(wire, int) else wire[0]}]' for wire in wires)
+                for parameter in ('A', 'live'):
+                    for fused in (False, True):
+                        self.check_phase('const angle[4] A = 5 * pi / 8; angle[4] live = A; '
+                                         + f'{modifiers} {gate}({parameter}) {operands};',
+                                         4, (5 * power) % 16, (wires,), fused=fused, preserved=(('live', 5),))
+        for modifiers, wires in (('ctrl @ negctrl @', (2, (0, 0), 1)),
+                                 ('negctrl @ ctrl @', ((2, 0), 0, 1)),
+                                 ('negctrl(2) @', ((2, 0), (0, 0), 1))):
+            self.check_phase('const angle[4] A = 5 * pi / 8; '
+                             + modifiers + ' p(A) q[2], q[0], q[1];', 4, 5, (wires,))
+        for parameter in ('A', 'live'):
+            for fused in (False, True):
+                self.check_phase('const angle[4] A = 5 * pi / 8; angle[4] live = A; '
+                                 + f'negctrl @ ctrl(2) @ inv @ cp({parameter}) q[4], q[1], q[3], q[2], q[0];',
+                                 4, 11, (((4, 0), 1, 3, 2, 0),), fused=fused,
+                                 preserved=(('live', 5),), qubits=5)
+
+    def test_integer_powers_native_boundaries_and_modular_products(self):
+        native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
+        signed_min = self.module.QASM2QCXConverter.QCX_INT_MIN
+        signed_max = self.module.QASM2QCXConverter.QCX_INT_MAX
+        unsigned_max = self.module.QASM2QCXConverter.QCX_UINT_MAX
+        for width in (1, 4, native):
+            bits = (1 << width) - 1
+            radians = math.ldexp(math.tau * bits, -width)
+            for power in (-3, -1, 0, 1, 2, signed_min, signed_max, unsigned_max):
+                exponent_type = 'uint' if power > signed_max else 'int'
+                for gate, operands, wires in (('p', 'q[1]', (1,)), ('cp', 'q[2], q[0]', (2, 0))):
+                    for parameter in ('A', 'live'):
+                        for exponent in (str(power), 'exponent'):
+                            source = (f'const angle[{width}] A = {radians!r}; angle[{width}] live = A; '
+                                      + f'{exponent_type} exponent = {power}; pow({exponent}) @ {gate}({parameter}) {operands};')
+                            self.check_phase(source, width, (bits * power) % (1 << width), (wires,),
+                                             preserved=(('live', bits),))
+            for fused in (False, True):
+                # A product far above native UINT must reduce exactly, rather
+                # than repeat gates or overflow signed exponent arithmetic.
+                factor = unsigned_max
+                source = (f'const angle[{width}] A = {radians!r}; angle[{width}] live = A; '
+                          + f'int negative = {signed_min + 1}; uint positive = {factor}; '
+                          + f'negctrl @ inv @ pow(negative) @ pow(positive) @ pow({(1 << 100) + 1}) @ p(live) q[2], q[0];')
+                expected = (-bits * (signed_min + 1) * factor * ((1 << 100) + 1)) % (1 << width)
+                self.check_phase(source, width, expected, (((2, 0), 0),), fused=fused, preserved=(('live', bits),))
+
+    def test_power_capture_array_iterators_and_skipped_checks(self):
+        for fused in (False, True):
+            self.check_phase('''const angle[4] A = 5 * pi / 8; angle[4] live = A;
+                array[int, 3] exponents = {2, -3, 0};
+                for int exponent in exponents { pow(exponent) @ p(live) q[1]; }''',
+                             4, 11, ((1,),), fused=fused, preserved=(('live', 5),))
+            self.check_phase('''const angle[4] A = 5 * pi / 8; angle[4] live = A;
+                array[int, 2] exponents = {0, -3}; int index = 1;
+                pow(exponents[index]) @ cp(live) q[2], q[0];''',
+                             4, 1, ((2, 0),), fused=fused, preserved=(('live', 5),))
+            self.check_phase('''int zero = 0; bool flag = false;
+                if (flag) { pow(0) @ pow(1 / zero) @ p(angle[4](1e309)) q; }
+                for int i in [1:0] { pow(0) @ p(angle[4](1e309)) q; }''',
+                             4, 0, (), fused=fused)
+            for body in ('pow(0) @ p(angle[4](1e309)) q[0];',
+                         'pow(0) @ pow(1 / zero) @ p(A) q[0];',
+                         'negctrl @ pow(0) @ p(angle[4](1e309)) q[2], q[0];'):
+                source = 'include "stdgates.inc"; qubit[3] q; int zero = 0; const angle[4] A = pi; ' + body
+                result = self.execute(self.program(source, fused=fused) + ['DO AMPLITUDES'])
                 self.assertNotEqual(result.returncode, 0)
                 self.assertNotIn(' => ', result.stdout)
                 type(self).checked += 1

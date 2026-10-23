@@ -2445,11 +2445,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         angle_parameter = self.__angle_phase_parameter(statement)
         if angle_parameter is not None:
+            if not isinstance(info, _GateModifierInfo):
+                raise UnsupportedOpenQASMError('floating-point powers of angle-valued phase gates')
+            output_start = (len(self.__qcx_lines) if any(
+                modifier.modifier == ast.GateModifierName.pow for modifier in statement.modifiers) else None)
             constant = self.__constant_angle_gate_value(angle_parameter)
-            if constant is not None:
-                self.__emit_constant_angle_phase_gate(statement, constant)
+            if constant is not None and runtime is None:
+                powered = _ConstantAngle(constant.angle_type,
+                                         (constant.value * abs(info.power)) & constant.angle_type.mask)
+                self.__emit_constant_angle_phase_gate(statement, powered, info, output_start)
             else:
-                self.__emit_runtime_angle_phase_gate(statement, angle_parameter)
+                self.__emit_runtime_angle_phase_gate(statement, angle_parameter, info, runtime, output_start)
             return
 
         if isinstance(info, _OrderedGateModifierInfo):
@@ -2557,8 +2563,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError('angle-valued parameter on a non-phase gate')
         if len(arguments) != 1:
             raise UnsupportedOpenQASMError('angle-valued phase gate requires one parameter')
-        if statement.modifiers:
-            raise UnsupportedOpenQASMError('modifiers on angle-valued phase gates')
+        # Integer powers/inversion commute with controls; fractional powers
+        # require branch-aware spectral handling, not powers of individual R's.
+        self.__analyze_gate_modifiers(statement.modifiers, iterators, allow_runtime=True, allow_float=False)
         return angle_arguments[0]
 
     def __constant_angle_gate_value(
@@ -2576,14 +2583,26 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # do not replace their backend precision with constant host folding.
         return None
 
+    def __angle_phase_operands(
+            self, statement: ast.QuantumGate, info: _GateModifierInfo) -> Iterator[tuple[str, list[str]]]:
+        added_controls = sum(count for _, count in info.controls)
+        count = len(statement.qubits) - 1
+        mnemonic = ('' if count == 0 else 'C' if count == 1 else f'C{count}') + 'R'
+        if info.power < 0:
+            mnemonic += '+'
+        for qubits in self.__qubit_operand_tuples(statement.qubits, distinct=count > 0):
+            conditions = self.__condition_qubits(qubits[:added_controls], info.controls)
+            yield mnemonic, conditions + qubits[added_controls:]
+
     def __emit_constant_angle_phase_gate(
-            self, statement: ast.QuantumGate, constant: _ConstantAngle) -> None:
-        mnemonic = 'CR' if statement.name.name in ('cp', 'cphase') else 'R'
+            self, statement: ast.QuantumGate, constant: _ConstantAngle,
+            info: _GateModifierInfo, output_start: int | None) -> None:
         exponents = [constant.angle_type.width - bit for bit in range(constant.angle_type.width)
                      if constant.value & (1 << bit)]
         # Expand operands even for zero: identity must not hide invalid qubits,
         # repeated controlled operands, or incompatible broadcast sizes.
-        for qubits in self.__qubit_operand_tuples(statement.qubits, distinct=mnemonic == 'CR'):
+        for mnemonic, qubits in self.__angle_phase_operands(statement, info):
+            self.__check_gate_power_output(len(exponents), output_start)
             for exponent in exponents:
                 self.__qcx_lines.append(f'{mnemonic} {" ".join(qubits)} {exponent}')
 
@@ -2605,16 +2624,39 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             for temporary in self.__used_temporary_variables - previous_used:
                 self.__release_temporary_variable(temporary)
 
-    def __emit_runtime_angle_phase_gate(self, statement: ast.QuantumGate, expression: ast.Expression) -> None:
-        mnemonic = 'CR' if statement.name.name in ('cp', 'cphase') else 'R'
+    def __power_angle_bits(
+            self, snapshot: str, angle_type: _AngleType,
+            info: _GateModifierInfo, runtime: _RuntimeGatePower | None) -> None:
+        # Native unsigned wrap is modulo 2^W. Because n <= W, masking that
+        # product gives its exact residue modulo 2^n, with no signed overflow.
+        factor = abs(info.power) & angle_type.mask
+        if factor != 1:
+            self.__qcx_lines.extend([f'LET {snapshot} *= {factor}', f'LET {snapshot} &= {angle_type.mask}'])
+        if runtime is None:
+            return
+        for magnitude in runtime.magnitudes:
+            self.__qcx_lines.extend([f'LET {snapshot} *= {magnitude}', f'LET {snapshot} &= {angle_type.mask}'])
+        if runtime.signed_exponent is not None:
+            ready = self.__gate_power_label() + '_ANGLE_SIGN_READY'
+            # -1 modulo 2^n is the mask. INT_MIN was already captured as an
+            # unsigned magnitude by the shared exponent machinery.
+            self.__qcx_lines.extend([
+                f'JUMPIF {ready} {runtime.signed_exponent} >= 0',
+                f'LET {snapshot} *= {angle_type.mask}', f'LET {snapshot} &= {angle_type.mask}', f'@{ready}'])
+
+    def __emit_runtime_angle_phase_gate(
+            self, statement: ast.QuantumGate, expression: ast.Expression, info: _GateModifierInfo,
+            runtime: _RuntimeGatePower | None, output_start: int | None) -> None:
         with self.__captured_angle_bits(expression) as (snapshot, angle_type):
+            self.__power_angle_bits(snapshot, angle_type, info, runtime)
             # Allocate scratch before any bit-test jumps. Never mutate the
             # snapshot or source while testing individual bit contributions.
             scratch = self.__add_new_temporary_variable(ValueType.UINT)
             prefix = self.__gate_power_label() + '_ANGLE'
-            for index, qubits in enumerate(self.__qubit_operand_tuples(statement.qubits, distinct=mnemonic == 'CR')):
+            for index, (mnemonic, qubits) in enumerate(self.__angle_phase_operands(statement, info)):
                 for bit in range(angle_type.width):
                     skip = f'{prefix}_{index}_{bit}_SKIP'
+                    self.__check_gate_power_output(5, output_start)
                     self.__qcx_lines.extend([
                         f'LET {scratch} := {snapshot}', f'LET {scratch} &= {1 << bit}',
                         f'JUMPIF {skip} {scratch} == 0',
@@ -4337,7 +4379,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                                for index in (group if isinstance(group, list) else [group])]
                     if all(self.__is_literal_qubit_selector(index) for index in indices):
                         for _ in self.__qubit_operand_tuples(
-                                child.qubits, distinct=child.name.name in ('cp', 'cphase')):
+                                child.qubits, distinct=len(child.qubits) > 1):
                             pass
                 if isinstance(modifier_info, _OrderedGateModifierInfo):
                     mnemonic = (self.default_gates_qcx_map | self.stdgates_qcx_map)[child.name.name]
