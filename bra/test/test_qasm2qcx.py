@@ -694,6 +694,133 @@ class RuntimeRegisterRotationTests(unittest.TestCase):
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
 
 
+class UnsignedPopcountFoundationTests(unittest.TestCase):
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    evaluate = BuiltinFunctionConstantTests.evaluate
+    value = BuiltinFunctionConstantTests.value
+
+    def test_unsigned_signature_returns_native_uint(self):
+        resolve = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__resolve_builtin_function
+        signature = resolve('popcount', (qasm2qcx.ValueType.UINT,))
+        self.assertEqual(signature.operand_types, (qasm2qcx.ValueType.UINT,))
+        self.assertEqual(signature.result_type, qasm2qcx.ValueType.UINT)
+        self.assertTrue(signature.population_count)
+        self.assertIsNone(signature.qcx_function)
+        converter = self.evaluate('popcount(uint[6](37))')
+        expression = self.expression('popcount(uint[6](37))')
+        _, info, runtime = converter._QASM2QCXConverter__integer_operand_info(expression, None)
+        self.assertEqual((info.width, info.is_sized, runtime),
+                         (qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH, False, False))
+        converter.visit(expression)
+        self.assertEqual(converter._QASM2QCXConverter__uint_expression_type(expression), info)
+
+    def test_constant_counts_for_every_supported_width(self):
+        native = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        for width in range(1, native + 1):
+            mask = (1 << width) - 1
+            for value in sorted({0, 1, mask, mask >> 1, 1 << (width - 1), 37 & mask}):
+                with self.subTest(width=width, value=value):
+                    expected = sum(character == '1' for character in bin(value)[2:])
+                    self.assertEqual(self.value(f'popcount(uint[{width}]({value}))'),
+                                     (expected, qasm2qcx.ValueType.UINT))
+            self.assertEqual(self.value(f'popcount(uint[{width}](-1))')[0], width)
+        self.assertEqual(self.value('popcount(U)', 'const uint[6] U = 37;')[0], 3)
+        self.converter('const uint C = popcount(uint[6](37)); uint out = C;')
+
+    def test_declared_width_and_intermediate_expression_rules(self):
+        for expression, expected in (
+                ('uint[6](127)', 6), ('~uint[6](37)', 3),
+                ('uint[6](63) + uint[6](1)', 0),
+                ('uint[6](0) - uint[6](1)', 6),
+                ('uint[6](7) * uint[6](10)', 2),
+                ('uint[6](37) / uint[6](2)', 2),
+                ('uint[6](37) % uint[6](3)', 1),
+                ('uint[6](37) & uint[6](15)', 2),
+                ('uint[6](37) | uint[6](15)', 5),
+                ('uint[6](37) ^ uint[6](15)', 3),
+                ('uint[6](37) << 1', 2), ('uint[6](37) >> 1', 2),
+                ('uint[6](3) ** uint[6](3)', 4),
+                ('rotl(uint[6](37), -2147483648)', 3),
+                ('rotr(rotl(uint[6](37), 3), 3)', 3),
+                ('uint[3](popcount(uint[6](37)))', 2)):
+            with self.subTest(expression=expression):
+                self.assertEqual(self.value(f'popcount({expression})')[0], expected)
+        # Counting does not inherit a narrow input width: 8**4 must be 4096,
+        # rather than wrapping modulo 2**8.
+        self.assertEqual(self.value('popcount(uint[8](255)) ** 4')[0], 4096)
+        self.assertEqual(self.value('~popcount(uint[1](1))')[0],
+                         qasm2qcx.QASM2QCXConverter.QCX_UINT_MAX - 1)
+        self.assertEqual(self.value('uint[3](popcount(uint[8](255)))')[0], 0)
+
+    def test_non_evaluating_type_information_and_runtime_dependencies(self):
+        converter = self.converter('uint[6] u = 37; const uint[6] U = 37; int d = 2; array[uint[6], 2] a;')
+        for source, runtime in (('popcount(U)', False), ('popcount(u)', True),
+                                ('popcount(~u)', True), ('popcount(u / u)', True),
+                                ('popcount(rotl(u, d))', True), ('popcount(a[d])', True)):
+            with self.subTest(source=source), patch.object(converter, 'visit', side_effect=AssertionError('evaluated')):
+                signature, actual = converter._QASM2QCXConverter__function_call_info(self.expression(source))
+                self.assertEqual(signature.operand_types, (qasm2qcx.ValueType.UINT,))
+                self.assertEqual(actual, runtime)
+        # Invalid value arithmetic is not evaluated by type inspection.
+        converter._QASM2QCXConverter__function_call_info(self.expression('popcount(uint[6](7) / uint[6](0))'))
+
+    def test_rejects_unsized_and_other_scalar_inputs(self):
+        for source in ('popcount(37)', 'popcount(-1)', 'popcount(true)', 'popcount(1.0)',
+                       'popcount(1im)', 'popcount(uint(37))', 'popcount(uint[6](37) + 0)',
+                       'popcount(popcount(uint[6](37)))', 'popcount(uint[1 - 1](1))',
+                       f'popcount(uint[{qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH + 1}](1))'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.value(source)
+        for declarations, expression in (('uint u = 37;', 'popcount(u)'),
+                                         ('const uint U = 37;', 'popcount(U)'),
+                                         ('bit b;', 'popcount(b)'),
+                                         ('bit[2] b;', 'popcount(b[0])'),
+                                         ('array[uint[6], 2] a;', 'popcount(a)')):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.value(expression, declarations)
+
+    def test_skipped_constants_empty_loops_and_iterator_shadowing(self):
+        self.converter('const bool OFF = false && (popcount(uint[6](1) / uint[6](0)) > 0);')
+        self.converter('const bool ON = true || (popcount(uint[6](1) << 6) > 0);')
+        for body in ('out = popcount(u);', 'out = popcount(rotl(u, d));',
+                     'out = popcount(uint[6](1) / uint[6](0));'):
+            lines = convert('OPENQASM 3; uint[6] u = 37; uint out; int d; '
+                            'for int i in [1:0] { ' + body + ' }')
+            self.assertFalse(any(line.startswith('VAR QASM2QCX_') for line in lines))
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.converter('uint[6] u; uint out; for int u in [1:0] { out = popcount(u); }')
+        self.converter('const int W = 6; uint[W] u; uint out; '
+                       'for int W in [1:0] { out = popcount(u); }')
+
+    def test_constant_runtime_dependency_and_pending_runtime_lowering(self):
+        with self.assertRaises(qasm2qcx.NoConstantExpressionException):
+            self.value('popcount(u)', 'uint[6] u = 37;')
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'runtime unsigned popcount'):
+            convert('OPENQASM 3; uint[6] u = 37; uint out = popcount(u);')
+
+    def test_constant_operand_is_evaluated_once_without_emitting_storage(self):
+        converter = self.converter()
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONST_ARITHMETIC
+        expression = self.expression('popcount(rotl(uint[6](37), -2))')
+        previous_lines = converter._QASM2QCXConverter__qcx_lines.copy()
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            converter.visit(expression)
+        self.assertEqual(sum(call.args[0] is expression.arguments[0] for call in visit.call_args_list), 1)
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, previous_lines)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_failed_constant_evaluation_restores_state(self):
+        converter = self.converter()
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONST_ARITHMETIC
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        previous = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        with self.assertRaises(qasm2qcx.ZeroDivisorException):
+            converter.visit(self.expression('popcount(uint[6](1) / uint[6](0))'))
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], previous)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+
 class PopcountTests(unittest.TestCase):
     expression = staticmethod(BuiltinFunctionSignatureTests.expression)
     converter = staticmethod(BuiltinFunctionSignatureTests.converter)
@@ -707,7 +834,7 @@ class PopcountTests(unittest.TestCase):
         self.assertEqual(signature.result_type, qasm2qcx.ValueType.UINT)
         self.assertIsNone(signature.qcx_function)
         for scalar in (qasm2qcx.ValueType.BIT, qasm2qcx.ValueType.BOOL, qasm2qcx.ValueType.INT,
-                       qasm2qcx.ValueType.UINT, qasm2qcx.ValueType.FLOAT, qasm2qcx.ValueType.COMPLEX):
+                       qasm2qcx.ValueType.FLOAT, qasm2qcx.ValueType.COMPLEX):
             with self.assertRaises(qasm2qcx.InvalidFunctionCallException):
                 resolve('popcount', (scalar,))
 

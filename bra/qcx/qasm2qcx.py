@@ -321,7 +321,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         'floor': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='FLOOR'),),
         'mod': (_BuiltinFunctionSignature((ValueType.INT, ValueType.INT), ValueType.INT, integer_remainder=True),
                 _BuiltinFunctionSignature((ValueType.FLOAT, ValueType.FLOAT), ValueType.FLOAT, qcx_function='MOD')),
-        'popcount': (_BuiltinFunctionSignature((ValueType.BIT_REGISTER,), ValueType.UINT, population_count=True),),
+        'popcount': (_BuiltinFunctionSignature((ValueType.BIT_REGISTER,), ValueType.UINT, population_count=True),
+                     _BuiltinFunctionSignature((ValueType.UINT,), ValueType.UINT, population_count=True)),
         'rotl': (_BuiltinFunctionSignature((ValueType.BIT_REGISTER, ValueType.INT), ValueType.BIT_REGISTER, rotation=True),
                  _BuiltinFunctionSignature((ValueType.UINT, ValueType.INT), ValueType.UINT, rotation=True)),
         'rotr': (_BuiltinFunctionSignature((ValueType.BIT_REGISTER, ValueType.INT), ValueType.BIT_REGISTER, rotation=True),
@@ -3715,7 +3716,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             argument = expression.arguments[0]
             width = self.__bit_register_expression_width(argument, iterators)
             if width is None:
-                raise InvalidFunctionCallException('Function popcount requires a bit-register operand')
+                source_type, uint_type, runtime = self.__integer_operand_info(argument, iterators)
+                if source_type != ValueType.UINT or uint_type is None or not uint_type.is_sized:
+                    raise InvalidFunctionCallException(
+                        'Function popcount requires a bit-register operand or sized uint[n]')
+                return self.__resolve_builtin_function(name, (ValueType.UINT,)), runtime
             if width > self.QCX_UINT_MAX:
                 raise InvalidFunctionCallException('Function popcount operand width exceeds QCX UINT range')
             return overloads[0], self.__register_expression_runtime(argument, iterators)
@@ -4841,7 +4846,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__visit_rotation(expression, signature, runtime)
             return
         if signature.population_count:
-            self.__visit_population_count(expression, runtime)
+            self.__visit_population_count(expression, signature, runtime)
             return
         if self.__expression_kind != ExpressionKind.CONST_ARITHMETIC:
             if self.__expression_kind not in (ExpressionKind.ARITHMETIC, ExpressionKind.CONDITIONAL):
@@ -4982,7 +4987,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if temporary != keep:
                     self.__release_temporary_variable(temporary)
 
-    def __visit_population_count(self, expression: ast.FunctionCall, runtime: bool) -> None:
+    def __visit_population_count(
+            self, expression: ast.FunctionCall, signature: _BuiltinFunctionSignature, runtime: bool) -> None:
         if self.__expression_kind not in (
                 ExpressionKind.CONST_ARITHMETIC, ExpressionKind.ARITHMETIC, ExpressionKind.CONDITIONAL):
             raise UnsupportedOpenQASMError('function call outside a value expression')
@@ -4996,9 +5002,21 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         keep = False
         try:
             argument = expression.arguments[0]
+            unsigned_operand = signature.operand_types == (ValueType.UINT,)
+            if unsigned_operand and self.__expression_kind != ExpressionKind.CONST_ARITHMETIC:
+                raise UnsupportedOpenQASMError('runtime unsigned popcount is not implemented yet')
             if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
-                width = self.__bit_register_expression_width(argument)
-                packed = self.__constant_bit_register_value(argument, width)
+                if unsigned_operand:
+                    _, uint_type, _ = self.__integer_operand_info(argument, None)
+                    self.visit(argument)
+                    if self.__value_kind != ValueKind.LITERAL:
+                        raise NoConstantExpressionException
+                    # Input expressions already apply their unsigned width
+                    # rules. Mask explicitly at the counting boundary as well.
+                    packed = int(self.__value) & uint_type.mask if self.__evaluate_constant else 0
+                else:
+                    width = self.__bit_register_expression_width(argument)
+                    packed = self.__constant_bit_register_value(argument, width)
                 result = packed.bit_count() if self.__evaluate_constant else 0
             else:
                 self.__expression_kind = ExpressionKind.ARITHMETIC
