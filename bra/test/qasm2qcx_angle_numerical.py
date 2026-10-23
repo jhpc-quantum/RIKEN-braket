@@ -11,6 +11,7 @@ and copying independently of the later floating-point conversion kernel.
 import argparse
 import math
 import pathlib
+import re
 import resource
 import unittest
 from fractions import Fraction
@@ -112,6 +113,20 @@ class BackendTests(unittest.TestCase):
             for int i in [0:stop] { if (i == 1) { continue; }
                 out = angle[4](float(i) * pi / 2); if (i == 2) { break; } }''',
                          ('out',), (8,))
+
+    def test_documented_scalar_angle_example(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx' / 'qasm2qcx.md').read_text()
+        examples = re.findall(r'<!-- scalar-angle-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        for fused in (False, True):
+            outputs = ('value', 'coarse', 'copy', 'nonzero', 'same')
+            lines = self.program(examples[0], tuple((name, False) for name in outputs), fused=fused)
+            result = self.execute(lines)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
+            self.assertEqual(result.stdout.split(), [str(value) for value in (192, 4, 1 << (native - 2), 1, 4)])
+            type(self).checked += 1
 
     def test_float_array_elements_and_iterators_convert_to_angles(self):
         self.check_exact('''array[float, 3] values = {0.0, pi / 2, pi};

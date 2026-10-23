@@ -198,6 +198,34 @@ class ScalarAngleIntegrationTests(unittest.TestCase):
         self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
         return converter
 
+    def test_documented_scalar_angle_example(self):
+        document = (CONVERTER_PATH.parent / 'qasm2qcx.md').read_text()
+        examples = re.findall(r'<!-- scalar-angle-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        self.assert_clean(examples[0].split(';', 1)[1])
+
+    def test_cli_errors_do_not_print_partial_programs(self):
+        for source in ('const angle[4] A = 1e309;', 'angle[1 - 1] a;',
+                       'angle[4] a; float out = float(a);',
+                       'const angle[4] A = pi; A = 0.0;'):
+            with self.subTest(source=source), patch('builtins.open', mock_open(read_data='OPENQASM 3; ' + source)), \
+                    patch('builtins.print') as output:
+                with self.assertRaises(SystemExit):
+                    qasm2qcx.main(['angles.qasm'])
+                output.assert_not_called()
+
+    def test_rejected_angle_operations_release_completed_temporaries(self):
+        converter = self.converter('float value = 0.2;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        for expression in ('-angle[4](value)', 'int(angle[4](value))',
+                           'float(angle[4](value))', 'complex(angle[4](value))'):
+            node = self.program('float out = ' + expression + ';').statements[0].init_expression
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                converter.visit(node)
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+
     def test_control_flow_casts_copies_and_assignments(self):
         self.assert_clean('''float value = 0.2; angle[4] a; angle[8] b;
             for int i in [0:2] { a = angle[4](value + float(i)); b = a;

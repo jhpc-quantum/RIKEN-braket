@@ -622,7 +622,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, value_type: ValueType,
             uint_type: _UnsignedIntegerType | None = None) -> str:
         if value_type == ValueType.ANGLE:
-            raise UnsupportedOpenQASMError('angle expression temporaries require conversion support')
+            raise UnsupportedOpenQASMError('angle temporaries require UINT storage and angle width metadata')
         if uint_type is not None and value_type != ValueType.UINT:
             raise ValueError('unsigned width supplied for a non-UINT temporary')
         match value_type:
@@ -771,6 +771,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__value is None or self.__value_type is None or self.__value_kind is None:
             raise UninitializedValueException
         if self.__value_type == ValueType.ANGLE:
+            if self.__value_kind == ValueKind.TEMPORARY:
+                self.__release_temporary_variable(str(self.__value))
             raise UnsupportedOpenQASMError('angle unary arithmetic')
         if self.__value_type in (ValueType.BIT, ValueType.BOOL):
             if self.__value_kind == ValueKind.TEMPORARY:
@@ -4995,7 +4997,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UninitializedValueException
 
         if self.__value_type == ValueType.ANGLE:
-            raise UnsupportedOpenQASMError('angle casts require conversion support')
+            if self.__value_kind == ValueKind.TEMPORARY:
+                self.__release_temporary_variable(str(self.__value))
+            raise UnsupportedOpenQASMError('angle cast other than angle or bool')
         if self.__value_type == ValueType.BOOL:
             self.__value_type = ValueType.INT
         if (target_type == ValueType.INT and self.__value_type == ValueType.UINT

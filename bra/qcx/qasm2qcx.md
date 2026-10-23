@@ -102,6 +102,8 @@ The converter currently covers:
   (`<<=`, `>>=`), with checked counts and signed left-shift overflow;
 - scalar constants, variables, assignments, and numeric casts;
 - scalar `const bit` declarations and supported constant-bit expressions;
+- scalar `angle`/`angle[n]` variables and constants, float-to-angle conversion,
+  angle-width conversion, and explicit Boolean conversion;
 - scalar built-in `exp`, `sqrt`, `log`, `sin`, `cos`, `tan`, `arcsin`, `arccos`,
   `arctan`, `ceiling`, `floor`, `real`, and `imag` calls in constant and runtime
   expressions, including nested calls;
@@ -139,6 +141,80 @@ have the explicit width restrictions documented below.
 Mutable OpenQASM `bit` values are represented by QCX `INT` variables whose elements
 are restricted to zero or one by the converter. A measurement is emitted as a
 QCX `M` operation followed immediately by assignment from `:OUTCOME`.
+
+### Scalar angles
+
+Scalar `angle[n]` declarations use an unsigned fixed-point fraction of a full
+turn. A stored integer `m` represents $2\pi m / 2^n$, with
+$0 \le m < 2^n$. Widths must be constant integers in `[1, W]`, where `W` is
+the native QCX UINT width (normally 32 bits). Unsized `angle` uses `W` bits.
+Declaration widths are resolved in declaration scope; later iterator shadowing
+does not change them. A cast width cannot depend on a loop iterator or runtime
+variable.
+
+Both `angle[n]` and `const angle[n]` accept a `float` expression or another
+angle as an initializer. Mutable scalar angles also support `=` assignment.
+Explicit casts use `angle[n](value)` or `angle(value)`. Integer, Boolean, bit,
+and complex inputs are not accepted directly; use `float(...)` first when an
+existing numeric conversion is appropriate. Constants require constant inputs,
+are read-only, and allocate no runtime storage. Mutable angles use QCX `UINT`
+storage, but retain distinct angle typing in the converter: their bits are not
+implicitly usable as integers.
+
+| Conversion | Behavior |
+| --- | --- |
+| `float` to `angle[n]` | Quantize radians to the nearest grid point, ties to even, and wrap modulo one full turn |
+| `angle[n]` to `angle[m]`, `m > n` | Left-shift the stored bits by `m - n`, preserving the represented angle |
+| `angle[n]` to `angle[m]`, `m < n` | Right-shift by `n - m`, truncating the discarded low bits rather than rounding |
+| `bool(value)` for an angle | False exactly when all stored angle bits are zero |
+
+Float conversion uses the exact ratio of the stored input and stored full-turn
+value, scales it by `2^n`, and rounds once. Negative inputs wrap naturally;
+rounding to `2^n` wraps to zero. Both signs of zero become zero. For example,
+`angle[4](pi / 2)` stores `4`, `angle[4](-pi / 2)` stores `12`, and
+`angle[4](tau)` stores `0`.
+
+Constant evaluation uses Python's binary64 values and `math.tau`. Executable
+float-to-angle conversions, including literal inputs, use
+`APPLY temporary <- ANGLEBITS :REAL:operand n` at bra's configured REAL precision,
+with its stored `:TWO_PI` as the full turn. Consequently, constants and runtime
+conversions can differ when their input values or backend precision differ.
+The native conversion uses integer significands and remainders, avoiding a
+prematurely rounded floating-point quotient even for huge finite inputs.
+Nonfinite inputs are errors: evaluated constants fail conversion, while reached
+runtime calls fail without updating the destination. Neither build options nor
+floating-point control modes are changed.
+
+<!-- scalar-angle-example -->
+```qasm
+OPENQASM 3.0;
+const angle[4] QUARTER = pi / 2;
+const angle[4] WRAPPED = -pi / 2;
+float radians = pi / 2;
+angle[8] value = radians;       // Stored bits: 64.
+angle[4] coarse = value;        // Stored bits: 4.
+angle copy = coarse;           // Widen without changing the angle.
+bool nonzero = bool(coarse);
+if (nonzero) {
+  value = angle[8](WRAPPED);    // Stored bits: 192.
+}
+angle[4] same = QUARTER;
+```
+
+Angles can be copied and converted inside supported branches and loops; float
+array elements and float iterators can supply conversion inputs. Loop iterators
+may shadow angle names, and the outer angle type and width are restored afterward.
+Skipped branches, short-circuited operands, and empty loops do not execute
+conversion domain checks or skipped arithmetic. Empty loops still validate
+names, widths, types, and read-only targets.
+
+This is a declaration-and-conversion foundation, not full angle support.
+Arithmetic, comparisons, bitwise operations, indexing, compound assignments,
+angle arrays/iteration, numeric or bit casts from angles, angle-typed
+trigonometric calls, and angle-valued gate parameters remain unsupported.
+Use `bool(a)` explicitly in a condition; a bare angle is not a Boolean condition.
+Lowering angle-valued phase gates to QCX `R`/controlled phase instructions is
+separate future work; this change does not emit those instructions for angles.
 
 ### Mathematical function calls
 
@@ -3735,7 +3811,8 @@ The current prototype does not reliably support:
   Boolean bitwise operations, or classical functions other than the
   `exp`/`sqrt`/`log`/`sin`/`cos`/`tan`/`arcsin`/`arccos`/`arctan`/`ceiling`/`floor`/
   `mod`/`popcount`/`rotl`/`rotr`/`real`/`imag` subset above;
-- `angle` declarations and `angle`-typed trigonometric arguments; or
+- angle arithmetic/comparisons, indexing, arrays/iteration, numeric or bit casts
+  from angles, and angle-typed trigonometric arguments or gate parameters; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
 
 Integer limitations additionally include `uint[n]` widths above native `UINT`,
@@ -3752,6 +3829,18 @@ self-referencing assignments, short-circuit evaluation, and temporary reuse.
 It also executes the complete Boolean example above. These tests cover the
 converter's supported Boolean subset; the limitations above remain explicit
 future work.
+
+`bra/test/qasm2qcx_angle_numerical.py` checks exact stored angle bits for constant,
+literal, and runtime inputs, width conversions, ties and adjacent values,
+wraparound, huge finite values, nonfinite failures, Boolean casts, control flow,
+array inputs, iterator shadowing, and skipped execution. It executes the scalar
+angle example above. Unit tests additionally check declaration visibility,
+read-only constants, unsupported uses, empty-loop validation, and temporary
+cleanup. `bra/test/classical_function_angle_numerical.py` checks native
+`ANGLEBITS` against an independent exact-rational oracle across float, double,
+and long-double REAL builds in debug, release, and mixed-release modes. It covers
+rounding directions, stored subnormals, invalid inputs, and unchanged
+floating-point controls; `--sanitize` repeats the matrix with UBSan.
 
 `bra/test/qasm2qcx_math_function_numerical.py` compares constant, executable
 literal, and variable calls, with independent trigonometric references for
@@ -4286,6 +4375,8 @@ Run the converter and numerical tests from the repository root:
 
 ```console
 python3 -m unittest bra/test/test_qasm2qcx.py
+python3 bra/test/classical_function_angle_numerical.py
+python3 bra/test/classical_function_angle_numerical.py --sanitize
 ulimit -c 0
 python3 bra/test/jumpif_numerical.py --bra bra/bin/bra
 python3 bra/test/assert_numerical.py --bra bra/bin/bra
@@ -4296,6 +4387,7 @@ python3 bra/test/integer_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/integer_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_math_function_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_angle_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_sqrt_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_log_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_trigonometric_numerical.py --bra bra/bin/bra
