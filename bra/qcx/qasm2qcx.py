@@ -4449,14 +4449,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __collection_loop_info(
             self, source: ast.Identifier, iteration_type: ast.QASMNode,
             iterators: set[str] | dict[str, ValueType] | None = None
-            ) -> tuple[str, int, ValueType, _UnsignedIntegerType | None]:
+            ) -> tuple[str | _ConstantBitRegister, int, ValueType, _UnsignedIntegerType | None]:
         name = source.name
         if ((iterators is not None and name in iterators)
                 or any(name in scope for scope in self.__loop_bindings)):
             raise UnsupportedOpenQASMError('iteration over a scalar for-loop iterator')
         if name in self.__const_bit_register_values:
-            self.__constant_bit_register(name)
-            raise UnsupportedOpenQASMError('iteration over constant bit registers')
+            constant = self.__constant_bit_register(name)
+            if not isinstance(iteration_type, ast.BitType) or iteration_type.size is not None:
+                raise UnsupportedOpenQASMError('constant bit-register iteration requires a scalar bit iterator')
+            # Return the immutable value itself, never a fabricated QCX
+            # storage name or an array packed into a native integer.
+            return constant, constant.width, ValueType.BIT, None
         variable_type = self.__classical_source_types.get(name)
         if variable_type is None:
             raise NoVariableNameException(name)
@@ -4489,7 +4493,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         raise UnsupportedOpenQASMError('for-loop identifier other than an int/uint/float/bool/complex array or bit register')
 
     def __visit_collection_for(self, statement: ast.ForInLoop) -> None:
-        variable_name, size, value_type, uint_type = self.__collection_loop_info(
+        source, size, value_type, uint_type = self.__collection_loop_info(
             statement.set_declaration, statement.type)
         binding = _RuntimeIteratorBinding(f'QASM2QCX_LOOP_{self.__loop_index}_ITERATOR', value_type, uint_type)
         with self.__iterator_binding(statement.identifier.name, binding):
@@ -4506,6 +4510,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     self.visit(child)
             return
 
+        if isinstance(source, _ConstantBitRegister):
+            # Source validation is shared with mutable collection loops;
+            # literal-bit unrolling is added separately from this foundation.
+            raise UnsupportedOpenQASMError('iteration over constant bit registers: lowering is not implemented')
+
         previous_temporaries = self.__declared_temporary_variables.copy()
         previous_used = self.__used_temporary_variables.copy()
         iterator = self.__add_new_temporary_variable(value_type, uint_type)
@@ -4513,7 +4522,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         try:
             # QCX stores a singleton bit register as a scalar INT, unlike
             # classical arrays, whose scalar accesses retain explicit indexing.
-            operand = variable_name if value_type == ValueType.BIT and size == 1 else f'{variable_name}:{index}'
+            operand = source if value_type == ValueType.BIT and size == 1 else f'{source}:{index}'
             self.__qcx_lines.extend([f'LET {index} := 0', f'@{body_label}',
                                     f'LET {iterator} := {operand}'])
             # Read the current element on each iteration, not a loop-entry
