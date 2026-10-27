@@ -5885,14 +5885,25 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __validate_angle_assignment(
             self, statement: ast.ClassicalAssignment, iterators: dict[str, ValueType]) -> None:
         if self.__is_angle_identifier(self.__operand_name(statement.lvalue), iterators):
-            if isinstance(statement.lvalue, ast.IndexedIdentifier) or statement.op.name != '=':
-                raise UnsupportedOpenQASMError('angle indexing or compound assignment')
-            source_type, _ = self.__loop_expression_info(statement.rvalue, iterators)
+            expression = self.__angle_assignment_expression(statement)
+            source_type, _ = self.__loop_expression_info(expression, iterators)
             if source_type not in (ValueType.FLOAT, ValueType.ANGLE):
                 raise UnsupportedOpenQASMError('angle conversion requires float or angle input')
         elif self.__expression_mentions_angle(statement.rvalue):
             if self.__loop_expression_info(statement.rvalue, iterators)[0] == ValueType.ANGLE:
                 raise NoImplicitCastException
+
+    @staticmethod
+    def __angle_assignment_expression(statement: ast.ClassicalAssignment) -> ast.Expression:
+        if isinstance(statement.lvalue, ast.IndexedIdentifier):
+            raise UnsupportedOpenQASMError('angle indexing')
+        if statement.op.name == '=':
+            return statement.rvalue
+        if statement.op.name not in ('+=', '-='):
+            raise UnsupportedOpenQASMError(f'angle assignment operator {statement.op.name}')
+        # Preserve the binary operation's promoted width before converting
+        # back to the destination. Pre-narrowing the RHS could lose a borrow.
+        return ast.BinaryExpression(ast.BinaryOperator[statement.op.name[:-1]], statement.lvalue, statement.rvalue)
 
     def __reject_constant_angle_target(
             self, target: ast.Identifier | ast.IndexedIdentifier,
@@ -6981,9 +6992,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         variable_name: str = self.__capitalize_variable_name(source_name)
         variable_type: ValueType = self.__type_of(variable_name)
         if variable_type == ValueType.ANGLE:
-            if isinstance(statement.lvalue, ast.IndexedIdentifier) or statement.op.name != '=':
-                raise UnsupportedOpenQASMError('angle indexing or compound assignment')
-            self.__emit_angle_copy(variable_name, self.__angle_variable_types[variable_name], statement.rvalue)
+            expression = self.__angle_assignment_expression(statement)
+            self.__emit_angle_copy(variable_name, self.__angle_variable_types[variable_name], expression)
             return
         if variable_name in self.__array_element_types:
             if not isinstance(statement.lvalue, ast.IndexedIdentifier):

@@ -48,10 +48,16 @@ class BackendTests(unittest.TestCase):
                         angle[{width}] sum = a + b; angle[{width}] difference = a - b;
                         angle[{width}] negative = -a; angle[{width}] nested = -(a - (b + a));
                         angle[{width}] self = a; self = self + b; self = self - b;
+                        angle[{width}] plus = a; plus += b; angle[{width}] minus = a; minus -= b;
+                        angle[{width}] double = a; double += double;
+                        angle[{width}] zero_angle = b; zero_angle -= zero_angle;
+                        angle[{width}] alias = a; alias += b - alias;
                         bool zero = bool(a - a);'''
-                    self.exact(source, ('a', 'b', 'sum', 'difference', 'negative', 'nested', 'self', 'zero'),
+                    self.exact(source, ('a', 'b', 'sum', 'difference', 'negative', 'nested', 'self',
+                                        'plus', 'minus', 'double', 'zero_angle', 'alias', 'zero'),
                                (lhs, rhs, (lhs + rhs) % modulus, (lhs - rhs) % modulus,
-                                (-lhs) % modulus, rhs, lhs, 0), raw=(('a', lhs), ('b', rhs)))
+                                (-lhs) % modulus, rhs, lhs, (lhs + rhs) % modulus,
+                                (lhs - rhs) % modulus, (2 * lhs) % modulus, 0, rhs, 0), raw=(('a', lhs), ('b', rhs)))
 
     def test_mixed_width_promotion_and_destination_narrowing(self):
         native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
@@ -67,10 +73,52 @@ class BackendTests(unittest.TestCase):
                     source = f'''angle[{left_width}] a; angle[{right_width}] b;
                         angle[{width}] sum = a + b; angle[{width}] difference = a - b;
                         angle[{small}] narrow_sum = a + b; angle[{small}] narrow_difference = a - b;
-                        angle[{width}] negative_sum = -(a + b);'''
-                    self.exact(source, ('a', 'b', 'sum', 'difference', 'narrow_sum', 'narrow_difference', 'negative_sum'),
+                        angle[{width}] negative_sum = -(a + b);
+                        angle[{left_width}] plus = a; plus += b;
+                        angle[{left_width}] minus = a; minus -= b;
+                        angle[{left_width}] alias_plus = a; alias_plus += b - alias_plus;
+                        angle[{left_width}] alias_minus = a; alias_minus -= b - alias_minus;'''
+                    self.exact(source, ('a', 'b', 'sum', 'difference', 'narrow_sum', 'narrow_difference',
+                                        'negative_sum', 'plus', 'minus', 'alias_plus', 'alias_minus'),
                                (lhs, rhs, total, difference, total >> (width - small), difference >> (width - small),
-                                (-total) % (1 << width)), raw=(('a', lhs), ('b', rhs)))
+                                (-total) % (1 << width), total >> (width - left_width), difference >> (width - left_width),
+                                right >> (width - left_width), ((2 * left - right) % (1 << width)) >> (width - left_width)),
+                               raw=(('a', lhs), ('b', rhs)))
+
+    def test_repeated_compound_assignments_and_classical_control_flow(self):
+        declaration = 'const angle[4] START = pi / 8; const angle[8] EPSILON = pi / 128; angle[4] a = START; angle[8] fine = EPSILON; '
+        for body in ('int count = 0; while (count < 3) { a -= fine; count += 1; }',
+                     'int stop = 2; for int i in [0:stop] { a -= fine; }'):
+            self.exact(declaration + body, ('a', 'fine'), (14, 1))
+        self.exact(declaration + 'for int i in {0, 1} { a -= fine; }', ('a', 'fine'), (15, 1))
+        self.exact(declaration + '''array[float, 2] steps = {pi / 128, pi / 128};
+            for float step in steps { a -= angle[8](step); }''', ('a', 'fine'), (15, 1))
+        self.exact(declaration + '''int count = 0; while (count < 4) { count += 1;
+            if (count == 2) { continue; } a -= fine; if (count == 3) { break; } }''',
+                   ('a', 'fine', 'count'), (15, 1, 3))
+        self.exact(declaration + '''int count = 0; while (count < 2) {
+            if (count == 0) { a -= fine; } else { a += fine; } count += 1; }''', ('a', 'fine'), (0, 1))
+        self.exact(declaration + '''array[float, 2] steps = {pi / 128, pi / 128};
+            for float START in steps { a -= angle[8](START); } a += START;''', ('a', 'fine'), (0, 1))
+        for preparation, measured, expected in (('', 0, 1), ('x q;', 1, 0)):
+            self.exact('include "stdgates.inc"; qubit q; ' + preparation + 'bit flag = measure q; ' + declaration
+                       + 'if (flag) { a -= fine; } else { a += fine; }',
+                       ('a', 'fine', 'flag'), (expected, 1, measured))
+
+    def test_compound_updates_feed_phase_gates_without_losing_global_phase(self):
+        declaration = 'const angle[4] A = pi; const angle[8] B = pi / 128; angle[4] a = A; angle[8] fine = B; a -= fine; '
+        for gate in ('p', 'phase', 'u1', 'cp', 'cphase', 'gphase'):
+            wires = (2, 0) if gate in ('cp', 'cphase') else () if gate == 'gphase' else (1,)
+            operands = ', '.join(f'q[{wire}]' for wire in wires)
+            for modifier, width, bits in (('', 4, 7), ('inv @ ', 4, 9), ('pow(0.5) @ ', 5, 7)):
+                for fused in (False, True):
+                    self.check_phase(declaration + f'{modifier}{gate}(a) {operands};', width, bits, (wires,),
+                                     fused=fused, preserved=(('a', 7), ('fine', 1)))
+        for fused in (False, True):
+            self.check_phase(declaration + 'negctrl @ ctrl @ pow(0.5) @ cp(a) q[3], q[2], q[1], q[0];',
+                             5, 7, (((3, 0), 2, 1, 0),), fused=fused, qubits=4)
+            self.check_zero_qubit(declaration + 'pow(0.5) @ gphase(a);', 5, 7,
+                                  fused=fused, preserved=(('a', 7), ('fine', 1)))
 
     def test_constants_unsized_angles_and_executable_array_casts(self):
         native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
@@ -107,7 +155,8 @@ class BackendTests(unittest.TestCase):
     def test_skipped_calls_and_reached_conversion_and_access_errors(self):
         for wrapper in ('if (flag) {{ {} }}', 'for int i in [1:0] {{ {} }}', 'while (flag) {{ {} }}'):
             self.exact('angle[4] a; angle[8] out; bool flag = false; array[float, 1] data = {0}; int index = 2; '
-                       + wrapper.format('out = -(a + angle[8](1e309)); out = angle[8](data[index]) - a;'),
+                       + wrapper.format('out = -(a + angle[8](1e309)); out = angle[8](data[index]) - a; '
+                                        'a += angle[8](1e309); a -= angle[8](data[index]);'),
                        ('a', 'out'), (5, 0), raw=(('a', 5),))
         for expression in ('a + angle[8](1e309)', 'angle[8](data[index]) - a', '-angle[8](1e309)'):
             source = 'angle[4] a; angle[8] out; array[float, 1] data = {0}; int index = 2; '
@@ -115,6 +164,13 @@ class BackendTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0, expression)
             self.assertNotIn(' => ', result.stdout)
             type(self).checked += 1
+        for operator in ('+=', '-='):
+            for expression in ('angle[8](1e309)', 'angle[8](data[index])'):
+                source = 'angle[4] a; array[float, 1] data = {0}; int index = 2; '
+                result = self.execute(self.program(source + f'a {operator} {expression};') + ['DO AMPLITUDES'])
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn(' => ', result.stdout)
+                type(self).checked += 1
         self.exact('''angle[4] a; bool flag = false;
             bool and_result = flag && bool(a + angle[8](1e309));
             bool or_result = !flag || bool(-angle[8](1e309));''',
