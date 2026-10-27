@@ -17032,6 +17032,18 @@ class AngleMultiplicativeAssignmentTests(unittest.TestCase):
     program = staticmethod(ScalarAngleFoundationTests.program)
     clean = RuntimeAngleArithmeticTests.clean
 
+    def test_documented_multiplicative_examples(self):
+        document = (CONVERTER_PATH.parent / 'qasm2qcx.md').read_text()
+        for marker in ('angle-multiplicative-example', 'angle-multiplicative-phase-example'):
+            examples = re.findall(r'<!-- ' + marker + r' -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+            self.assertEqual(len(examples), 1)
+            converter = self.clean(examples[0].removeprefix('OPENQASM 3.0;'))
+            if marker == 'angle-multiplicative-example':
+                self.assertEqual(converter._QASM2QCXConverter__const_angle_values['DOUBLE'].value, 14)
+                self.assertEqual(converter._QASM2QCXConverter__const_uint_variable_name_values_map['RATIO'], [112])
+            else:
+                self.assertEqual(list(converter)[-1], 'DO AMPLITUDES')
+
     def test_compound_rhs_is_captured_before_single_destination_write(self):
         for operator in ('*=', '/='):
             converter = self.converter('angle[4] a; array[uint[4], 2] factors = {2, 3}; int index = 1;')

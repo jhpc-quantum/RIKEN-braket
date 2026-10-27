@@ -5,7 +5,10 @@ Run with --bra /path/to/bra. Raw fixtures avoid angle quantization dependence.
 """
 
 import argparse
+import cmath
+import math
 import pathlib
+import re
 import resource
 import unittest
 
@@ -21,6 +24,33 @@ class BackendTests(unittest.TestCase):
     exact = arithmetic.BackendTests.exact
     check_phase = arithmetic.BackendTests.check_phase
     check_zero_qubit = arithmetic.BackendTests.check_zero_qubit
+
+    def test_documented_multiplicative_examples(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx' / 'qasm2qcx.md').read_text()
+        examples = {}
+        for marker in ('angle-multiplicative-example', 'angle-multiplicative-phase-example'):
+            matches = re.findall(r'<!-- ' + marker + r' -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+            self.assertEqual(len(matches), 1)
+            examples[marker] = matches[0]
+        self.exact(examples['angle-multiplicative-example'], ('a', 'factor', 'product', 'divided', 'quotient'),
+                   (2, 2, 14, 3, 7))
+        for fused in (False, True):
+            lines = self.program(examples['angle-multiplicative-phase-example'])
+            if fused:
+                lines.insert(1, 'BEGIN FUSION')
+                lines.insert(len(lines) - 1, 'END FUSION')
+            result = self.execute(lines)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            actual = {int(index, 2): complex(float(real), float(imaginary))
+                      for index, real, imaginary in re.findall(r'^([01]+) => (\S+) \+ (\S+) i$', result.stdout, re.MULTILINE)}
+            self.assertEqual(set(actual), set(range(8)), result.stdout)
+            for index in range(8):
+                phase = (7 * math.pi / 8 if index & 1 else 0)
+                phase += 7 * math.pi / 8 if index & 6 == 6 else 0
+                phase += 7 * math.pi / 16 if not index & 4 else 0
+                self.assertTrue(cmath.isclose(actual[index], cmath.exp(1j * phase) / math.sqrt(8),
+                                             rel_tol=1e-5, abs_tol=2e-6), (index, actual[index]))
+            type(self).checked += 1
 
     def test_scaling_and_ratios_at_every_width(self):
         for width in range(1, self.module.QASM2QCXConverter.QCX_UINT_WIDTH + 1):
