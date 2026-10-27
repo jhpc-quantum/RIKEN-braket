@@ -238,6 +238,15 @@ class _ConstantAngle:
 
 
 @dataclasses.dataclass(frozen=True)
+class _AngleMultiplicativeInfo:
+    lhs: _AngleType | _UnsignedIntegerType
+    rhs: _AngleType | _UnsignedIntegerType
+    result_type: ValueType
+    result: _AngleType | _UnsignedIntegerType
+    runtime: bool
+
+
+@dataclasses.dataclass(frozen=True)
 class _ConstantBitRegister:
     width: int
     value: int
@@ -1293,6 +1302,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__expression_kind is None:
             return
 
+        if expression.op.name in ('*', '/') and self.__expression_mentions_angle(expression):
+            info = self.__angle_multiplicative_info(expression)
+            if info is not None:
+                self.__visit_angle_multiplicative(expression, info)
+                return
         if expression.op.name == '**':
             self.__visit_power_binary(expression)
             return
@@ -1453,6 +1467,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             ) -> tuple[ValueType, _UnsignedIntegerType | None, bool]:
         # Resolve widths from declarations/AST, never from mutable visit state.
         # Inspect both operands even if one already has a runtime dependency.
+        if (isinstance(expression, ast.BinaryExpression) and expression.op.name in ('*', '/')
+                and self.__expression_mentions_angle(expression)):
+            info = self.__angle_multiplicative_info(expression, iterators)
+            if info is not None:
+                return info.result_type, info.result if info.result_type == ValueType.UINT else None, info.runtime
         if isinstance(expression, ast.BinaryExpression) and expression.op.name == '**':
             return self.__power_expression_info(expression, iterators)
         value_type, runtime = self.__loop_expression_info(expression, iterators)
@@ -4192,6 +4211,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __loop_binary_info(
             self, expression: ast.BinaryExpression, iterators: set[str] | dict[str, ValueType] | None
             ) -> tuple[ValueType, bool]:
+        if expression.op.name in ('*', '/') and self.__expression_mentions_angle(expression):
+            info = self.__angle_multiplicative_info(expression, iterators)
+            if info is not None:
+                return info.result_type, info.runtime
         if expression.op.name in ('+', '-') and self.__expression_mentions_angle(expression):
             value_type, _, runtime = self.__angle_operand_info(expression, iterators)
             return value_type, runtime
@@ -6131,6 +6154,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # Shared, non-evaluating inference for arithmetic and skipped bodies.
         # Recurse through additive nodes once, rather than re-analyzing both
         # subtrees separately for value types, widths, and runtime dependence.
+        if (isinstance(expression, ast.BinaryExpression) and expression.op.name in ('*', '/')
+                and self.__expression_mentions_angle(expression)):
+            info = self.__angle_multiplicative_info(expression, iterators)
+            if info is not None:
+                return info.result_type, info.result if info.result_type == ValueType.ANGLE else None, info.runtime
         if isinstance(expression, ast.BinaryExpression) and expression.op.name in ('+', '-'):
             lhs_type, lhs_angle, lhs_runtime = self.__angle_operand_info(expression.lhs, iterators)
             rhs_type, rhs_angle, rhs_runtime = self.__angle_operand_info(expression.rhs, iterators)
@@ -6162,6 +6190,80 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if angle_type is None:
             raise UnsupportedOpenQASMError('angle expression without width metadata')
         return value_type, angle_type, runtime
+
+    def __angle_multiplicative_info(
+            self, expression: ast.BinaryExpression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _AngleMultiplicativeInfo | None:
+        lhs_type, lhs_angle, lhs_runtime = self.__angle_operand_info(expression.lhs, iterators)
+        rhs_type, rhs_angle, rhs_runtime = self.__angle_operand_info(expression.rhs, iterators)
+        if ValueType.ANGLE not in (lhs_type, rhs_type):
+            # Integer expressions may contain angle quotients without having
+            # angle operands themselves; leave them on the normal UINT path.
+            return None
+        if lhs_type == rhs_type == ValueType.ANGLE:
+            if expression.op.name != '/':
+                raise UnsupportedOpenQASMError('multiplication of two angles')
+            result = _UnsignedIntegerType(max(lhs_angle.width, rhs_angle.width),
+                                          lhs_angle.is_sized or rhs_angle.is_sized)
+            return _AngleMultiplicativeInfo(lhs_angle, rhs_angle, ValueType.UINT, result, lhs_runtime or rhs_runtime)
+        if ((lhs_type, rhs_type) not in ((ValueType.ANGLE, ValueType.UINT), (ValueType.UINT, ValueType.ANGLE))
+                or (lhs_type == ValueType.UINT and expression.op.name == '/')):
+            raise UnsupportedOpenQASMError('angle scaling requires angle * uint, uint * angle, or angle / uint')
+        factor = expression.rhs if rhs_type == ValueType.UINT else expression.lhs
+        factor_type, uint_type, factor_runtime = self.__integer_operand_info(factor, iterators)
+        if factor_type != ValueType.UINT or uint_type is None:
+            # A narrow UINT mixed with INT can promote to INT. Do not let
+            # the preliminary value-type lookup admit signed scaling.
+            raise UnsupportedOpenQASMError('angle scaling requires an unsigned integer factor')
+        angle_type = lhs_angle if lhs_type == ValueType.ANGLE else rhs_angle
+        if angle_type.width != uint_type.width:
+            raise UnsupportedOpenQASMError('angle and uint scaling operands must have matching effective widths')
+        return _AngleMultiplicativeInfo(
+            lhs_angle if lhs_type == ValueType.ANGLE else uint_type,
+            rhs_angle if rhs_type == ValueType.ANGLE else uint_type,
+            ValueType.ANGLE, angle_type, lhs_runtime or rhs_runtime or factor_runtime)
+
+    def __visit_angle_multiplicative(self, expression: ast.BinaryExpression, info: _AngleMultiplicativeInfo) -> None:
+        if info.runtime:
+            if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                raise NoConstantExpressionException
+            raise UnsupportedOpenQASMError('runtime angle multiplication/division')
+        previous_used = self.__used_temporary_variables.copy()
+        try:
+            values = []
+            for operand, metadata in ((expression.lhs, info.lhs), (expression.rhs, info.rhs)):
+                self.visit(operand)
+                if self.__value_kind != ValueKind.LITERAL:
+                    # Literal float-to-angle casts are executable outside a
+                    # constant context. Runtime emission is a separate stage.
+                    raise UnsupportedOpenQASMError('runtime angle multiplication/division')
+                value = int(self.__value)
+                if isinstance(metadata, _AngleType):
+                    value <<= info.result.width - metadata.width
+                else:
+                    value = metadata.normalize(value)
+                values.append(value)
+            if not self.__evaluate_constant:
+                value = 0
+            elif expression.op.name == '*':
+                value = values[0] * values[1]
+            elif values[1] != 0:
+                value = values[0] // values[1]
+            elif self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                raise ZeroDivisorException('/')
+            else:
+                # Do not turn a possibly skipped ordinary expression into a
+                # constant-domain error. Native division will handle this in
+                # the runtime-emission stage, even for literal zero divisors.
+                raise UnsupportedOpenQASMError('runtime angle division with zero divisor')
+            self.__value = value & info.result.mask
+            self.__value_type, self.__value_kind = info.result_type, ValueKind.LITERAL
+            metadata_map = (self.__angle_expression_types if info.result_type == ValueType.ANGLE
+                            else self.__uint_expression_types)
+            metadata_map[id(expression)] = (expression, info.result)
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
 
     def __visit_angle_arithmetic(self, expression: ast.BinaryExpression | ast.UnaryExpression) -> None:
         _, angle_type, runtime = self.__angle_operand_info(expression)
