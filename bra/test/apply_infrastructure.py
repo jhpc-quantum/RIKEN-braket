@@ -8,6 +8,7 @@
 import argparse
 import math
 import pathlib
+import re
 import resource
 import subprocess
 
@@ -90,6 +91,17 @@ PRINTLN R
     for actual, expected in zip(map(float, result.stdout.splitlines()), (math.pi / 2, -math.pi / 2, 0)):
         if not math.isclose(actual, expected, rel_tol=1e-5, abs_tol=1e-7):
             raise RuntimeError(f'ANGLEBITS2PHASE CLI phase: {actual} != {expected}')
+
+    document = (pathlib.Path(__file__).parents[2] / 'docs' / 'bra.md').read_text()
+    examples = re.findall(r'<!-- anglebits2phase-example -->\s*```text\n(.*?)\n```', document, flags=re.DOTALL)
+    if len(examples) != 1:
+        raise RuntimeError('expected one documented ANGLEBITS2PHASE example')
+    result = run(examples[0] + '\n')
+    if result.returncode or len(result.stdout.splitlines()) != 3:
+        raise RuntimeError(f'documented ANGLEBITS2PHASE example failed: {result}')
+    for actual, expected in zip(map(float, result.stdout.splitlines()), (math.pi / 2, -math.pi / 2, 0)):
+        if not math.isclose(actual, expected, rel_tol=1e-5, abs_tol=1e-7):
+            raise RuntimeError(f'documented ANGLEBITS2PHASE phase: {actual} != {expected}')
 
     result = run(setup + 'apply r <- exp r\nPRINTLN R\n')
     if result.returncode != 0 or not math.isclose(float(result.stdout.strip()), math.exp(2), rel_tol=1e-5):

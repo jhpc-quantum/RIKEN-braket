@@ -255,6 +255,10 @@ general expressions are operands; use temporary variables for intermediate
 results. Destinations are mutable classical variables or indexed elements,
 not literals, casts, or built-in constants.
 
+`ANGLEBITS2PHASE` additionally accepts an optional literal `INV`/`POW` chain
+after its two typed operands. These descriptors are instruction metadata;
+their grammar and precision rules are described below.
+
 #### Initial signatures and operand typing
 
 | Function | Operand types | Result types |
@@ -277,6 +281,7 @@ not literals, casts, or built-in constants.
 | `MOD` | `REAL`, `REAL` | `REAL` |
 | `COMPLEX` | `REAL`, `REAL` | `COMPLEX` |
 | `ANGLEBITS` | `REAL`, `INT` | `UINT` |
+| `ANGLEBITS2PHASE` | `UINT`, `INT`, followed by optional literal descriptors | `REAL` |
 
 Only operand types select an overload. Destination types must then match the
 result types exactly; they never select an overload. There is no implicit
@@ -499,6 +504,75 @@ independent exact-rational oracle in all three REAL precisions and debug,
 release, and mixed-release modes; `--sanitize` adds UBSan. It covers rounding
 ties and adjacent inputs, wraparound, huge values, stored subnormals, invalid
 inputs, and preservation of floating-point controls.
+
+`ANGLEBITS2PHASE` evaluates ordered powers and inversions of a fixed-point
+angle and returns its principal phase in radians:
+
+```text
+APPLY RESULT <- ANGLEBITS2PHASE BITS WIDTH [INV | POW exponent]...
+```
+
+`BITS` must be a `UINT` in `[0, 2^WIDTH)` and `WIDTH` an `INT` in
+`[1, native UINT width]`. Ordinary APPLY scalar operands, including indexed
+elements and explicit casts, are accepted for these two inputs. An empty
+descriptor chain returns the initial principal phase. No ANGLE storage type
+is introduced.
+
+Descriptors act **left to right**. `INV` negates the phase; `POW exponent`
+selects the current principal phase and multiplies it by the exponent. Exact
+dyadic turn arithmetic retains branch decisions throughout the chain, using
+the interval `(-1/2, 1/2]` turns and selecting the positive half-turn at the
+negative-real endpoint. Phases may be reduced modulo one turn after each step.
+This is an explicit spectral-power policy, separate from general `ARG`.
+
+Each exponent must be an optionally signed decimal integer or a decimal
+floating literal containing a point or exponent marker. Variables, casts,
+symbols, expressions, hexadecimal forms, NaN, and infinity are not accepted.
+Integer factors remain exact beyond native INT/UINT range. Floating factors
+are decoded as IEEE binary64 with nearest-even rounding, independently of
+backend REAL precision and the caller's rounding/control modes. Their exact
+stored binary values are then used. Thus `9007199254740993` differs from
+`9007199254740993.0`; a literal rounding to binary64 zero is accepted, while
+one rounding to infinity is rejected. These literal rules apply only after
+`POW`, not to the two ordinary typed operands.
+
+Only the final exact turn fraction is multiplied by the stored backend REAL
+`:TWO_PI` and rounded once to REAL, nearest with ties to even. Intermediate
+floating overflow/underflow and branch loss are avoided. Final underflow is
+allowed, including signed zero for a nonzero negative phase; subsequent gate
+arithmetic still follows the existing floating-point environment. Build
+options and floating-point control modes are unchanged.
+
+Limits are 1,024 descriptors, 4,096 characters per exponent literal including
+its sign, and 65,536 bits in each reduced exact numerator or denominator.
+Every descriptor is validated at instruction construction, even after a zero
+factor and in skipped calls. Operand values and intermediate arithmetic sizes
+are checked only on reached invocations. A later zero does not suppress input
+validation or an earlier arithmetic-size error. Failures leave the destination
+unchanged and identify the complete APPLY instruction.
+
+<!-- anglebits2phase-example -->
+```text
+QUBITS 0
+VAR BITS UINT
+VAR RESULT REAL
+LET BITS := :UINT:1
+APPLY RESULT <- ANGLEBITS2PHASE BITS 1 INV POW 0.5
+PRINTLN RESULT
+APPLY RESULT <- ANGLEBITS2PHASE BITS 1 POW 0.5 INV
+PRINTLN RESULT
+APPLY RESULT <- ANGLEBITS2PHASE BITS 1 POW 2 POW 0.5
+PRINTLN RESULT
+```
+
+The three results are `pi/2`, `-pi/2`, and zero. Separate REAL-returning calls
+for successive modifiers are not equivalent to a whole-chain invocation.
+See the [design contract](anglebits2phase-design.md) for the exact grammar and
+the [converter's angle powers](../bra/qcx/qasm2qcx.md#floating-powers-of-angle-valued-phase-gates)
+for OpenQASM modifier order. `bra/test/anglebits2phase_numerical.py` compares
+stored native results with an independent exact-turn reference across all
+three REAL precisions, optimization modes, rounding modes, and DAZ/FTZ settings;
+`--sanitize` adds UBSan.
 
 `ARG` computes the complex argument in radians and rejects zero, including all
 combinations of signed-zero components. For a negative real component,

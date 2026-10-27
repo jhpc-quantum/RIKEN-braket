@@ -5,8 +5,9 @@ an ordered INV/POW chain. Exact turn arithmetic preserves branch decisions
 through nested powers. This is the design contract for
 [issue #396](https://github.com/jhpc-quantum/RIKEN-braket/issues/396).
 
-Status: Stages 2 and 3 implement the native bra function, its APPLY interface,
-and qasm2qcx integration. User documentation and final review are Stage 4.
+Status: implemented in bra and qasm2qcx. User-facing syntax and examples are in
+[`docs/bra.md`](bra.md#classical-function-invocation) and the
+[converter document](../bra/qcx/qasm2qcx.md#floating-powers-of-angle-valued-phase-gates).
 
 ## Interface
 
@@ -53,9 +54,9 @@ integer, while `9007199254740993.0` denotes binary64 `9007199254740992`.
 `0.1` means the stored binary64 approximation, not the exact decimal `1/10`.
 
 This policy matches qasm2qcx's current Python constant-exponent precision.
-The converter will serialize folded integers as decimal integer tokens and
+The converter serializes folded integers as decimal integer tokens and
 folded floats using a round-tripping floating spelling, retaining `.0` or an
-exponent marker when needed. It will not promote integer factors to REAL in
+exponent marker when needed. It does not promote integer factors to REAL in
 this angle-specific path. Native float/double/long-double configurations must
 therefore agree on exact branch decisions for an identical descriptor chain.
 Existing non-angle floating-power behavior remains unchanged.
@@ -154,5 +155,8 @@ forms or PHASE, preserving full global and relative phases.
 it does not import converter reduction helpers or native decomposition code.
 `bra/test/test_anglebits2phase_reference.py` checks encoding, endpoint neighbors,
 modifier order, extended precision, all native input widths, and resource/error
-policies. Stage 2 must independently compare the native kernel against this
-oracle across REAL precisions, rounding modes, optimization modes, and UBSan.
+policies. `bra/test/anglebits2phase_numerical.py` independently compares the native
+kernel against this oracle across REAL precisions, rounding modes, optimization
+modes, and UBSan. `bra/test/qasm2qcx_angle_power_numerical.py` checks converted
+full matrices, including controlled and global phases, fusion, runtime reentry,
+reached/skipped errors, and the documented converter examples.

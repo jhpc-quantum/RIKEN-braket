@@ -102,6 +102,28 @@ class BackendTests(unittest.TestCase):
                                            [(turns, wires)], fused=fused,
                                            preserved=(('live', bits),) if runtime else ())
 
+    def test_documented_floating_angle_examples(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx' / 'qasm2qcx.md').read_text()
+        for marker, qubits in (('angle-floating-power-example', 3), ('angle-floating-global-example', 0)):
+            examples = re.findall(r'<!-- ' + marker + r' -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+            self.assertEqual(len(examples), 1)
+            for fused in (False, True):
+                lines = self.program(examples[0])
+                self.assertEqual(lines[0], f'QUBITS {qubits}')
+                if fused:
+                    lines.insert(1, 'BEGIN FUSION')
+                    lines.insert(len(lines) - 1, 'END FUSION')  # Flush before the pragma's DO AMPLITUDES.
+                result = self.execute(lines)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                actual = {int(index, 2) if index else 0: complex(float(real), float(imaginary))
+                          for index, real, imaginary in re.findall(r'^([01]*) => (\S+) \+ (\S+) i$', result.stdout, re.MULTILINE)}
+                self.assertEqual(set(actual), set(range(1 << qubits)), result.stdout)
+                for index in range(1 << qubits):
+                    expected = ((1j if index & 1 else 1) * (-1j if index & 2 else 1)
+                                * (1j if not index & 4 else 1) / math.sqrt(8)) if qubits else -1j
+                    self.assertTrue(cmath.isclose(actual[index], expected, rel_tol=1e-5, abs_tol=2e-6))
+                type(self).checked += 1
+
     def test_exact_integer_and_binary64_factors_do_not_collapse(self):
         for factor in ('9007199254740993', '9007199254740993.0', str(10 ** 400 + 1),
                        '0.1', '5e-324', '1.7976931348623157e308'):

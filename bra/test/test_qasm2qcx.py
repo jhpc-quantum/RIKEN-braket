@@ -16462,6 +16462,16 @@ class FloatingAnglePhaseGateTests(unittest.TestCase):
         self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
         return list(converter)
 
+    def test_documented_floating_angle_examples(self):
+        document = (CONVERTER_PATH.parent / 'qasm2qcx.md').read_text()
+        for marker, qubits, calls in (('angle-floating-power-example', 3, 3), ('angle-floating-global-example', 0, 1)):
+            examples = re.findall(r'<!-- ' + marker + r' -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+            self.assertEqual(len(examples), 1)
+            lines = convert(examples[0])
+            self.assertEqual(lines[0], f'QUBITS {qubits}')
+            self.assertEqual(lines[-1], 'DO AMPLITUDES')
+            self.assertEqual(sum('<- ANGLEBITS2PHASE ' in line for line in lines), calls)
+
     def test_all_phase_aliases_use_one_native_call_and_real_phase_gate(self):
         for gate, operands, mnemonic in (('p', 'q[0]', 'U1'), ('phase', 'q[0]', 'U1'),
                                           ('u1', 'q[0]', 'U1'), ('cp', 'q[1], q[0]', 'CU1'),
