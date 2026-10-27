@@ -6154,31 +6154,55 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __visit_angle_arithmetic(self, expression: ast.BinaryExpression | ast.UnaryExpression) -> None:
         _, angle_type, runtime = self.__angle_operand_info(expression)
-        if runtime:
-            if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
-                raise NoConstantExpressionException
-            raise UnsupportedOpenQASMError('runtime angle arithmetic')
+        if runtime and self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+            raise NoConstantExpressionException
         operands = ([expression.lhs, expression.rhs] if isinstance(expression, ast.BinaryExpression)
                     else [expression.expression])
         previous_used = self.__used_temporary_variables.copy()
+        result = None
+        keep = False
         try:
-            values = []
-            for operand in operands:
-                self.visit(operand)
-                if self.__value_type != ValueType.ANGLE or self.__value_kind != ValueKind.LITERAL:
-                    # Float-to-angle casts are executable native conversions
-                    # outside a constant context, even with literal inputs.
-                    raise UnsupportedOpenQASMError('runtime angle arithmetic')
-                source_type = self.__angle_expression_type(operand)
-                values.append(self.__resize_angle_bits(int(self.__value), source_type, angle_type))
-            result = (-values[0] if isinstance(expression, ast.UnaryExpression)
-                      else values[0] + values[1] if expression.op.name == '+' else values[0] - values[1])
-            self.__value = (result & angle_type.mask) if self.__evaluate_constant else 0
-            self.__value_type, self.__value_kind = ValueType.ANGLE, ValueKind.LITERAL
+            # Capture each operand before evaluating the next, retaining both
+            # snapshots until the arithmetic is complete. Sources stay intact.
+            values = [self.__angle_arithmetic_operand(operand, angle_type) for operand in operands]
+            if all(isinstance(value, int) for value in values):
+                bits = (-values[0] if isinstance(expression, ast.UnaryExpression)
+                        else values[0] + values[1] if expression.op.name == '+' else values[0] - values[1])
+                self.__value = (bits & angle_type.mask) if self.__evaluate_constant else 0
+                self.__value_type, self.__value_kind = ValueType.ANGLE, ValueKind.LITERAL
+            else:
+                if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                    raise NoConstantExpressionException
+                result = self.__add_new_temporary_variable(ValueType.UINT, _UnsignedIntegerType(angle_type.width, True))
+                unary = isinstance(expression, ast.UnaryExpression)
+                initial = 0 if unary else values[0]
+                rhs = values[0] if unary else values[1]
+                operator = '-=' if unary or expression.op.name == '-' else '+='
+                self.__qcx_lines.extend([f'LET {result} := {initial}', f'LET {result} {operator} {rhs}'])
+                self.__normalize_uint_storage(result, _UnsignedIntegerType(angle_type.width, True))
+                self.__value, self.__value_type, self.__value_kind = result, ValueType.ANGLE, ValueKind.TEMPORARY
             self.__angle_expression_types[id(expression)] = (expression, angle_type)
+            keep = result is not None
         finally:
             for temporary in self.__used_temporary_variables - previous_used:
-                self.__release_temporary_variable(temporary)
+                if not keep or temporary != result:
+                    self.__release_temporary_variable(temporary)
+
+    def __angle_arithmetic_operand(self, expression: ast.Expression, target: _AngleType) -> int | str:
+        # Called inside the arithmetic visitor's temporary-storage scope.
+        self.visit(expression)
+        source = self.__angle_expression_type(expression)
+        if self.__value_type != ValueType.ANGLE or source is None:
+            raise UnsupportedOpenQASMError('angle arithmetic requires angle operands with width metadata')
+        if self.__value_kind == ValueKind.LITERAL:
+            return self.__resize_angle_bits(int(self.__value), source, target)
+        if self.__value_kind not in (ValueKind.LVALUE, ValueKind.TEMPORARY):
+            raise UninitializedValueException
+        snapshot = self.__add_new_temporary_variable(ValueType.UINT, _UnsignedIntegerType(target.width, True))
+        self.__qcx_lines.append(f'LET {snapshot} := {self.__value}')
+        if target.width > source.width:
+            self.__qcx_lines.append(f'LET {snapshot} <<= {target.width - source.width}')
+        return snapshot
 
     def __angle_expression_type(self, expression: ast.Expression) -> _AngleType | None:
         if isinstance(expression, ast.Identifier):
