@@ -3615,9 +3615,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError(
                 f'branching condition operator {condition.op.name}')
 
-        if (self.__expression_mentions_angle(condition)
-                and self.__angle_comparison_info(condition) is not None):
-            raise UnsupportedOpenQASMError('runtime angle comparison')
+        if self.__expression_mentions_angle(condition):
+            angle_info = self.__angle_comparison_info(condition)
+            if angle_info is not None:
+                self.__emit_angle_comparison_condition(
+                    condition, angle_info, operators[condition.op], true_label, false_label)
+                return
         if self.__register_comparison_width(condition) is not None:
             self.__emit_register_equality_condition(condition, true_label, false_label)
             return
@@ -3662,6 +3665,32 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__qcx_lines.append(f'JUMP {false_label}')
         for temporary in temporaries_to_release:
             self.__release_temporary_variable(temporary)
+
+    def __emit_angle_comparison_condition(
+            self, expression: ast.BinaryExpression, info: tuple[_AngleType, _AngleType, bool],
+            operator: str, true_label: str, false_label: str) -> None:
+        lhs_type, rhs_type, _ = info
+        common = _AngleType(max(lhs_type.width, rhs_type.width), lhs_type.is_sized or rhs_type.is_sized)
+        previous_kind = self.__expression_kind
+        previous_used = self.__used_temporary_variables.copy()
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            # Snapshot left before evaluating right. Widen the fractional
+            # angle representation with low zero bits, never UINT promotion.
+            lhs = self.__angle_arithmetic_operand(expression.lhs, common)
+            rhs = self.__angle_arithmetic_operand(expression.rhs, common)
+            if isinstance(lhs, int):
+                # JUMPIF requires a variable on its left, even for constants.
+                temporary = self.__add_new_temporary_variable(
+                    ValueType.UINT, _UnsignedIntegerType(common.width, common.is_sized))
+                self.__qcx_lines.append(f'LET {temporary} := {lhs}')
+                lhs = temporary
+            self.__qcx_lines.extend([
+                f'JUMPIF {true_label} {lhs} {operator} {rhs}', f'JUMP {false_label}'])
+        finally:
+            self.__expression_kind = previous_kind
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
 
     def __emit_register_equality_condition(
             self, expression: ast.BinaryExpression, true_label: str, false_label: str) -> None:

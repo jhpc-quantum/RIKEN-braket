@@ -149,7 +149,7 @@ class ScalarAngleFoundationTests(unittest.TestCase):
                 self.converter(source)
 
     def test_angle_storage_does_not_enable_implicit_numeric_or_gate_uses(self):
-        for expression in ('a + a', '-a', '~a', 'a << 1', 'a == a', 'a && a',
+        for expression in ('a + a', '-a', '~a', 'a << 1', 'a == uint[4](0)', 'a && a',
                            'int(a)', 'uint(a)', 'float(a)', 'complex(a)',
                            'exp(a)', 'sin(a)', 'popcount(a)'):
             with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -17181,11 +17181,83 @@ class AngleComparisonFoundationTests(unittest.TestCase):
             with self.subTest(expression=expression), self.assertRaises(qasm2qcx.NoConstantExpressionException):
                 self.converter('angle[4] a = pi; const angle[8] A = pi; ' + f'const bool B = {expression};')
 
-    def test_runtime_lowering_remains_for_stage_two(self):
-        for source in ('angle[4] a; bool b = a == a;',
-                       'const angle[4] A = pi; if (A < A) { }'):
-            with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'runtime angle comparison'):
-                self.converter(source)
+
+class RuntimeAngleComparisonTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    expression = AngleComparisonFoundationTests.expression
+    clean = RuntimeAngleArithmeticTests.clean
+
+    def test_all_operators_in_boolean_values_and_conditions(self):
+        for op in AngleComparisonFoundationTests.operations:
+            self.clean(f'''angle[4] a = pi; angle[8] b = pi;
+                bool result = a {op} b; result = !(b {op} a);
+                if (a {op} b) {{ result = true; }} else {{ result = false; }}
+                int count = 0; while (count < 2 && (a {op} b || b == a)) {{ count += 1; }}''')
+
+    def test_constant_left_operand_is_materialized_as_uint(self):
+        converter = self.clean('const angle[4] A = pi; if (A == A) { }')
+        lines = list(converter)
+        comparison = next(line.split() for line in lines if line.startswith('JUMPIF '))
+        self.assertIn(f'VAR {comparison[2]} UINT', lines)
+        self.assertIn(f'LET {comparison[2]} := 8', lines)
+        self.assertEqual(comparison[3:], ['==', '8'])
+
+    def test_operands_are_captured_once_in_order_before_unsigned_comparison(self):
+        converter = self.converter('angle[4] a; angle[8] b;')
+        expression = self.expression('a != b')
+        start = len(converter._QASM2QCXConverter__qcx_lines)
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            converter._QASM2QCXConverter__emit_condition(expression, 'YES', 'NO')
+        operands = [call.args[0] for call in visit.call_args_list
+                    if call.args[0] is expression.lhs or call.args[0] is expression.rhs]
+        self.assertEqual([id(operand) for operand in operands], [id(expression.lhs), id(expression.rhs)])
+        lines = converter._QASM2QCXConverter__qcx_lines[start:]
+        name = converter._QASM2QCXConverter__capitalize_variable_name
+        for source in ('a', 'b'):
+            self.assertEqual(sum(line.endswith(' := ' + name(source)) for line in lines), 1)
+            self.assertFalse(any(line.startswith(f'LET {name(source)} ') for line in lines))
+        self.assertEqual(sum(line.endswith(' <<= 4') for line in lines), 1)
+        self.assertTrue(any(re.fullmatch(r'JUMPIF YES \S+ \\= \S+', line) for line in lines))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
+
+    def test_computed_operands_and_integer_quotients_keep_their_types(self):
+        self.clean('''angle[4] a = pi; angle[8] b = pi; uint[4] u = 2;
+            array[float, 2] values = {0.1, 0.2}; int index = 1;
+            bool first = (a * u) == (b - angle[8](values[index]));
+            bool second = (a / a) < uint[4](2);
+            bool nested = bool(a == b) == (b >= a);''')
+
+    def test_mixed_types_are_rejected_in_runtime_and_skipped_conditions(self):
+        for expression in ('a < pi', '0.0 == a', 'a != uint[4](0)', 'a > true', 'a <= 0'):
+            for wrapper in ('bool result = {};', 'if ({}) {{ }}',
+                            'while (false && ({})) {{ }}', 'for int i in [1:0] {{ if ({}) {{ }} }}'):
+                with self.subTest(expression=expression, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    self.clean('angle[4] a; ' + wrapper.format(expression))
+
+    def test_second_operand_failure_releases_owned_storage_and_preserves_destination(self):
+        converter = self.converter('angle[4] a; angle[8] b; bool result;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        original = converter._QASM2QCXConverter__angle_arithmetic_operand
+        def capture(expression, target):
+            if isinstance(expression, qasm2qcx.ast.Identifier) and expression.name == 'b':
+                raise RuntimeError('injected RHS failure')
+            return original(expression, target)
+        start = len(converter._QASM2QCXConverter__qcx_lines)
+        with patch.object(converter, '_QASM2QCXConverter__angle_arithmetic_operand', side_effect=capture):
+            with self.assertRaisesRegex(RuntimeError, 'injected RHS failure'):
+                converter.visit(self.program('result = a < b;').statements[0])
+        name = converter._QASM2QCXConverter__capitalize_variable_name('result')
+        self.assertFalse(any(line.startswith(f'LET {name} ') for line in converter._QASM2QCXConverter__qcx_lines[start:]))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
+
+    def test_runtime_declarations_are_hoisted_from_repeated_conditions(self):
+        lines = list(self.clean('angle[4] a = pi; angle[8] b = pi; int count = 0; '
+                                'while (a == b && count < 2) { count += 1; }'))
+        first_jump = next(index for index, line in enumerate(lines) if line.startswith('JUMP'))
+        self.assertFalse(any(line.startswith('VAR ') for line in lines[first_jump:]))
 
 
 class AngleMultiplicativeAssignmentTests(unittest.TestCase):
