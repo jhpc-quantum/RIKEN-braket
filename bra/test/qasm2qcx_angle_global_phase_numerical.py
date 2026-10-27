@@ -172,6 +172,106 @@ class BackendTests(unittest.TestCase):
                 self.assertNotIn(' => ', result.stdout)
                 type(self).checked += 1
 
+    def test_inverse_and_controlled_adjoint_combinations(self):
+        for parameter in ('A', 'live'):
+            declaration = 'const angle[4] A = 5 * pi / 8; angle[4] live = A; '
+            for modifiers, power in (('inv @', -1), ('inv @ inv @', 1),
+                                     ('pow(-3) @', -3), ('inv @ pow(-3) @', 3)):
+                for fused in (False, True):
+                    self.check_zero_qubit(declaration + modifiers + f' gphase({parameter});',
+                                          4, (5 * power) % 16, fused=fused, preserved=(('live', 5),))
+                    self.check_phase(declaration + f'negctrl @ {modifiers} gphase({parameter}) q[2];',
+                                     4, (5 * power) % 16, (((2, 0),),), fused=fused, preserved=(('live', 5),))
+            for fused in (False, True):
+                self.check_phase(declaration + f'negctrl(2) @ ctrl @ inv @ gphase({parameter}) q[3], q[1], q[0];',
+                                 4, 11, (((3, 0), (1, 0), 0),), fused=fused,
+                                 preserved=(('live', 5),), qubits=4)
+
+    def test_integer_power_boundaries_for_uncontrolled_and_controlled_phases(self):
+        native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
+        minimum = self.module.QASM2QCXConverter.QCX_INT_MIN
+        signed_max = self.module.QASM2QCXConverter.QCX_INT_MAX
+        maximum = self.module.QASM2QCXConverter.QCX_UINT_MAX
+        for width in (1, 4, native):
+            bits = (1 << width) - 1
+            radians = math.ldexp(math.tau * bits, -width)
+            for power in (-3, -1, 0, 1, 2, minimum, signed_max, maximum):
+                exponent_type = 'uint' if power > signed_max else 'int'
+                declaration = (f'const angle[{width}] A = {radians!r}; angle[{width}] live = A; '
+                               + f'{exponent_type} exponent = {power}; ')
+                expected = (bits * power) % (1 << width)
+                for parameter in ('A', 'live'):
+                    for exponent in (str(power), 'exponent'):
+                        for fused in (False, True):
+                            self.check_zero_qubit(declaration + f'pow({exponent}) @ gphase({parameter});',
+                                                  width, expected, fused=fused, preserved=(('live', bits),))
+                            self.check_phase(declaration + f'negctrl @ ctrl @ pow({exponent}) @ gphase({parameter}) q[2], q[0];',
+                                             width, expected, (((2, 0), 0),), fused=fused, preserved=(('live', bits),))
+            for fused in (False, True):
+                huge = (1 << 100) + 1
+                source = (f'const angle[{width}] A = {radians!r}; angle[{width}] live = A; '
+                          + f'int a = {minimum + 1}; uint b = {maximum}; '
+                          + f'inv @ pow(a) @ pow(b) @ pow({huge}) @ gphase(live);')
+                expected = (-bits * (minimum + 1) * maximum * huge) % (1 << width)
+                self.check_zero_qubit(source, width, expected, fused=fused, preserved=(('live', bits),))
+
+    def test_exact_powered_bits_at_every_width(self):
+        native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
+        minimum = self.module.QASM2QCXConverter.QCX_INT_MIN
+        maximum = self.module.QASM2QCXConverter.QCX_UINT_MAX
+        huge = (1 << 100) + 1
+        cases = (('int a = -1;', 'pow(a) @', -1, 1),
+                 (f'int a = {minimum};', 'inv @ pow(a) @', minimum, -1),
+                 (f'uint a = {maximum};', 'pow(a) @ pow(3) @', maximum, 3),
+                 (f'int a = {minimum + 1}; uint b = {maximum};',
+                  f'pow(a) @ pow(b) @ pow({huge}) @', (minimum + 1) * maximum, huge),
+                 ('int a = -1;', 'pow(0) @ pow(a) @', -1, 0))
+        for width in range(1, native + 1):
+            for bits in sorted({1, (1 << width) - 1}):
+                radians = math.ldexp(math.tau * bits, -width)
+                for declarations, modifiers, runtime_power, constant_power in cases:
+                    source = (f'const angle[{width}] A = {radians!r}; angle[{width}] live = A; '
+                              + declarations + modifiers + ' gphase(live);')
+                    lines = self.program(source, (('live', False),))
+                    jump = next(index for index, line in enumerate(lines)
+                                if line.startswith('JUMPIF ') and '_GLOBAL_ANGLE_1_SKIP ' in line)
+                    # Observe the powered private UINT snapshot, not rounded
+                    # complex output, including all native-width low bits.
+                    snapshot = lines[jump - 2].split()[-1]
+                    lines.insert(jump - 2, f'PRINTLN {snapshot}')
+                    result = self.execute(lines)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    expected = (bits * runtime_power * abs(constant_power)) % (1 << width)
+                    self.assertEqual(result.stdout.split(), [str(expected), str(bits)], source)
+                    type(self).checked += 1
+
+    def test_power_reentry_array_iterators_and_required_input_checks(self):
+        for fused in (False, True):
+            self.check_zero_qubit('''const angle[4] A = 5 * pi / 8; angle[4] live = A;
+                array[int, 3] exponents = {2, -3, 0};
+                for int exponent in exponents { pow(exponent) @ gphase(live); }''',
+                                  4, 11, fused=fused, preserved=(('live', 5),))
+            self.check_zero_qubit('''const angle[4] A = 5 * pi / 8; angle[4] live = A;
+                int exponent = -3; int count = 0;
+                while (count < 2) { pow(exponent) @ gphase(live); exponent = 2; count += 1; }''',
+                                  4, 11, fused=fused, preserved=(('live', 5),))
+            self.check_phase('''const angle[4] A = 5 * pi / 8; angle[4] live = A;
+                array[int, 2] exponents = {0, -3}; int index = 1;
+                negctrl @ ctrl @ pow(exponents[index]) @ gphase(live) q[2], q[0];''',
+                             4, 1, (((2, 0), 0),), fused=fused, preserved=(('live', 5),))
+            self.check_zero_qubit('''bool flag = false; int zero = 0;
+                if (flag) { pow(0) @ pow(1 / zero) @ gphase(angle[4](1e309)); }
+                for int i in [1:0] { pow(0) @ gphase(angle[4](1e309)); }''', 4, 0, fused=fused)
+            for body in ('pow(0) @ gphase(angle[4](1e309));',
+                         'pow(0) @ pow(1 / zero) @ gphase(A);',
+                         'ctrl @ pow(0) @ gphase(angle[4](1e309)) q;',
+                         'x q; negctrl @ pow(0) @ gphase(angle[4](1e309)) q;'):
+                source = 'include "stdgates.inc"; qubit q; int zero = 0; const angle[4] A = pi; ' + body
+                result = self.execute(self.program(source, fused=fused) + ['DO AMPLITUDES'])
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn(' => ', result.stdout)
+                type(self).checked += 1
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)

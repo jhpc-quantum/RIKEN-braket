@@ -2566,10 +2566,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # Integer powers/inversion commute with controls; fractional powers
         # require branch-aware spectral handling, not powers of individual R's.
         self.__analyze_gate_modifiers(statement.modifiers, iterators, allow_runtime=True, allow_float=False)
-        if isinstance(statement, ast.QuantumPhase):
-            if any(modifier.modifier in (ast.GateModifierName.inv, ast.GateModifierName.pow)
-                   for modifier in statement.modifiers):
-                raise UnsupportedOpenQASMError('inverse/power modifiers on angle-valued gphase')
         return angle_arguments[0]
 
     def __constant_angle_gate_value(
@@ -2612,11 +2608,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__qcx_lines.append(f'{mnemonic} {" ".join(qubits)} {exponent}')
 
     def __emit_constant_angle_global_phase(
-            self, statement: ast.QuantumPhase, constant: _ConstantAngle, info: _GateModifierInfo) -> None:
+            self, statement: ast.QuantumPhase, constant: _ConstantAngle,
+            info: _GateModifierInfo, output_start: int | None) -> None:
         if statement.qubits:
             # A controlled global phase has no extra target. One condition
             # uses R; two use CR; all controls retain their own polarity.
-            self.__emit_constant_angle_phase_gate(statement, constant, info, None)
+            self.__emit_constant_angle_phase_gate(statement, constant, info, output_start)
             return
         exponents = sorted(constant.angle_type.width - bit for bit in range(constant.angle_type.width)
                            if constant.value & (1 << bit))
@@ -2625,26 +2622,32 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         phase = self.__add_new_temporary_variable(ValueType.FLOAT)
         try:
             self.__qcx_lines.append(f'LET {phase} := :TWO_PI')
+            if info.power < 0:
+                self.__qcx_lines.append(f'LET {phase} *= -1.0')
             previous = 0
             for exponent in exponents:
                 # A power-of-two REAL literal is exact at every backend
                 # precision. Do not fold radian coefficients on the host.
                 divisor = f'{1 << (exponent - previous)}.0'
-                self.__emit_gate_power([f'LET {phase} /= {divisor}', f'PHASE {phase}'], 1, None)
+                self.__emit_gate_power([f'LET {phase} /= {divisor}', f'PHASE {phase}'], 1, output_start)
                 previous = exponent
         finally:
             self.__release_temporary_variable(phase)
 
     def __emit_runtime_angle_global_phase(
-            self, statement: ast.QuantumPhase, expression: ast.Expression, info: _GateModifierInfo) -> None:
+            self, statement: ast.QuantumPhase, expression: ast.Expression, info: _GateModifierInfo,
+            runtime: _RuntimeGatePower | None, output_start: int | None) -> None:
         if statement.qubits:
-            self.__emit_runtime_angle_phase_gate(statement, expression, info, None, None)
+            self.__emit_runtime_angle_phase_gate(statement, expression, info, runtime, output_start)
             return
         with self.__captured_angle_bits(expression) as (snapshot, angle_type):
+            self.__power_angle_bits(snapshot, angle_type, info, runtime)
             scratch = self.__add_new_temporary_variable(ValueType.UINT)
             phase = self.__add_new_temporary_variable(ValueType.FLOAT)
             prefix = self.__gate_power_label() + '_GLOBAL_ANGLE'
             self.__qcx_lines.append(f'LET {phase} := :TWO_PI')
+            if info.power < 0:
+                self.__qcx_lines.append(f'LET {phase} *= -1.0')
             for exponent in range(1, angle_type.width + 1):
                 skip = f'{prefix}_{exponent}_SKIP'
                 # Scale on every bit, including zero bits, so later nonzero
@@ -2652,7 +2655,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__emit_gate_power([
                     f'LET {phase} /= 2.0', f'LET {scratch} := {snapshot}',
                     f'LET {scratch} &= {1 << (angle_type.width - exponent)}',
-                    f'JUMPIF {skip} {scratch} == 0', f'PHASE {phase}', f'@{skip}'], 1, None)
+                    f'JUMPIF {skip} {scratch} == 0', f'PHASE {phase}', f'@{skip}'], 1, output_start)
 
     def __validate_angle_phase_qubits(
             self, statement: ast.QuantumGate | ast.QuantumPhase, iterators: dict[str, ValueType]) -> None:
@@ -3316,11 +3319,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         angle_parameter = self.__angle_phase_parameter(statement)
         if angle_parameter is not None:
+            output_start = (len(self.__qcx_lines) if any(
+                modifier.modifier == ast.GateModifierName.pow for modifier in statement.modifiers) else None)
             constant = self.__constant_angle_gate_value(angle_parameter)
-            if constant is not None:
-                self.__emit_constant_angle_global_phase(statement, constant, info)
+            if constant is not None and runtime is None:
+                powered = _ConstantAngle(constant.angle_type,
+                                         (constant.value * abs(info.power)) & constant.angle_type.mask)
+                self.__emit_constant_angle_global_phase(statement, powered, info, output_start)
             else:
-                self.__emit_runtime_angle_global_phase(statement, angle_parameter, info)
+                self.__emit_runtime_angle_global_phase(statement, angle_parameter, info, runtime, output_start)
             return
 
         self.__expression_kind = ExpressionKind.ARITHMETIC
