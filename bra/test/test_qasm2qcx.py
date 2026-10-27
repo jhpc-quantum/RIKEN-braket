@@ -17261,6 +17261,19 @@ class AngleBitwiseAssignmentTests(unittest.TestCase):
     program = staticmethod(ScalarAngleFoundationTests.program)
     clean = RuntimeAngleArithmeticTests.clean
 
+    def test_documented_bitwise_examples(self):
+        document = (CONVERTER_PATH.parent / 'qasm2qcx.md').read_text()
+        for marker in ('angle-bitwise-example', 'angle-bitwise-phase-example'):
+            examples = re.findall(r'<!-- ' + marker + r' -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+            self.assertEqual(len(examples), 1)
+            converter = self.clean(examples[0].removeprefix('OPENQASM 3.0;'))
+            if marker == 'angle-bitwise-example':
+                values = converter._QASM2QCXConverter__const_angle_values
+                for name, bits in (('INVERTED', 8), ('JOINED', 113), ('BEFORE', 129), ('AFTER', 143)):
+                    self.assertEqual(values[name].value, bits, name)
+            else:
+                self.assertEqual(list(converter)[-1], 'DO AMPLITUDES')
+
     def test_compound_operations_promote_before_narrowing_and_write_once(self):
         for operator in ('&=', '|=', '^='):
             converter = self.converter('angle[4] a; angle[8] b;')

@@ -104,8 +104,11 @@ The converter currently covers:
 - scalar `const bit` declarations and supported constant-bit expressions;
 - scalar `angle`/`angle[n]` variables and constants, float-to-angle conversion,
   angle-width conversion, and explicit Boolean conversion;
-- scalar angle addition, subtraction, unary negation, and `+=`/`-=` assignments,
-  with width promotion and modulo-one-turn results;
+- scalar angle addition, subtraction, unary negation, UINT scaling, angle ratios,
+  and corresponding supported compound assignments;
+- scalar angle comparisons with width promotion and unsigned angle ordering;
+- scalar angle bitwise expressions (`~`, `&`, `|`, `^`) and `&=`/`|=`/`^=`
+  assignments, with width promotion and angle result types;
 - scalar angle parameters for `p`, `phase`, `u1`, `cp`, `cphase`, and `gphase`, including
   inverse/control modifiers and constant/runtime integer powers;
 - scalar built-in `exp`, `sqrt`, `log`, `sin`, `cos`, `tan`, `arcsin`, `arccos`,
@@ -157,8 +160,9 @@ does not change them. A cast width cannot depend on a loop iterator or runtime
 variable.
 
 Both `angle[n]` and `const angle[n]` accept a `float` expression or another
-angle as an initializer. Mutable scalar angles also support `=`, `+=`, and `-=`
-assignment; the compound forms require an angle RHS.
+angle as an initializer. Mutable scalar angles support `=` assignment and
+`+=`, `-=`, `&=`, `|=`, and `^=` with an angle RHS. Scaling assignments `*=` and
+`/=` require a UINT RHS with matching effective width.
 Explicit casts use `angle[n](value)` or `angle(value)`. Integer, Boolean, bit,
 and complex inputs are not accepted directly; use `float(...)` first when an
 existing numeric conversion is appropriate. Constants require constant inputs,
@@ -213,9 +217,10 @@ Skipped branches, short-circuited operands, and empty loops do not execute
 conversion domain checks or skipped arithmetic. Empty loops still validate
 names, widths, types, and read-only targets.
 
-This is not full angle support. Mixed angle/numeric comparisons, bitwise operations, shifts,
-indexing, compound assignments other than `+=`, `-=`, `*=`, and `/=`, angle
-arrays/iteration, numeric or bit casts from angles, and angle-typed trigonometric
+This is not full angle support. Mixed angle/non-angle comparisons and bitwise
+operations, shifts, indexing, compound assignments other than `+=`, `-=`, `*=`,
+`/=`, `&=`, `|=`, and `^=`, angle arrays/iteration, numeric or bit casts from
+angles, and angle-typed trigonometric
 calls remain unsupported.
 Use an angle comparison or `bool(a)` explicitly in a condition; a bare angle
 is not a Boolean condition.
@@ -454,6 +459,83 @@ if (a < b) {
 }
 if (a != b && a > angle[4](0.0)) {
   negctrl @ pow(0.5) @ gphase(a) q[2]; // Phase +5*pi/16 when q[2] is zero.
+}
+pragma riken_braket.amplitudes
+```
+
+#### Scalar angle bitwise operators
+
+Scalar angles support `~`, `&`, `|`, and `^`, plus `&=`, `|=`, and `^=`, during
+constant evaluation and runtime execution. These operate on the stored angle
+bits, following the [OpenQASM bitwise rules](https://openqasm.com/language/classical.html#classical-bits-and-registers).
+The result is an angle, preserving its use in angle arithmetic, comparisons,
+explicit Boolean conversions, and supported phase-gate parameters.
+
+| Operation | Result width and sizedness |
+| --- | --- |
+| `~a` | Same width and sizedness as `a`; complement only those bits |
+| `a & b`, `a \| b`, `a ^ b` | Wider operand width; sized if either operand is sized |
+| `a &= b`, `a \|= b`, `a ^= b` | Promoted binary result converted back to `a`'s width |
+
+Binary operands must both be angles. Different widths are aligned by appending
+low zero bits to the narrower angle before combining the patterns, using the
+same promotion as angle arithmetic and comparisons. Unsized angles use native
+UINT width. No implicit bitwise mixing with integer, floating-point, Boolean,
+bit, or complex values is provided.
+
+At width `n`, complement is `bits XOR (2^n - 1)`. This is distinct from unary
+minus: for four-bit `0111`, complement gives `1000`, whereas negation gives
+`1001`. Complement happens at its operand's width before any enclosing promotion.
+For example, widening `~angle[4]` bits `0111` to eight bits produces `10000000`;
+widening the original angle first and then complementing produces `10001111`.
+
+Compound assignments capture their operands before updating the target,
+including self-referencing expressions. Compute at the promoted width, then
+discard low bits if the destination is narrower. Constants remain read-only.
+Runtime lowering uses private UINT snapshots, existing QCX bitwise instructions,
+and width masks, preserving source values and angle metadata. Operands are
+evaluated once, left before right for binary expressions. No new bra instruction
+or floating-point operation is required for the bitwise calculation itself.
+
+An all-zero operand does not suppress evaluation of the other operand. Reached
+conversion, access, and division errors still fail; skipped branches,
+short-circuited expressions, and empty loops do not execute those checks.
+Names, types, widths, operators, and read-only targets are validated even on
+skipped paths. Angle shifts, rotations, and `popcount` remain separate work.
+
+<!-- angle-bitwise-example -->
+```qasm
+OPENQASM 3.0;
+const angle[4] A = 7 * pi / 8;        // Bits: 0111.
+const angle[8] B = pi / 128;          // Bits: 00000001.
+const angle[4] INVERTED = ~A;         // Bits: 1000.
+const angle[8] JOINED = A | B;        // Bits: 01110001.
+const angle[8] BEFORE = ~A | B;       // Bits: 10000001.
+const angle[8] AFTER = ~angle[8](A);  // Bits: 10001111.
+angle[4] a = A;
+angle[8] b = B;
+angle[8] result = (~a | b) ^ b;       // Bits: 10000000.
+angle[4] narrow = a | b;             // Bits: 0111 after narrowing.
+a |= b;                             // Bits: 0111.
+a ^= angle[4](pi / 4);               // Bits: 0101.
+a &= angle[8](15 * pi / 8);          // Bits: 0101.
+bool nonzero = bool(a & b);          // false.
+```
+
+<!-- angle-bitwise-phase-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit[3] q;
+angle[4] a = 7 * pi / 8;
+angle[8] fine = pi / 128;
+a |= fine;
+a ^= angle[4](pi / 4);
+a &= angle[8](15 * pi / 8);          // a represents 5*pi/8.
+h q;
+p(a) q[0];
+if ((~a & fine) != a) {
+  negctrl @ inv @ pow(0.5) @ gphase(a) q[2]; // Phase -5*pi/16 when q[2] is zero.
 }
 pragma riken_braket.amplitudes
 ```
@@ -1377,6 +1459,8 @@ an explicit `bit(...)` or integer cast; Boolean variables are not bitwise
 assignment destinations. Floating-point and complex operands require a
 supported explicit integer cast. Whole registers and arrays are not scalar
 operands, including singleton registers.
+
+Angle operands follow the separate [scalar angle bitwise rules](#scalar-angle-bitwise-operators).
 
 ```qasm
 OPENQASM 3.0;
@@ -4302,8 +4386,8 @@ The current prototype does not reliably support:
   `exp`/`sqrt`/`log`/`sin`/`cos`/`tan`/`arcsin`/`arccos`/`arctan`/`ceiling`/`floor`/
   `mod`/`popcount`/`rotl`/`rotr`/`real`/`imag` subset above;
 - angle-by-angle multiplication, scaling by types other than same-width UINT,
-  `uint / angle`, `angle /= angle`, mixed angle/numeric comparisons, bitwise operations, shifts,
-  compound operators other than `+=`/`-=`/`*=`/`/=`, indexing, arrays/iteration,
+  `uint / angle`, `angle /= angle`, mixed angle/non-angle comparisons and bitwise
+  operations, shifts, compound operators other than `+=`/`-=`/`*=`/`/=`/`&=`/`|=`/`^=`, indexing, arrays/iteration,
   numeric or bit casts from angles, angle-typed trigonometric arguments, angle-valued gates outside
   `p`/`phase`/`u1`/`cp`/`cphase`/`gphase`; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
@@ -4371,6 +4455,18 @@ qubits, and fusion. Both comparison examples above are executed. Unit tests
 additionally check constant folding, invalid mixed operands on skipped paths,
 once-only capture, declaration hoisting, and cleanup with caller-owned temporaries.
 Run with `--bra /path/to/bra`, including a UBSan build.
+
+`bra/test/qasm2qcx_angle_bitwise_numerical.py` checks exact complements and binary
+bit patterns at every supported width, mixed-width alignment, destination
+narrowing, sized/unsized values, self-reference, and compound assignments. It
+covers repeated execution, iterator shadowing, measurement-controlled updates,
+angle arithmetic and comparisons, and reached/skipped operand errors. Full phase
+matrices cover the supported phase-gate aliases, modifiers, negative controls,
+global phase, zero qubits, and fusion. Both bitwise examples above are executed.
+Unit tests additionally check exhaustive four-bit constants, sizedness metadata,
+once-only operand capture, invalid mixed operands, read-only targets, declaration
+hoisting, and temporary cleanup. Run with `--bra /path/to/bra`, including a UBSan
+build.
 
 `bra/test/qasm2qcx_angle_phase_numerical.py` compares whole diagonal phase
 matrices with the generated angle-phase circuits, without discarding global
