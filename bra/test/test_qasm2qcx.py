@@ -749,6 +749,19 @@ class AngleGlobalPhaseModifierTests(unittest.TestCase):
     program = staticmethod(ScalarAngleFoundationTests.program)
     prefix = 'const angle[4] A = 5 * pi / 8; '
 
+    def test_documented_global_phase_examples(self):
+        document = (CONVERTER_PATH.parent / 'qasm2qcx.md').read_text()
+        for marker, qubits in (('zero', 0), ('controlled', 3)):
+            examples = re.findall(r'<!-- angle-global-phase-' + marker + r'-example -->\s*```qasm\n(.*?)\n```',
+                                  document, flags=re.DOTALL)
+            self.assertEqual(len(examples), 1)
+            program = qasm2qcx.openqasm3.parser.parse(examples[0])
+            converter = qasm2qcx.QASM2QCXConverter(program)
+            converter.visit(program)
+            lines = list(converter)
+            self.assertEqual((lines[0], lines[-1]), (f'QUBITS {qubits}', 'DO AMPLITUDES'))
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
     def test_constant_inverse_and_integer_powers_reduce_bits_without_repetition(self):
         for modifiers, power in (('inv @', -1), ('inv @ inv @', 1), ('pow(3) @', 3),
                                  ('pow(-3) @', -3), ('pow(0) @', 0), ('pow(16) @', 16),

@@ -140,6 +140,13 @@ capacity: negative controls can require localization and more communication
 than positive-only rank/unit filtering. Fusion retains zero-controls inside the
 fused block rather than factoring them into its positive-only outer mask.
 
+`PHASE theta` multiplies the entire state by `exp(i*theta)`, where `theta`
+is a radian literal or REAL-valued operand. It has no qubit operands, works
+with `QUBITS 0`, and supports normal and fused execution. Inversion uses a
+negated phase operand, not a separate `PHASE+` instruction. The OpenQASM
+converter also uses it for binary contributions of uncontrolled fixed-point
+angles; see [angle-valued global phase](../bra/qcx/qasm2qcx.md#angle-valued-global-phase).
+
 * `I i`: identity gate operated on qubit $i$, $I (a_0 \ket{0} + a_1 \ket{1}) = a_0 \ket{0} + a_1 \ket{1}$. This gate performs MPI communication of a gate with one qubit, e.g., `X i`.
 * `IC c`: identity gate operated on control qubit $c$, $I_\mathrm{C} (a_0 \ket{0} + a_1 \ket{1}) = a_0 \ket{0} + a_1 \ket{1}$. This gate performs MPI communication of a gate with one control qubit, e.g., `Z c`.
 * `CCCIII c1 c2 c3 t1 t2 t3` or `C3I3 c1 c2 c3 t1 t2 t3`: the controlled identity gate. Qubits $c_1$, ..., $c_3$ are control qubits and $t_1$, ..., $t_3$ are target qubits. If you use two control qubits and two target qubits, use `CCII c1 c2 t1 t2` or `C2I2 c1 c2 t1 t2` instead. This gate performs MPI comunication of a gate with control and target qubits, e.g., `CCCZZZ c1 c2 c3 t1 t2 t3`.
@@ -606,6 +613,9 @@ The OpenQASM converter uses these existing instructions to decompose scalar
 angle-valued phase gates into binary phase contributions. See
 [angle-valued phase gates](../bra/qcx/qasm2qcx.md#angle-valued-phase-gates) for
 the supported gates, modifiers, runtime bit tests, and conversion semantics.
+For angle-valued `gphase`, one condition qubit uses `R`, two use `CR`, and
+additional conditions use the corresponding multi-controlled form, without
+an extra target. Uncontrolled global phase uses `PHASE` instead.
 
 The native regression suite checks complex amplitudes on one- through four-qubit
 states, including cache boundaries, signed exponents, integer endpoints, variable

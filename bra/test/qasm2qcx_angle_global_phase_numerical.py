@@ -52,6 +52,34 @@ class BackendTests(unittest.TestCase):
                         self.check_zero_qubit(f'const angle[{width}] A = {radians!r}; gphase(A);',
                                               width, bits, fused=fused)
 
+    def test_documented_global_phase_examples(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx' / 'qasm2qcx.md').read_text()
+        for marker, qubits in (('zero', 0), ('controlled', 3)):
+            examples = re.findall(r'<!-- angle-global-phase-' + marker + r'-example -->\s*```qasm\n(.*?)\n```',
+                                  document, flags=re.DOTALL)
+            self.assertEqual(len(examples), 1)
+            for fused in (False, True):
+                lines = self.program(examples[0])
+                self.assertEqual(lines[0], f'QUBITS {qubits}')
+                if fused:
+                    lines.insert(1, 'BEGIN FUSION')
+                    lines.insert(len(lines) - 1, 'END FUSION')  # Flush before pragma-requested output.
+                result = self.execute(lines)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                actual = {int(index, 2) if index else 0: complex(float(real), float(imaginary))
+                          for index, real, imaginary in
+                          re.findall(r'^([01]*) => (\S+) \+ (\S+) i$', result.stdout, re.MULTILINE)}
+                self.assertEqual(set(actual), set(range(1 << qubits)))
+                for index in range(1 << qubits):
+                    if not qubits:
+                        expected = -1j
+                    else:
+                        eighths = 5 if not index & 4 else 0
+                        eighths -= 5 if index & 1 and index & 2 else 0
+                        expected = cmath.exp(1j * eighths * math.pi / 8) / math.sqrt(8)
+                    self.assertTrue(cmath.isclose(actual[index], expected, rel_tol=1e-5, abs_tol=2e-6))
+                type(self).checked += 1
+
     def test_every_width_single_bit_on_zero_qubits(self):
         for width in range(1, self.module.QASM2QCXConverter.QCX_UINT_WIDTH + 1):
             # Every exponent is checked on a state with no qubits. Include
