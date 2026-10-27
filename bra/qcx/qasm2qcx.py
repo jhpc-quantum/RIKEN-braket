@@ -3615,15 +3615,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError(
                 f'branching condition operator {condition.op.name}')
 
+        # Register shift/rotation counts may contain angle quotients without
+        # making the comparison operands scalar angles.
+        if self.__register_comparison_width(condition) is not None:
+            self.__emit_register_equality_condition(condition, true_label, false_label)
+            return
         if self.__expression_mentions_angle(condition):
             angle_info = self.__angle_comparison_info(condition)
             if angle_info is not None:
                 self.__emit_angle_comparison_condition(
                     condition, angle_info, operators[condition.op], true_label, false_label)
                 return
-        if self.__register_comparison_width(condition) is not None:
-            self.__emit_register_equality_condition(condition, true_label, false_label)
-            return
         rhs_value, rhs_type, rhs_kind = self.__condition_operand(
             condition.rhs)
         lhs_value, lhs_type, lhs_kind = self.__condition_operand(
@@ -3885,10 +3887,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         else:
             angle_comparison = None
             if expression.op.name in ('==', '!=', '<', '<=', '>', '>='):
-                if self.__expression_mentions_angle(expression):
-                    angle_comparison = self.__angle_comparison_info(expression)
-                    if angle_comparison is not None and angle_comparison[2]:
-                        raise NoConstantExpressionException
                 width = self.__register_comparison_width(expression)
                 if width is not None:
                     lhs = self.__constant_bit_register_value(expression.lhs, width)
@@ -3897,6 +3895,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     self.__value = int(equal if expression.op.name == '==' else not equal) if self.__evaluate_constant else 0
                     self.__value_type, self.__value_kind = ValueType.BOOL, ValueKind.LITERAL
                     return
+                if self.__expression_mentions_angle(expression):
+                    angle_comparison = self.__angle_comparison_info(expression)
+                    if angle_comparison is not None and angle_comparison[2]:
+                        raise NoConstantExpressionException
             self.visit(expression.lhs)
             lhs_value, lhs_type = self.__value, self.__value_type
             logical = expression.op in (
@@ -4256,6 +4258,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, expression: ast.BinaryExpression, iterators: set[str] | dict[str, ValueType] | None
             ) -> tuple[ValueType, bool]:
         if (expression.op.name in ('==', '!=', '<', '<=', '>', '>=')
+                and self.__register_comparison_width(expression, iterators) is not None):
+            lhs_runtime = self.__register_expression_runtime(expression.lhs, iterators)
+            rhs_runtime = self.__register_expression_runtime(expression.rhs, iterators)
+            return ValueType.BOOL, lhs_runtime or rhs_runtime
+        if (expression.op.name in ('==', '!=', '<', '<=', '>', '>=')
                 and self.__expression_mentions_angle(expression)):
             info = self.__angle_comparison_info(expression, iterators)
             if info is not None:
@@ -4270,11 +4277,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if expression.op.name == '**':
             value_type, _, runtime = self.__power_expression_info(expression, iterators)
             return value_type, runtime
-        if (expression.op.name in ('==', '!=', '<', '<=', '>', '>=')
-                and self.__register_comparison_width(expression, iterators) is not None):
-            lhs_runtime = self.__register_expression_runtime(expression.lhs, iterators)
-            rhs_runtime = self.__register_expression_runtime(expression.rhs, iterators)
-            return ValueType.BOOL, lhs_runtime or rhs_runtime
         lhs_type, lhs_runtime = self.__loop_expression_info(expression.lhs, iterators)
         rhs_type, rhs_runtime = self.__loop_expression_info(expression.rhs, iterators)
         runtime = lhs_runtime or rhs_runtime

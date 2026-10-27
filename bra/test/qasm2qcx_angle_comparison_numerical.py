@@ -5,7 +5,10 @@ Run with --bra /path/to/bra (including a UBSan build).
 """
 
 import argparse
+import cmath
+import math
 import pathlib
+import re
 import resource
 import unittest
 
@@ -21,6 +24,33 @@ class BackendTests(unittest.TestCase):
     exact = arithmetic.BackendTests.exact
     check_phase = arithmetic.BackendTests.check_phase
     check_zero_qubit = arithmetic.BackendTests.check_zero_qubit
+
+    def test_documented_comparison_examples(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx' / 'qasm2qcx.md').read_text()
+        examples = {}
+        for marker in ('angle-comparison-example', 'angle-comparison-phase-example'):
+            matches = re.findall(r'<!-- ' + marker + r' -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+            self.assertEqual(len(matches), 1)
+            examples[marker] = matches[0]
+        self.exact(examples['angle-comparison-example'],
+                   ('a', 'b', 'greater', 'wrapped', 'fine_order', 'count', 'equal', 'skipped'),
+                   (8, 128, 1, 1, 0, 4, 1, 0))
+        for fused in (False, True):
+            lines = self.program(examples['angle-comparison-phase-example'])
+            if fused:
+                lines.insert(1, 'BEGIN FUSION')
+                lines.insert(len(lines) - 1, 'END FUSION')
+            result = self.execute(lines)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            actual = {int(index, 2): complex(float(real), float(imaginary))
+                      for index, real, imaginary in re.findall(r'^([01]+) => (\S+) \+ (\S+) i$', result.stdout, re.MULTILINE)}
+            self.assertEqual(set(actual), set(range(8)), result.stdout)
+            for index in range(8):
+                phase = (5 * math.pi / 8 if index & 1 else 0)
+                phase += 5 * math.pi / 16 if not index & 4 else 0
+                self.assertTrue(cmath.isclose(actual[index], cmath.exp(1j * phase) / math.sqrt(8),
+                                             rel_tol=1e-5, abs_tol=2e-6), (index, actual[index]))
+            type(self).checked += 1
 
     def compare(self, left_width, left, right_width, right):
         width = max(left_width, right_width)
@@ -76,6 +106,17 @@ class BackendTests(unittest.TestCase):
             for int A in {0, 1, 2} { if (A < A + 1) { hits += 1; } }
             bool restored_again = a < A;''', ('a', 'result', 'hits', 'restored', 'restored_again'),
             (7, 1, 5, 1, 1), raw=(('a', 7),))
+
+    def test_bit_register_comparisons_with_angle_quotient_counts(self):
+        for operand in ('B << uint(A / A)', 'B >> uint(A / A)',
+                        'rotl(B, uint(A / A))', 'rotr(B, uint(A / A))'):
+            for declarations in ('const angle[4] A = pi; const bit[4] B = "0001";',
+                                 'angle[4] A = pi; bit[4] B = "0001";'):
+                self.exact(declarations + f'''bool equal = ({operand}) == B;
+                    bool unequal = ({operand}) != B; int branch = 0;
+                    if (({operand}) != B) {{ branch = 1; }}
+                    for int i in [1:0] {{ if (({operand}) == B) {{ branch = 2; }} }}''',
+                    ('equal', 'unequal', 'branch'), (0, 1, 1))
 
     def test_repeated_conditions_break_continue_and_measurement(self):
         self.exact('''angle[4] a; angle[8] limit = 3 * pi / 2; int count = 0; int hits = 0;

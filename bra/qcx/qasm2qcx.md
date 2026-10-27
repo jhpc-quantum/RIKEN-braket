@@ -213,11 +213,12 @@ Skipped branches, short-circuited operands, and empty loops do not execute
 conversion domain checks or skipped arithmetic. Empty loops still validate
 names, widths, types, and read-only targets.
 
-This is not full angle support. Comparisons, bitwise operations, shifts,
+This is not full angle support. Mixed angle/numeric comparisons, bitwise operations, shifts,
 indexing, compound assignments other than `+=`, `-=`, `*=`, and `/=`, angle
 arrays/iteration, numeric or bit casts from angles, and angle-typed trigonometric
 calls remain unsupported.
-Use `bool(a)` explicitly in a condition; a bare angle is not a Boolean condition.
+Use an angle comparison or `bool(a)` explicitly in a condition; a bare angle
+is not a Boolean condition.
 Angle-valued gate parameters are limited to the phase gates described below.
 
 #### Scalar angle arithmetic
@@ -377,6 +378,83 @@ h q;
 p(a) q[0];
 cp(a) q[1], q[2];
 negctrl @ pow(0.5) @ gphase(a) q[2];  // Phase +7*pi/16 when q[2] is zero.
+pragma riken_braket.amplitudes
+```
+
+#### Scalar angle comparisons
+
+Scalar angle expressions support `==`, `!=`, `<`, `<=`, `>`, and `>=`, producing
+Boolean results during constant evaluation or runtime execution. Comparisons use
+the represented values in `[0, 2*pi)`, following the
+[OpenQASM comparison rules](https://openqasm.com/language/classical.html#comparison-boolean-instructions).
+Ordering is unsigned and does not use the principal-phase representative of a
+floating gate power. For example, `-pi/2` stored as an angle represents
+`3*pi/2`, so it compares greater than an angle representing `pi`.
+Wraparound means doubling an angle need not increase it.
+
+For different widths, the narrower angle is widened by appending low zero bits
+before comparison. This preserves the angle and discards no precision:
+`angle[4]` bits `0100` and `angle[8]` bits `01000000` compare equal. Sized and
+unsized operands follow the same rule using their effective widths; unsized
+angles use native UINT width. See the
+[promotion and casting rules](https://openqasm.com/language/types.html#casting-specifics).
+
+Both operands must be angles in this supported subset. Convert numeric values
+explicitly, for example `a == angle[4](pi)`, rather than `a == pi`. No implicit
+angle comparison with `int`, `uint`, `float`, `bool`, bit, or complex operands is
+provided. An angle ratio such as `a / b` produces UINT, so comparisons of that
+result use the ordinary integer rules instead.
+
+Boolean results work in initializers, assignments, Boolean arrays, `if`/`else`,
+`while`, and logical expressions, including nested comparisons and
+short-circuit evaluation. Constant evaluation compares exact aligned bit
+patterns. Runtime lowering captures the left operand once before the right,
+aligns private UINT snapshots, and uses existing QCX `JUMPIF` comparisons.
+Sources remain unchanged; temporary declarations are hoisted from repeated
+runtime bodies. No new bra instruction or floating-point comparison is needed.
+
+A reached comparison evaluates both operands, including conversion, access,
+and zero-divisor checks. A skipped branch, short-circuited logical operand, or
+empty loop does not execute those checks, but names, types, and widths are still
+validated. As with other constant expressions, an evaluated invalid constant
+operand is rejected during conversion.
+
+<!-- angle-comparison-example -->
+```qasm
+OPENQASM 3.0;
+const angle[4] QUARTER = pi / 2;
+const angle[8] SAME = pi / 2;
+const bool EQUAL = QUARTER == SAME;   // true after widening QUARTER.
+angle[4] a = 3 * pi / 2;             // Bits: 1100.
+angle[8] b = pi;                     // Bits: 10000000.
+bool greater = a > b;                // true: 3*pi/2 > pi.
+bool wrapped = (a * uint[4](2)) < a;  // true: doubling wraps to pi.
+bool fine_order = angle[4](pi / 8) < angle[8](pi / 128); // false.
+int count = 0;
+while (a > b) {
+  a -= angle[4](pi / 8);
+  count += 1;
+}                                   // a now represents pi; count is 4.
+bool equal = a == b;                 // true.
+bool skipped = false && (a / uint[4](0) == b); // false; no zero division.
+```
+
+<!-- angle-comparison-phase-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit[3] q;
+angle[4] a = 5 * pi / 8;
+angle[8] b = pi;
+h q;
+if (a < b) {
+  p(a) q[0];
+} else {
+  p(-a) q[0];
+}
+if (a != b && a > angle[4](0.0)) {
+  negctrl @ pow(0.5) @ gphase(a) q[2]; // Phase +5*pi/16 when q[2] is zero.
+}
 pragma riken_braket.amplitudes
 ```
 
@@ -4224,7 +4302,7 @@ The current prototype does not reliably support:
   `exp`/`sqrt`/`log`/`sin`/`cos`/`tan`/`arcsin`/`arccos`/`arctan`/`ceiling`/`floor`/
   `mod`/`popcount`/`rotl`/`rotr`/`real`/`imag` subset above;
 - angle-by-angle multiplication, scaling by types other than same-width UINT,
-  `uint / angle`, `angle /= angle`, comparisons, bitwise operations, shifts,
+  `uint / angle`, `angle /= angle`, mixed angle/numeric comparisons, bitwise operations, shifts,
   compound operators other than `+=`/`-=`/`*=`/`/=`, indexing, arrays/iteration,
   numeric or bit casts from angles, angle-typed trigonometric arguments, angle-valued gates outside
   `p`/`phase`/`u1`/`cp`/`cphase`/`gphase`; or
@@ -4279,6 +4357,20 @@ examples above are executed. Unit tests additionally cover exhaustive four-bit
 arithmetic, sizedness, constant evaluation, invalid pairs and widths on skipped
 paths, once-only operand capture, and temporary cleanup on success and failure.
 Run the numerical driver with `--bra /path/to/bra`; it can also use a UBSan build.
+
+`bra/test/qasm2qcx_angle_comparison_numerical.py` checks all six comparisons
+against independent aligned-integer results at every supported width, including
+exhaustive four-bit truth tables, mixed-width equality and ordering, wraparound,
+and sized/unsized operands. It covers Boolean destinations, arithmetic operands,
+iterator shadowing, repeated conditions, `break`/`continue`, measurement-controlled
+branches, and reached/skipped operand errors. Register comparisons with angle
+quotients as shift/rotation counts retain their existing register semantics.
+Full phase matrices check
+comparison-controlled gates, global phase, negative controls, powers, zero
+qubits, and fusion. Both comparison examples above are executed. Unit tests
+additionally check constant folding, invalid mixed operands on skipped paths,
+once-only capture, declaration hoisting, and cleanup with caller-owned temporaries.
+Run with `--bra /path/to/bra`, including a UBSan build.
 
 `bra/test/qasm2qcx_angle_phase_numerical.py` compares whole diagonal phase
 matrices with the generated angle-phase circuits, without discarding global

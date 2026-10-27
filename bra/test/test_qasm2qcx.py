@@ -17265,6 +17265,17 @@ class AngleComparisonIntegrationTests(unittest.TestCase):
     program = staticmethod(ScalarAngleFoundationTests.program)
     clean = RuntimeAngleArithmeticTests.clean
 
+    def test_documented_comparison_examples(self):
+        document = (CONVERTER_PATH.parent / 'qasm2qcx.md').read_text()
+        for marker in ('angle-comparison-example', 'angle-comparison-phase-example'):
+            examples = re.findall(r'<!-- ' + marker + r' -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+            self.assertEqual(len(examples), 1)
+            converter = self.clean(examples[0].removeprefix('OPENQASM 3.0;'))
+            if marker == 'angle-comparison-example':
+                self.assertEqual(converter._QASM2QCXConverter__const_bool_variable_values_map['EQUAL'], 1)
+            else:
+                self.assertEqual(list(converter)[-1], 'DO AMPLITUDES')
+
     def test_iterator_shadowing_restores_numeric_and_angle_comparison_paths(self):
         self.clean('''const angle[4] A = pi; angle[4] a; bool result = false;
             array[float, 2] values = {0.1, 0.2};
@@ -17283,6 +17294,16 @@ class AngleComparisonIntegrationTests(unittest.TestCase):
             int integer = a > b; uint unsigned = a >= b; float real = a <= b;
             array[bool, 2] values = {false, true}; int index = 1;
             values[index] = a != b; flag = values[index] && a <= b;''')
+
+    def test_register_comparisons_with_angle_quotient_counts_keep_register_semantics(self):
+        for operand in ('B << uint(A / A)', 'B >> uint(A / A)',
+                        'rotl(B, uint(A / A))', 'rotr(B, uint(A / A))'):
+            for operator in ('==', '!='):
+                converter = self.clean('const angle[4] A = pi; const bit[4] B = "0001"; '
+                                       f'const bool C = ({operand}) {operator} B;')
+                self.assertEqual(converter._QASM2QCXConverter__const_bool_variable_values_map['C'], int(operator == '!='))
+                self.clean('angle[4] A = pi; bit[4] B = "0001"; '
+                           f'bool result = ({operand}) {operator} B; if (({operand}) {operator} B) {{ result = true; }}')
 
     def test_caller_temporaries_survive_comparison_emission_and_failure(self):
         converter = self.converter('angle[4] a; angle[8] b; uint[8] zero = 0;')
