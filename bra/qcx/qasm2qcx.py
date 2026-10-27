@@ -6224,46 +6224,65 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             ValueType.ANGLE, angle_type, lhs_runtime or rhs_runtime or factor_runtime)
 
     def __visit_angle_multiplicative(self, expression: ast.BinaryExpression, info: _AngleMultiplicativeInfo) -> None:
-        if info.runtime:
-            if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
-                raise NoConstantExpressionException
-            raise UnsupportedOpenQASMError('runtime angle multiplication/division')
+        if info.runtime and self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+            raise NoConstantExpressionException
         previous_used = self.__used_temporary_variables.copy()
+        result = None
+        keep = False
         try:
-            values = []
-            for operand, metadata in ((expression.lhs, info.lhs), (expression.rhs, info.rhs)):
-                self.visit(operand)
-                if self.__value_kind != ValueKind.LITERAL:
-                    # Literal float-to-angle casts are executable outside a
-                    # constant context. Runtime emission is a separate stage.
-                    raise UnsupportedOpenQASMError('runtime angle multiplication/division')
-                value = int(self.__value)
-                if isinstance(metadata, _AngleType):
-                    value <<= info.result.width - metadata.width
+            values = [self.__angle_multiplicative_operand(operand, metadata, info.result.width)
+                      for operand, metadata in ((expression.lhs, info.lhs), (expression.rhs, info.rhs))]
+            defer_zero = (expression.op.name == '/' and values[1] == 0
+                          and self.__expression_kind == ExpressionKind.ARITHMETIC)
+            if all(isinstance(value, int) for value in values) and not defer_zero:
+                if not self.__evaluate_constant:
+                    value = 0
+                elif expression.op.name == '*':
+                    value = values[0] * values[1]
+                elif values[1] != 0:
+                    value = values[0] // values[1]
                 else:
-                    value = metadata.normalize(value)
-                values.append(value)
-            if not self.__evaluate_constant:
-                value = 0
-            elif expression.op.name == '*':
-                value = values[0] * values[1]
-            elif values[1] != 0:
-                value = values[0] // values[1]
-            elif self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
-                raise ZeroDivisorException('/')
+                    raise ZeroDivisorException('/')
+                self.__value, self.__value_kind = value & info.result.mask, ValueKind.LITERAL
             else:
-                # Do not turn a possibly skipped ordinary expression into a
-                # constant-domain error. Native division will handle this in
-                # the runtime-emission stage, even for literal zero divisors.
-                raise UnsupportedOpenQASMError('runtime angle division with zero divisor')
-            self.__value = value & info.result.mask
-            self.__value_type, self.__value_kind = info.result_type, ValueKind.LITERAL
+                if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                    raise NoConstantExpressionException
+                storage = (info.result if info.result_type == ValueType.UINT
+                           else _UnsignedIntegerType(info.result.width, True))
+                result = self.__add_new_temporary_variable(ValueType.UINT, storage)
+                operator = '*=' if expression.op.name == '*' else '/='
+                self.__qcx_lines.extend([f'LET {result} := {values[0]}', f'LET {result} {operator} {values[1]}'])
+                # Native UINT division diagnoses zero before modifying this
+                # private result. A skipped classical path never executes it.
+                self.__normalize_uint_storage(result, storage)
+                self.__value, self.__value_kind = result, ValueKind.TEMPORARY
+            self.__value_type = info.result_type
             metadata_map = (self.__angle_expression_types if info.result_type == ValueType.ANGLE
                             else self.__uint_expression_types)
             metadata_map[id(expression)] = (expression, info.result)
+            keep = result is not None
         finally:
             for temporary in self.__used_temporary_variables - previous_used:
-                self.__release_temporary_variable(temporary)
+                if not keep or temporary != result:
+                    self.__release_temporary_variable(temporary)
+
+    def __angle_multiplicative_operand(
+            self, expression: ast.Expression, metadata: _AngleType | _UnsignedIntegerType,
+            width: int) -> int | str:
+        if isinstance(metadata, _AngleType):
+            return self.__angle_arithmetic_operand(expression, _AngleType(width, metadata.is_sized))
+        # UINT is an integer factor, not a turn fraction: never shift its bits
+        # to align it with an angle. The typing step checked matching widths.
+        self.visit(expression)
+        if self.__value_type != ValueType.UINT:
+            raise UnsupportedOpenQASMError('angle scaling requires an unsigned integer factor')
+        if self.__value_kind == ValueKind.LITERAL:
+            return metadata.normalize(int(self.__value))
+        if self.__value_kind not in (ValueKind.LVALUE, ValueKind.TEMPORARY):
+            raise UninitializedValueException
+        snapshot = self.__add_new_temporary_variable(ValueType.UINT, metadata)
+        self.__qcx_lines.append(f'LET {snapshot} := {self.__value}')
+        return snapshot
 
     def __visit_angle_arithmetic(self, expression: ast.BinaryExpression | ast.UnaryExpression) -> None:
         _, angle_type, runtime = self.__angle_operand_info(expression)
