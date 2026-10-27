@@ -104,6 +104,8 @@ The converter currently covers:
 - scalar `const bit` declarations and supported constant-bit expressions;
 - scalar `angle`/`angle[n]` variables and constants, float-to-angle conversion,
   angle-width conversion, and explicit Boolean conversion;
+- scalar angle addition, subtraction, unary negation, and `+=`/`-=` assignments,
+  with width promotion and modulo-one-turn results;
 - scalar angle parameters for `p`, `phase`, `u1`, `cp`, `cphase`, and `gphase`, including
   inverse/control modifiers and constant/runtime integer powers;
 - scalar built-in `exp`, `sqrt`, `log`, `sin`, `cos`, `tan`, `arcsin`, `arccos`,
@@ -155,7 +157,8 @@ does not change them. A cast width cannot depend on a loop iterator or runtime
 variable.
 
 Both `angle[n]` and `const angle[n]` accept a `float` expression or another
-angle as an initializer. Mutable scalar angles also support `=` assignment.
+angle as an initializer. Mutable scalar angles also support `=`, `+=`, and `-=`
+assignment; the compound forms require an angle RHS.
 Explicit casts use `angle[n](value)` or `angle(value)`. Integer, Boolean, bit,
 and complex inputs are not accepted directly; use `float(...)` first when an
 existing numeric conversion is appropriate. Constants require constant inputs,
@@ -210,11 +213,103 @@ Skipped branches, short-circuited operands, and empty loops do not execute
 conversion domain checks or skipped arithmetic. Empty loops still validate
 names, widths, types, and read-only targets.
 
-This is not full angle support. Arithmetic, comparisons, bitwise operations,
-indexing, compound assignments, angle arrays/iteration, numeric or bit casts
-from angles, and angle-typed trigonometric calls remain unsupported.
+This is not full angle support. Multiplication, division, comparisons, bitwise
+operations, shifts, indexing, compound assignments other than `+=` and `-=`,
+angle arrays/iteration, numeric or bit casts from angles, and angle-typed
+trigonometric calls remain unsupported.
 Use `bool(a)` explicitly in a condition; a bare angle is not a Boolean condition.
 Angle-valued gate parameters are limited to the phase gates described below.
+
+#### Scalar angle arithmetic
+
+Scalar angles support constant and runtime addition, subtraction, and unary
+negation, following the additive subset of the
+[OpenQASM angle operations](https://openqasm.com/language/classical.html#angles).
+Binary operations require two angle operands; there is no implicit
+mixing with `int`, `uint`, `float`, `bool`, bit, or complex values. Convert a
+float explicitly, for example `a + angle[8](radians)`. Each conversion quantizes
+its input before angle arithmetic takes place.
+
+| Operation | Result |
+| --- | --- |
+| `a + b`, `a - b` | Angle with the wider operand width |
+| `-a` | Angle with the same width and sizedness as `a` |
+| `a += b`, `a -= b` | Promoted binary result converted back to `a`'s width |
+
+For differing widths, the narrower operand is widened by appending low-order
+zero bits, preserving the angle rather than the unsigned integer value.
+Binary results are explicitly sized if either operand is explicitly sized;
+otherwise they remain unsized. Unsized angles use native UINT width. Assignment
+to a narrower angle retains the existing truncation policy, discarding low bits
+after the complete expression has been evaluated.
+
+At a result width `n`, aligned bit patterns `left` and `right` produce
+`(left + right) mod 2^n` or `(left - right) mod 2^n`. Unary negation produces
+`(-bits) mod 2^n`, so negating zero gives zero. Results represent angles in
+`[0, 2*pi)`. The principal-phase selection for
+[floating gate powers](#floating-powers-of-angle-valued-phase-gates) is a later,
+separate operation.
+
+Compound assignments behave like `a = a + b` or `a = a - b`, including promotion
+before destination narrowing. For example, if `a` is `angle[4]` with bits `0001`
+and `b` is `angle[8]` with bits `00000001`, `a -= b` computes
+`00010000 - 00000001 = 00001111` at eight bits, then stores `0000` in `a`.
+Truncating `b` before subtraction would incorrectly leave `a` at `0001`.
+Constants remain read-only, and self-referencing RHS expressions are supported.
+
+Once operands are quantized, constant arithmetic uses exact integer operations.
+Runtime arithmetic captures each operand once, in left-to-right order, into
+private UINT storage, then uses existing QCX arithmetic, shifts, and masks.
+The operands are unchanged; assignment updates its destination only after the
+RHS completes. No new bra instruction, storage type, build option, or
+floating-point calculation is needed for the angle arithmetic itself.
+
+Expressions work in initializers, assignments, explicit Boolean conversions,
+and supported phase-gate parameters, including modifiers, broadcasting, and
+fusion. Branches and loops retain normal reached/skipped execution behavior.
+Zero results do not suppress runtime conversion or access checks. Empty loops
+still validate types, names, widths, operators, and read-only destinations;
+temporary declarations are hoisted out of repeated runtime bodies.
+
+<!-- angle-arithmetic-example -->
+```qasm
+OPENQASM 3.0;
+const angle[4] ONE = pi / 8;
+const angle[8] FINE = pi / 128;
+const angle[4] WRAPPED = ONE + angle[4](15 * pi / 8);
+angle[4] wrapped = WRAPPED;     // Bits: 0000.
+angle[4] a = ONE;
+angle[8] b = FINE;
+angle[4] difference = a - b;    // Bits: 0000; subtraction before narrowing.
+a -= b;                       // Bits: 0000.
+b += angle[8](ONE);            // Bits: 00010001.
+angle[4] negative = -ONE;       // Bits: 1111.
+bool nonzero = bool(negative);  // true.
+```
+
+Computed angles can also feed quantum gates directly:
+
+<!-- angle-arithmetic-phase-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit[3] q;
+const angle[4] HALF_TURN = pi;
+const angle[8] EPSILON = pi / 128;
+angle[4] a = HALF_TURN;
+angle[8] fine = EPSILON;
+a -= fine;                    // Bits: 0111, representing 7*pi/8.
+h q;
+p(a) q[0];
+p(-a) q[1];
+negctrl @ pow(0.5) @ gphase(a - HALF_TURN) q[2];
+pragma riken_braket.amplitudes
+```
+
+The last operation applies a phase of `-pi/16` when `q[2]` is zero: the
+four-bit subtraction represents `15*pi/8`, whose principal square-root phase
+is `-pi/16`. The other two operations apply `+7*pi/8` and `-7*pi/8` when
+`q[0]` and `q[1]`, respectively, are one, retaining their full phases.
 
 ### Angle-valued phase gates
 
@@ -4059,7 +4154,8 @@ The current prototype does not reliably support:
   Boolean bitwise operations, or classical functions other than the
   `exp`/`sqrt`/`log`/`sin`/`cos`/`tan`/`arcsin`/`arccos`/`arctan`/`ceiling`/`floor`/
   `mod`/`popcount`/`rotl`/`rotr`/`real`/`imag` subset above;
-- angle arithmetic/comparisons, indexing, arrays/iteration, numeric or bit casts
+- angle multiplication/division, comparisons, bitwise operations, shifts,
+  compound operators other than `+=`/`-=`, indexing, arrays/iteration, numeric or bit casts
   from angles, angle-typed trigonometric arguments, angle-valued gates outside
   `p`/`phase`/`u1`/`cp`/`cphase`/`gphase`; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
@@ -4090,6 +4186,17 @@ cleanup. `bra/test/classical_function_angle_numerical.py` checks native
 and long-double REAL builds in debug, release, and mixed-release modes. It covers
 rounding directions, stored subnormals, invalid inputs, and unchanged
 floating-point controls; `--sanitize` repeats the matrix with UBSan.
+
+`bra/test/qasm2qcx_angle_arithmetic_numerical.py` checks exact stored bits at
+every supported width, mixed-width promotion and destination narrowing,
+wraparound, negation, self-referencing and compound assignments, source
+preservation, executable casts, and repeated execution in branches and loops.
+It covers measurement-controlled updates, iterator shadowing, reached/skipped
+errors, short-circuiting, and complete phase-gate matrices with modifiers,
+broadcasts, zero qubits, and fusion. It also executes both arithmetic examples
+above. Unit tests cover exhaustive four-bit arithmetic, constant evaluation,
+sized/unsized metadata, validation, operand capture, cleanup, and declaration
+hoisting. No new native bra arithmetic is required.
 
 `bra/test/qasm2qcx_angle_phase_numerical.py` compares whole diagonal phase
 matrices with the generated angle-phase circuits, without discarding global

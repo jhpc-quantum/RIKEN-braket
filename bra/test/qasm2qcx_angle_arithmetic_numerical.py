@@ -8,7 +8,10 @@ Expected results use independent integer alignment and modular arithmetic.
 """
 
 import argparse
+import cmath
+import math
 import pathlib
+import re
 import resource
 import unittest
 
@@ -175,6 +178,29 @@ class BackendTests(unittest.TestCase):
             bool and_result = flag && bool(a + angle[8](1e309));
             bool or_result = !flag || bool(-angle[8](1e309));''',
                    ('and_result', 'or_result'), (0, 1))
+
+    def test_documented_arithmetic_examples(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx' / 'qasm2qcx.md').read_text()
+        examples = re.findall(r'<!-- angle-arithmetic-example -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        self.exact(examples[0], ('wrapped', 'a', 'b', 'difference', 'negative', 'nonzero'), (0, 0, 17, 0, 15, 1))
+        examples = re.findall(r'<!-- angle-arithmetic-phase-example -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        for fused in (False, True):
+            lines = self.program(examples[0])
+            if fused:
+                lines.insert(1, 'BEGIN FUSION')
+                lines.insert(len(lines) - 1, 'END FUSION')  # Flush before pragma-requested amplitudes.
+            result = self.execute(lines)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            actual = {int(index, 2): complex(float(real), float(imaginary))
+                      for index, real, imaginary in re.findall(r'^([01]+) => (\S+) \+ (\S+) i$', result.stdout, re.MULTILINE)}
+            self.assertEqual(set(actual), set(range(8)), result.stdout)
+            for index in range(8):
+                phase = (7 * math.pi / 8 if index & 1 else 0) - (7 * math.pi / 8 if index & 2 else 0)
+                phase -= math.pi / 16 if not index & 4 else 0
+                self.assertTrue(cmath.isclose(actual[index], cmath.exp(1j * phase) / math.sqrt(8), rel_tol=1e-5, abs_tol=2e-6))
+            type(self).checked += 1
 
 
 def main():

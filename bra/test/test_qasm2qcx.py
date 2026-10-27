@@ -16739,6 +16739,21 @@ class AngleCompoundAssignmentTests(unittest.TestCase):
     program = staticmethod(ScalarAngleFoundationTests.program)
     clean = RuntimeAngleArithmeticTests.clean
 
+    def test_documented_angle_arithmetic_examples(self):
+        document = (CONVERTER_PATH.parent / 'qasm2qcx.md').read_text()
+        for marker in ('angle-arithmetic-example', 'angle-arithmetic-phase-example'):
+            examples = re.findall(r'<!-- ' + marker + r' -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+            self.assertEqual(len(examples), 1)
+            converter = self.clean(examples[0].removeprefix('OPENQASM 3.0;'))
+            if marker == 'angle-arithmetic-example':
+                self.assertEqual(list(converter)[0], 'QUBITS 0')
+                self.assertEqual(converter._QASM2QCXConverter__const_angle_values['WRAPPED'].value, 0)
+            else:
+                lines = list(converter)
+                self.assertEqual(lines[0], 'QUBITS 3')
+                self.assertEqual(lines[-1], 'DO AMPLITUDES')
+                self.assertEqual(sum('<- ANGLEBITS2PHASE ' in line for line in lines), 1)
+
     def test_addition_and_subtraction_use_the_promoted_binary_result(self):
         for operator in ('+=', '-='):
             converter = self.converter('angle[4] a; angle[8] b;')
