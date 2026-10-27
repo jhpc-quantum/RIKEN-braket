@@ -157,7 +157,7 @@ class ScalarAngleFoundationTests(unittest.TestCase):
         for target in ('int', 'uint', 'float', 'complex', 'bool', 'bit'):
             with self.subTest(target=target), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(f'angle[4] a; {target} out = a;')
-        for gate in ('rx(a) q;', 'U(a, 0, 0) q;', 'gphase(a);'):
+        for gate in ('rx(a) q;', 'U(a, 0, 0) q;'):
             with self.subTest(gate=gate), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter('include "stdgates.inc"; qubit q; angle[4] a; ' + gate)
 
@@ -248,7 +248,7 @@ class ScalarAngleIntegrationTests(unittest.TestCase):
                   'out = a;', 'out = angle[4](0.1);', 'out = float(a);',
                   'out = a + a;', 'a = angle[1 - 1](0.1);', 'a = angle[MISSING](0.1);',
                   'a = angle[4](MISSING);', 'if (a) { out = 0.0; }',
-                  'rx(a) q;', 'pow(2) @ rx(a) q;', 'gphase(a);', 'a = measure q;')
+                  'rx(a) q;', 'pow(2) @ rx(a) q;', 'a = measure q;')
         for wrapper in ('for int i in [1:0] {{ {} }}', 'while (false) {{ {} }}'):
             for body in bodies:
                 with self.subTest(wrapper=wrapper, body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -623,9 +623,8 @@ class ConstantAngleGlobalPhaseTests(unittest.TestCase):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(source)
 
-    def test_runtime_parameters_and_inverse_power_modifiers_are_deferred(self):
-        for body in ('gphase(live);', 'gphase(angle[4](0.1));', 'gphase(angle[4](1e309));',
-                     'inv @ gphase(A);', 'pow(0) @ gphase(A);', 'pow(3) @ gphase(A);',
+    def test_inverse_power_modifiers_are_deferred(self):
+        for body in ('inv @ gphase(A);', 'pow(0) @ gphase(A);', 'pow(3) @ gphase(A);',
                      'pow(0.5) @ gphase(A);', 'ctrl @ inv @ gphase(A) q;'):
             for wrapper in ('{}', 'for int i in [1:0] {{ {} }}', 'while (false) {{ {} }}'):
                 with self.subTest(body=body, wrapper=wrapper), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
@@ -654,6 +653,95 @@ class ConstantAngleGlobalPhaseTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 qasm2qcx.main(['global-angle.qasm'])
             output.assert_not_called()
+
+
+class RuntimeAngleGlobalPhaseTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def test_private_snapshot_and_independent_scratch_with_native_phase_scaling(self):
+        converter = self.converter('angle[4] live; gphase(live);')
+        lines = list(converter)
+        source = converter._QASM2QCXConverter__capitalize_variable_name('live')
+        captures = [line for line in lines if line.endswith(' := ' + source)]
+        self.assertEqual(len(captures), 1)
+        snapshot = captures[0].split()[1]
+        copies = [line for line in lines if line.endswith(' := ' + snapshot)]
+        self.assertEqual(len(copies), 4)
+        scratch = copies[0].split()[1]
+        self.assertNotIn(scratch, (source, snapshot))
+        self.assertFalse(any(line.startswith('LET ' + source + ' ') for line in lines))
+        self.assertEqual(sum(line.endswith(' := :TWO_PI') for line in lines), 1)
+        self.assertEqual(sum(' /= 2.0' in line for line in lines), 4)
+        self.assertEqual([int(line.rsplit(' ', 1)[1]) for line in lines if ' &= ' in line], [8, 4, 2, 1])
+        self.assertEqual(sum(line.startswith('PHASE ') for line in lines), 4)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_all_widths_have_bounded_output_and_unique_labels(self):
+        for width in range(1, qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH + 1):
+            lines = list(self.converter(f'angle[{width}] a; gphase(a);'))
+            self.assertEqual(sum(line.startswith('PHASE ') for line in lines), width)
+            self.assertLess(len(lines), 7 * width + 10)
+            labels = [line[1:] for line in lines if line.startswith('@')]
+            self.assertEqual(len(labels), len(set(labels)))
+            self.assertEqual({line.split()[1] for line in lines if line.startswith('JUMPIF ')}, set(labels))
+            first_jump = next(index for index, line in enumerate(lines) if line.startswith('JUMPIF '))
+            self.assertFalse(any(line.startswith('VAR ') for line in lines[first_jump:]))
+
+    def test_executable_casts_and_array_reads_are_captured_once_across_broadcast(self):
+        converter = self.converter('''qubit[3] q; array[float, 2] values = {0.1, 0.2}; int index = 1;
+            negctrl @ gphase(angle[8](angle[4](values[index] + 0.1))) q;''')
+        lines = list(converter)
+        self.assertEqual(sum('<- ANGLEBITS ' in line for line in lines), 1)
+        self.assertEqual(sum(' <<= 4' in line for line in lines), 1)
+        self.assertEqual(sum(line.startswith('R ') for line in lines), 24)
+        self.assertFalse(any(line.startswith('PHASE ') for line in lines))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        converter = self.converter('gphase(angle[4](0.1));')
+        self.assertEqual(sum('<- ANGLEBITS ' in line for line in converter), 1)
+
+    def test_controlled_runtime_global_phase_has_no_extra_target(self):
+        converter = self.converter('''qubit[3] q; angle[2] a;
+            ctrl @ gphase(a) q[1]; negctrl @ ctrl @ gphase(a) q[2], q[0];''')
+        self.assertEqual([line for line in converter if line.startswith(('R ', 'CR '))],
+                         ['R 1 2', 'R 1 1', 'CR 2#0 0 2', 'CR 2#0 0 1'])
+
+    def test_repeated_entries_have_hoisted_declarations_and_released_storage(self):
+        converter = self.converter('''angle[4] a = pi / 2; int count = 0;
+            while (count < 2) { if (bool(a)) { gphase(angle[8](a)); } count += 1; }
+            for int i in [0:1] { gphase(a); }''')
+        lines = list(converter)
+        first_jump = next(index for index, line in enumerate(lines) if line.startswith('JUMP'))
+        self.assertFalse(any(line.startswith('VAR ') for line in lines[first_jump:]))
+        labels = [line[1:] for line in lines if line.startswith('@')]
+        self.assertEqual(len(labels), len(set(labels)))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+
+    def test_empty_loops_validate_types_but_do_not_evaluate_runtime_domains(self):
+        for wrapper in ('for int i in [1:0] {{ {} }}', 'while (false) {{ {} }}'):
+            for body in ('gphase(angle[4](1e309));', 'gphase(angle[4](1.0 / 0.0));'):
+                self.converter(wrapper.format(body))
+            for body in ('gphase(angle[4](MISSING));', 'gphase(angle[4](true));',
+                         'gphase(angle[1 - 1](0.1));', 'gphase(angle[i](0.1));',
+                         'gphase(later);', 'ctrl(2) @ gphase(a) q[0], q[0];'):
+                with self.subTest(wrapper=wrapper, body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    self.converter('qubit q; angle[4] a; ' + wrapper.format(body) + ' angle[4] later;')
+
+    def test_failed_emission_preserves_caller_temporaries_and_expression_mode(self):
+        converter = self.converter('qubit[2] q; float value = 0.1;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        for body in ('ctrl @ gphase(angle[8](angle[4](value))) missing;',
+                     'ctrl(2) @ gphase(angle[4](value)) q[0], q[0];', 'gphase(angle[4](MISSING));'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                converter.visit(self.program(body).statements[0])
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
+        with patch.object(converter, '_QASM2QCXConverter__emit_gate_power',
+                          side_effect=qasm2qcx.UnsupportedOpenQASMError('injected failure')):
+            with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                converter.visit(self.program('gphase(angle[4](value));').statements[0])
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
 
 
 class ScalarAngleConversionTests(unittest.TestCase):
