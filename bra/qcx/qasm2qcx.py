@@ -3615,6 +3615,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError(
                 f'branching condition operator {condition.op.name}')
 
+        if (self.__expression_mentions_angle(condition)
+                and self.__angle_comparison_info(condition) is not None):
+            raise UnsupportedOpenQASMError('runtime angle comparison')
         if self.__register_comparison_width(condition) is not None:
             self.__emit_register_equality_condition(condition, true_label, false_label)
             return
@@ -3851,7 +3854,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise NoImplicitCastException
             self.__value = int(not self.__value) if self.__evaluate_constant else 0
         else:
+            angle_comparison = None
             if expression.op.name in ('==', '!=', '<', '<=', '>', '>='):
+                if self.__expression_mentions_angle(expression):
+                    angle_comparison = self.__angle_comparison_info(expression)
+                    if angle_comparison is not None and angle_comparison[2]:
+                        raise NoConstantExpressionException
                 width = self.__register_comparison_width(expression)
                 if width is not None:
                     lhs = self.__constant_bit_register_value(expression.lhs, width)
@@ -3883,9 +3891,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 value = (lhs_value and rhs_value if expression.op == ast.BinaryOperator['&&']
                          else lhs_value or rhs_value)
             else:
-                _, _, result_type = self.__comparison_types(
-                    lhs_type, rhs_type, expression.op)
-                if ValueType.UINT in (lhs_type, rhs_type):
+                if angle_comparison is not None:
+                    lhs_angle, rhs_angle, _ = angle_comparison
+                    width = max(lhs_angle.width, rhs_angle.width)
+                    lhs_value = int(lhs_value) << (width - lhs_angle.width)
+                    rhs_value = int(rhs_value) << (width - rhs_angle.width)
+                    result_type = ValueType.UINT
+                else:
+                    _, _, result_type = self.__comparison_types(
+                        lhs_type, rhs_type, expression.op)
+                if angle_comparison is None and ValueType.UINT in (lhs_type, rhs_type):
                     result_type, uint_type = self.__integer_expression_type(
                         lhs_type, rhs_type, expression.lhs, expression.rhs)
                     if uint_type is not None:
@@ -4211,6 +4226,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __loop_binary_info(
             self, expression: ast.BinaryExpression, iterators: set[str] | dict[str, ValueType] | None
             ) -> tuple[ValueType, bool]:
+        if (expression.op.name in ('==', '!=', '<', '<=', '>', '>=')
+                and self.__expression_mentions_angle(expression)):
+            info = self.__angle_comparison_info(expression, iterators)
+            if info is not None:
+                return ValueType.BOOL, info[2]
         if expression.op.name in ('*', '/') and self.__expression_mentions_angle(expression):
             info = self.__angle_multiplicative_info(expression, iterators)
             if info is not None:
@@ -6192,6 +6212,20 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if angle_type is None:
             raise UnsupportedOpenQASMError('angle expression without width metadata')
         return value_type, angle_type, runtime
+
+    def __angle_comparison_info(
+            self, expression: ast.BinaryExpression,
+            iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> tuple[_AngleType, _AngleType, bool] | None:
+        # Infer without evaluating operands, including in skipped bodies.
+        lhs_type, lhs_angle, lhs_runtime = self.__angle_operand_info(expression.lhs, iterators)
+        rhs_type, rhs_angle, rhs_runtime = self.__angle_operand_info(expression.rhs, iterators)
+        if ValueType.ANGLE not in (lhs_type, rhs_type):
+            # An integer quotient can mention angles without being an angle.
+            return None
+        if lhs_angle is None or rhs_angle is None:
+            raise UnsupportedOpenQASMError('angle comparison requires two angle operands')
+        return lhs_angle, rhs_angle, lhs_runtime or rhs_runtime
 
     def __angle_multiplicative_info(
             self, expression: ast.BinaryExpression,
