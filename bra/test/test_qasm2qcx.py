@@ -16841,6 +16841,319 @@ class AngleCompoundAssignmentTests(unittest.TestCase):
                 output.assert_not_called()
 
 
+class AngleMultiplicativeFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    expression = ScalarAngleArithmeticFoundationTests.expression
+    seed_angle = ScalarAngleFoundationTests.seed_constant
+
+    def seed_uint(self, converter, width, value, name='U', sized=True):
+        converter._QASM2QCXConverter__const_uint_variable_name_values_map[name] = [value]
+        converter._QASM2QCXConverter__const_uint_types[name] = qasm2qcx._UnsignedIntegerType(width, sized)
+        converter._QASM2QCXConverter__declared_constant_variables.add(name)
+
+    def fold(self, converter, expression, expected_type):
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONST_ARITHMETIC
+        converter.visit(expression)
+        self.assertEqual(converter._QASM2QCXConverter__value_type, expected_type)
+        self.assertEqual(converter._QASM2QCXConverter__value_kind, qasm2qcx.ValueKind.LITERAL)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        return converter._QASM2QCXConverter__value
+
+    def test_public_constant_declarations_and_result_types(self):
+        converter = self.converter('''const angle[4] A = 7 * pi / 8; const uint[4] TWO = 2;
+            const angle[4] PRODUCT = A * TWO; const angle[4] REVERSED = TWO * A;
+            const angle[4] HALF = A / TWO; const angle[4] UNIT = pi / 8;
+            const uint[4] QUOTIENT = A / UNIT;
+            const angle[8] FINE = pi / 128; const uint[8] PROMOTED = A / FINE;
+            const angle[4] NESTED = -(A * TWO) + (A / TWO);
+            const uint[4] WRAPPED = (A / UNIT) * uint[4](3);
+            const uint[4] COUNT = popcount(A / UNIT);
+            const uint[4] POWER = (A / UNIT) ** uint[4](2);
+            const uint[4] ROTATED = rotl(A / UNIT, 1);''')
+        angles = converter._QASM2QCXConverter__const_angle_values
+        for name, bits in (('PRODUCT', 14), ('REVERSED', 14), ('HALF', 3), ('NESTED', 5)):
+            self.assertEqual(angles[name].value, bits)
+        integers = converter._QASM2QCXConverter__const_uint_variable_name_values_map
+        for name, value in (('QUOTIENT', 7), ('PROMOTED', 112), ('WRAPPED', 5),
+                             ('COUNT', 3), ('POWER', 1), ('ROTATED', 14)):
+            self.assertEqual(integers[name][0], value)
+        self.assertEqual(list(converter), ['QUBITS 0'])
+
+    def test_exact_scaling_and_quotients_at_every_native_width(self):
+        converter = self.converter('')
+        product, reversed_product = self.expression('A * U'), self.expression('U * A')
+        division, ratio = self.expression('A / U'), self.expression('A / B')
+        for width in range(1, qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH + 1):
+            modulus = 1 << width
+            values = sorted({0, 1, modulus // 2 - 1, modulus // 2, modulus - 1})
+            for lhs in values:
+                self.seed_angle(converter, 'A', width, lhs)
+                for rhs in values:
+                    self.seed_uint(converter, width, rhs)
+                    self.seed_angle(converter, 'B', width, rhs)
+                    self.assertEqual(self.fold(converter, product, qasm2qcx.ValueType.ANGLE), (lhs * rhs) % modulus)
+                    self.assertEqual(self.fold(converter, reversed_product, qasm2qcx.ValueType.ANGLE), (lhs * rhs) % modulus)
+                    if rhs:
+                        self.assertEqual(self.fold(converter, division, qasm2qcx.ValueType.ANGLE), lhs // rhs)
+                        self.assertEqual(self.fold(converter, ratio, qasm2qcx.ValueType.UINT), lhs // rhs)
+                    else:
+                        for expression in (division, ratio):
+                            with self.assertRaises(qasm2qcx.ZeroDivisorException):
+                                converter.visit(expression)
+        self.assertEqual(list(converter), ['QUBITS 0'])
+
+    def test_exhaustive_four_bit_operations(self):
+        converter = self.converter('')
+        operations = [(self.expression(source), result_type) for source, result_type in (
+            ('A * U', qasm2qcx.ValueType.ANGLE), ('U * A', qasm2qcx.ValueType.ANGLE),
+            ('A / U', qasm2qcx.ValueType.ANGLE), ('A / B', qasm2qcx.ValueType.UINT))]
+        for lhs in range(16):
+            for rhs in range(1, 16):
+                self.seed_angle(converter, 'A', 4, lhs)
+                self.seed_angle(converter, 'B', 4, rhs)
+                self.seed_uint(converter, 4, rhs)
+                for index, (expression, result_type) in enumerate(operations):
+                    expected = lhs * rhs % 16 if index < 2 else lhs // rhs
+                    self.assertEqual(self.fold(converter, expression, result_type), expected)
+
+    def test_angle_ratios_promote_fractional_bits_and_produce_uint_metadata(self):
+        converter = self.converter('')
+        expression = self.expression('A / B')
+        for left_width, right_width in ((1, 4), (4, 8), (8, 4), (4, qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH)):
+            self.seed_angle(converter, 'A', left_width, (1 << left_width) - 1)
+            self.seed_angle(converter, 'B', right_width, 1)
+            width = max(left_width, right_width)
+            expected = (((1 << left_width) - 1) << (width - left_width)) // (1 << (width - right_width))
+            self.assertEqual(self.fold(converter, expression, qasm2qcx.ValueType.UINT), expected)
+            self.assertIsNone(converter._QASM2QCXConverter__angle_expression_type(expression))
+            self.assertEqual(converter._QASM2QCXConverter__uint_expression_type(expression), qasm2qcx._UnsignedIntegerType(width, True))
+            self.assertEqual(converter._QASM2QCXConverter__integer_operand_info(expression, None),
+                             (qasm2qcx.ValueType.UINT, qasm2qcx._UnsignedIntegerType(width, True), False))
+
+    def test_scaling_preserves_angle_sizedness_and_treats_uint_as_an_integer(self):
+        native = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        converter = self.converter(f'const angle A = pi; const uint[{native}] TWO = 2; '
+                                   f'const angle[{native}] B = pi; const uint TWO_NATIVE = 2; const angle C = pi / 2;')
+        for source, metadata in (('A * TWO', qasm2qcx._AngleType(native, False)),
+                                  ('TWO * A', qasm2qcx._AngleType(native, False)),
+                                  ('B / TWO_NATIVE', qasm2qcx._AngleType(native, True))):
+            expression = self.expression(source)
+            self.fold(converter, expression, qasm2qcx.ValueType.ANGLE)
+            self.assertEqual(converter._QASM2QCXConverter__angle_expression_type(expression), metadata)
+        for source, sized in (('A / C', False), ('A / B', True)):
+            expression = self.expression(source)
+            self.fold(converter, expression, qasm2qcx.ValueType.UINT)
+            self.assertEqual(converter._QASM2QCXConverter__uint_expression_type(expression),
+                             qasm2qcx._UnsignedIntegerType(native, sized))
+        self.seed_angle(converter, 'C', 4, 7)
+        self.assertEqual(self.fold(converter, self.expression('C * uint[4](-1)'), qasm2qcx.ValueType.ANGLE), 9)
+        self.assertEqual(self.fold(converter, self.expression('C / uint[4](2)'), qasm2qcx.ValueType.ANGLE), 3)
+
+    def test_quotients_are_numeric_and_can_supply_unsigned_scaling_factors(self):
+        converter = self.converter('''const angle[4] A = 7 * pi / 8; const angle[4] UNIT = pi / 8;
+            const angle[4] SCALED = A * (A / UNIT);
+            const angle[4] NESTED = A * ((A / UNIT) + uint[4](1));
+            const float REAL_RATIO = A / UNIT;
+            const uint[4] NEGATIVE = -(A / UNIT);
+            const angle[4] AFTER_CAST = A * uint[4](int(A / UNIT));''')
+        angles = converter._QASM2QCXConverter__const_angle_values
+        self.assertEqual(angles['SCALED'].value, 1)
+        self.assertEqual(angles['NESTED'].value, 8)
+        self.assertEqual(angles['AFTER_CAST'].value, 1)
+        self.assertEqual(converter._QASM2QCXConverter__const_float_variable_name_values_map['REAL_RATIO'][0], 7.0)
+        self.assertEqual(converter._QASM2QCXConverter__const_uint_variable_name_values_map['NEGATIVE'][0], 9)
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.converter('const angle[4] A = pi; const angle[4] WRONG = A / A;')
+
+    def test_invalid_scaling_types_widths_and_directions_are_rejected_even_when_skipped(self):
+        expressions = ('A * A', 'U / A', 'A * 2', '2 * A', 'A / 2', 'A * 0.5', 'A * true',
+                       'A * uint[8](2)', 'uint[8](2) * A', 'A / uint[8](2)',
+                       'A * (uint[4](2) + 1)', 'A * ((A / A) + 1)', 'A * MISSING')
+        for wrapper in ('{}', 'for int i in [1:0] {{ {} }}', 'while (false) {{ {} }}'):
+            for expression in expressions:
+                with self.subTest(expression=expression, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    self.converter('const angle[4] A = pi; const uint[4] U = 2; angle[4] out; '
+                                   + wrapper.format(f'out = {expression};'))
+
+    def test_type_inference_is_non_evaluating_and_uses_runtime_and_iterator_metadata(self):
+        converter = self.converter('angle[4] a; angle[8] b; uint[4] u;')
+        fields = ('__value', '__value_type', '__value_kind', '__expression_kind', '__evaluate_constant')
+        before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        lines = list(converter._QASM2QCXConverter__qcx_lines)
+        for source, result_type, metadata in (('a * u', qasm2qcx.ValueType.ANGLE, qasm2qcx._AngleType(4, True)),
+                                               ('a / b', qasm2qcx.ValueType.UINT, qasm2qcx._UnsignedIntegerType(8, True))):
+            expression = self.expression(source)
+            info = converter._QASM2QCXConverter__angle_multiplicative_info(expression)
+            self.assertEqual((info.result_type, info.result, info.runtime), (result_type, metadata, True))
+            self.assertEqual(converter._QASM2QCXConverter__loop_expression_info(expression), (result_type, True))
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            converter._QASM2QCXConverter__angle_multiplicative_info(self.expression('a * u'), {'u': qasm2qcx.ValueType.INT})
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
+
+    def test_zero_divisors_are_checked_without_shortcutting_outer_zero_factors(self):
+        for expression, result_type in (('A / U', 'angle[4]'), ('A / Z', 'uint[4]'),
+                                        ('uint[4](0) * (A / U)', 'angle[4]'),
+                                        ('(A / Z) * uint[4](0)', 'uint[4]')):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.ZeroDivisorException):
+                self.converter('const angle[4] A = pi; const angle[4] Z = 0.0; const uint[4] U = 0; '
+                               + f'const {result_type} RESULT = {expression};')
+        # Empty-loop validation checks signatures, not divisor values.
+        self.converter('const angle[4] A = pi; const angle[4] Z = 0.0; const uint[4] U = 0; angle[4] a; uint[4] q; '
+                       'for int i in [1:0] { a = A / U; q = A / Z; }')
+
+    def test_suppressed_constant_evaluation_does_not_divide_by_zero(self):
+        converter = self.converter('const angle[4] A = pi; const angle[4] Z = 0.0; const uint[4] U = 0;')
+        converter._QASM2QCXConverter__evaluate_constant = False
+        for source, result_type in (('A / U', qasm2qcx.ValueType.ANGLE), ('A / Z', qasm2qcx.ValueType.UINT)):
+            self.assertEqual(self.fold(converter, self.expression(source), result_type), 0)
+
+    def test_failed_constant_evaluation_preserves_callers_and_does_not_publish_angle_results(self):
+        converter = self.converter('const angle[4] A = pi; const uint[4] ZERO = 0;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        fields = ('__value', '__value_type', '__value_kind', '__expression_kind', '__evaluate_constant')
+        before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        statement = self.program('const angle[4] BROKEN = A / ZERO;').statements[0]
+        with patch.object(converter, '_QASM2QCXConverter__is_initialization_process', True):
+            with self.assertRaises(qasm2qcx.ZeroDivisorException):
+                converter.visit(statement)
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertNotIn('BROKEN', converter._QASM2QCXConverter__const_angle_values)
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        converter.visit(self.expression('angle[4](0.1) * uint[4](2)'))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables,
+                         {caller, converter._QASM2QCXConverter__value})
+
+
+class AngleMultiplicativeAssignmentTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    clean = RuntimeAngleArithmeticTests.clean
+
+    def test_documented_multiplicative_examples(self):
+        document = (CONVERTER_PATH.parent / 'qasm2qcx.md').read_text()
+        for marker in ('angle-multiplicative-example', 'angle-multiplicative-phase-example'):
+            examples = re.findall(r'<!-- ' + marker + r' -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+            self.assertEqual(len(examples), 1)
+            converter = self.clean(examples[0].removeprefix('OPENQASM 3.0;'))
+            if marker == 'angle-multiplicative-example':
+                self.assertEqual(converter._QASM2QCXConverter__const_angle_values['DOUBLE'].value, 14)
+                self.assertEqual(converter._QASM2QCXConverter__const_uint_variable_name_values_map['RATIO'], [112])
+            else:
+                self.assertEqual(list(converter)[-1], 'DO AMPLITUDES')
+
+    def test_compound_rhs_is_captured_before_single_destination_write(self):
+        for operator in ('*=', '/='):
+            converter = self.converter('angle[4] a; array[uint[4], 2] factors = {2, 3}; int index = 1;')
+            statement = self.program(f'a {operator} factors[index];').statements[0]
+            name = converter._QASM2QCXConverter__capitalize_variable_name('a')
+            start = len(converter._QASM2QCXConverter__qcx_lines)
+            with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+                converter.visit(statement)
+            self.assertEqual(sum(call.args[0] is statement.rvalue for call in visit.call_args_list), 1)
+            lines = converter._QASM2QCXConverter__qcx_lines[start:]
+            self.assertEqual(sum(line.endswith(' := ' + name) for line in lines), 1)
+            self.assertEqual([line for line in lines if line.startswith(f'LET {name} ')], [lines[-1]])
+            self.assertTrue(lines[-1].startswith(f'LET {name} := '))
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+            self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
+
+    def test_nested_self_reference_and_native_sizedness(self):
+        self.clean('''angle[4] a = pi; uint[4] u = 2;
+            a *= u + uint[4](1); a /= a / a;
+            angle native = pi; uint factor = 2; native *= factor; native /= factor;''')
+        width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        self.clean(f'angle a = pi; uint[{width}] u = 2; a *= u; a /= u;')
+        self.clean(f'angle[{width}] a = pi; uint u = 2; a *= u; a /= u;')
+
+    def test_invalid_factors_and_angle_quotient_are_rejected_on_all_paths(self):
+        for wrapper in ('{}', 'if (false) {{ {} }}', 'while (false) {{ {} }}', 'for int i in [1:0] {{ {} }}'):
+            for operator in ('*=', '/='):
+                for rhs in ('a', 'uint[8](2)', '2', '0.5', 'true', 'MISSING', 'u + 1'):
+                    with self.subTest(wrapper=wrapper, operator=operator, rhs=rhs):
+                        with self.assertRaises(qasm2qcx.QASM2QCXError):
+                            self.clean('angle[4] a; uint[4] u = 2; ' + wrapper.format(f'a {operator} {rhs};'))
+
+    def test_constants_stay_read_only_and_iterator_shadowing_is_respected(self):
+        for operator in ('*=', '/='):
+            for wrapper in ('{}', 'if (false) {{ {} }}', 'for int i in [1:0] {{ {} }}'):
+                with self.assertRaisesRegex(qasm2qcx.InvalidDeclarationException, 'read-only'):
+                    self.clean('const angle[4] A = pi; ' + wrapper.format(f'A {operator} uint[4](2);'))
+        self.clean('''angle[4] a = pi; const uint[4] U = 2;
+            array[uint[4], 2] factors = {2, 3}; for uint[4] U in factors { a *= U; } a /= U;''')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.clean('angle[4] a; const uint[4] U = 2; for int U in [1:0] { a *= U; }')
+
+    def test_failed_compound_emission_preserves_destination_and_callers(self):
+        converter = self.converter('angle[4] a; uint[4] u = 2;')
+        name = converter._QASM2QCXConverter__capitalize_variable_name('a')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        for operator in ('*=', '/='):
+            start = len(converter._QASM2QCXConverter__qcx_lines)
+            with patch.object(converter, '_QASM2QCXConverter__normalize_uint_storage', side_effect=RuntimeError('injected')):
+                with self.assertRaisesRegex(RuntimeError, 'injected'):
+                    converter.visit(self.program(f'a {operator} u;').statements[0])
+            self.assertFalse(any(line.startswith(f'LET {name} ') for line in converter._QASM2QCXConverter__qcx_lines[start:]))
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
+
+
+class RuntimeAngleMultiplicativeTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    expression = ScalarAngleArithmeticFoundationTests.expression
+
+    def test_runtime_composition_releases_temporaries(self):
+        for expression, result_type in (
+                ('a * u', 'angle[4]'), ('u * a', 'angle[4]'), ('a / u', 'angle[4]'),
+                ('a / a', 'uint[4]'), ('(a / a) * u', 'uint[4]'),
+                ('(a / a) << uint[4](1)', 'uint[4]'), ('popcount(a / a)', 'uint'),
+                ('rotl(a / a, uint[4](1))', 'uint[4]'),
+                ('a * uint[4](values[index])', 'angle[4]')):
+            with self.subTest(expression=expression):
+                converter = self.converter('angle[4] a = pi; uint[4] u = 2; '
+                    'array[uint[4], 2] values = {1, 2}; int index = 1; '
+                    f'{result_type} result = {expression};')
+                self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+                self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
+
+    def test_runtime_failure_releases_only_owned_temporaries(self):
+        converter = self.converter('angle[4] a; uint[4] u = 2;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        with patch.object(converter, '_QASM2QCXConverter__normalize_uint_storage', side_effect=RuntimeError('injected')):
+            with self.assertRaisesRegex(RuntimeError, 'injected'):
+                converter.visit(self.expression('a * u'))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+
+    def test_literal_zero_division_is_emitted_in_ordinary_expressions(self):
+        for source in ('angle[4] result = angle[4](pi) / uint[4](0);',
+                       'uint[4] result = angle[4](pi) / angle[4](0.0);',
+                       'const angle[4] A = pi; const uint[4] Z = 0; angle[4] result = A / Z;',
+                       'const angle[4] A = pi; const angle[4] Z = 0.0; uint[4] result = A / Z;'):
+            lines = list(self.converter(source))
+            divisor = '0' if 'const ' in source or '/ uint' in source else r'\S+'
+            self.assertTrue(any(re.fullmatch(r'LET \S+ /= ' + divisor, line) for line in lines), lines)
+
+    def test_each_operand_is_visited_once_and_sources_are_preserved(self):
+        converter = self.converter('angle[4] a; uint[4] u = 2;')
+        expression = self.expression('a * u')
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        start = len(converter._QASM2QCXConverter__qcx_lines)
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            converter.visit(expression)
+        for operand in (expression.lhs, expression.rhs):
+            self.assertEqual(sum(call.args[0] is operand for call in visit.call_args_list), 1)
+        lines = converter._QASM2QCXConverter__qcx_lines[start:]
+        for name in ('a', 'u'):
+            storage = converter._QASM2QCXConverter__capitalize_variable_name(name)
+            self.assertEqual(sum(line.endswith(' := ' + storage) for line in lines), 1)
+            self.assertFalse(any(line.startswith('LET ' + storage + ' ') for line in lines))
+        self.assertFalse(any('<<=' in line for line in lines))
+
+
 class FloatingAnglePhaseGateTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)
