@@ -19,6 +19,8 @@ class BackendTests(unittest.TestCase):
     program = arithmetic.BackendTests.program
     execute = arithmetic.BackendTests.execute
     exact = arithmetic.BackendTests.exact
+    check_phase = arithmetic.BackendTests.check_phase
+    check_zero_qubit = arithmetic.BackendTests.check_zero_qubit
 
     def compare(self, left_width, left, right_width, right):
         width = max(left_width, right_width)
@@ -49,6 +51,64 @@ class BackendTests(unittest.TestCase):
                                  ((1 << left_width) - 1, (1 << right_width) - 1)):
                     self.compare(left_width, lhs, right_width, rhs)
 
+    def test_exhaustive_four_bit_runtime_truth_tables(self):
+        for lhs in range(16):
+            for rhs in range(16):
+                self.compare(4, lhs, 4, rhs)
+
+    def test_sized_unsized_native_operands_and_boolean_destinations(self):
+        width = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
+        for lhs, rhs in ((0, 0), (1, 1), ((1 << width) - 1, 0), (0, (1 << width) - 1)):
+            self.exact(f'''angle a; angle[{width}] b;
+                bool equal = a == b; bool less = b < a;
+                int numeric = a >= b; bit flag = a != b;
+                array[bool, 2] results = {{false, false}}; int index = 1;
+                results[index] = a <= b; bool readback = results[index];''',
+                ('a', 'b', 'equal', 'less', 'numeric', 'flag', 'readback'),
+                (lhs, rhs, int(lhs == rhs), int(rhs < lhs), int(lhs >= rhs), int(lhs != rhs), int(lhs <= rhs)),
+                raw=(('a', lhs), ('b', rhs)))
+
+    def test_iterator_shadowing_and_outer_angle_binding_restoration(self):
+        self.exact('''const angle[4] A = pi; angle[4] a; bool result = false; int hits = 0;
+            array[float, 3] values = {pi / 2, pi, 3 * pi / 2};
+            for float A in values { result = a < angle[8](A); if (result) { hits += 1; } }
+            bool restored = a < A;
+            for int A in {0, 1, 2} { if (A < A + 1) { hits += 1; } }
+            bool restored_again = a < A;''', ('a', 'result', 'hits', 'restored', 'restored_again'),
+            (7, 1, 5, 1, 1), raw=(('a', 7),))
+
+    def test_repeated_conditions_break_continue_and_measurement(self):
+        self.exact('''angle[4] a; angle[8] limit = 3 * pi / 2; int count = 0; int hits = 0;
+            while (a < limit) { a += angle[4](pi / 8); count += 1;
+                if (a == angle[8](pi / 4)) { continue; }
+                hits += 1; if (a >= angle[4](pi / 2)) { break; } }
+            for int i in [0:2] { if (a <= angle[8](pi)) { a += angle[4](pi / 8); } }''',
+            ('a', 'count', 'hits', 'limit'), (7, 4, 3, 192), raw=(('a', 0),))
+        for measured in (0, 1):
+            self.exact('''include "stdgates.inc"; qubit q; bit outcome;
+                angle[4] a; angle[8] b = pi;
+                ''' + ('x q; ' if measured else '') + '''outcome = measure q;
+                if (outcome && a < b) { a += angle[4](pi / 8); }
+                else { a -= angle[4](pi / 8); }
+                bool result = a == b;''', ('a', 'b', 'outcome', 'result'),
+                (8 if measured else 6, 128, measured, measured), raw=(('a', 7),))
+
+    def test_conditional_phase_matrices_preserve_full_phase_and_sources(self):
+        cases = (('==', False), ('!=', True), ('<', True), ('<=', True), ('>', False), ('>=', False))
+        prefix = 'angle[4] a = 5 * pi / 8; angle[8] b = pi; '
+        for fused in (False, True):
+            for op, expected in cases:
+                for basis in (*range(8), None):
+                    self.check_phase(prefix + f'''if (a {op} b) {{
+                        negctrl @ p(a) q[2], q[0];
+                    }} else {{ negctrl @ p(-a) q[2], q[0]; }}''',
+                        4, 5 if expected else 11, (((2, 0), 0),), fused=fused, basis=basis,
+                        preserved=(('a', 5), ('b', 128)))
+            self.check_phase(prefix + 'if (a < b && a != b) { gphase(a); }',
+                             4, 5, ((),), fused=fused, preserved=(('a', 5), ('b', 128)))
+            self.check_zero_qubit(prefix + 'if (a < b) { pow(0.5) @ gphase(a); }',
+                                  5, 5, fused=fused, preserved=(('a', 5), ('b', 128)))
+
     def test_constants_literal_casts_computed_operands_and_reentry(self):
         self.exact('''const angle[4] A = pi; angle[4] a = A; angle[8] b = A;
             bool equal = A == b; bool cast_equal = angle[4](pi) == b;
@@ -69,6 +129,18 @@ class BackendTests(unittest.TestCase):
                               f'bool result = true || ({expression});',
                               f'for int i in [1:0] {{ if ({expression}) {{ }} }}'):
                 self.exact(prefix + statement, ('a',), (7,), raw=(('a', 7),))
+
+    def test_comparison_does_not_skip_evaluation_of_either_operand(self):
+        prefix = 'angle[4] a; const angle[4] A = pi; const uint[4] ZERO = 0; '
+        for expression in ('A / ZERO == a', 'a < A / ZERO',
+                           'uint[4](0) * (A / ZERO) == a', 'a == angle[4](1e309)'):
+            result = self.execute(self.program(prefix + f'bool result = {expression};'))
+            self.assertNotEqual(result.returncode, 0, expression)
+            type(self).checked += 1
+            for body in (f'if (false) {{ if ({expression}) {{ }} }}',
+                         f'while (false) {{ if ({expression}) {{ }} }}',
+                         f'bool result = true || ({expression});'):
+                self.exact(prefix + body, ('a',), (7,), raw=(('a', 7),))
 
 
 def main():

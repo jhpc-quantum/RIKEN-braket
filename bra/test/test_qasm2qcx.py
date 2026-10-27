@@ -17260,6 +17260,53 @@ class RuntimeAngleComparisonTests(unittest.TestCase):
         self.assertFalse(any(line.startswith('VAR ') for line in lines[first_jump:]))
 
 
+class AngleComparisonIntegrationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    clean = RuntimeAngleArithmeticTests.clean
+
+    def test_iterator_shadowing_restores_numeric_and_angle_comparison_paths(self):
+        self.clean('''const angle[4] A = pi; angle[4] a; bool result = false;
+            array[float, 2] values = {0.1, 0.2};
+            for float A in values { result = a < angle[8](A); }
+            result = a == A;
+            for int A in {0, 1} { result = A < A + 1; }
+            result = a >= A;''')
+        for loop in ('for int A in [0:1]', 'for int A in [1:0]'):
+            with self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.clean('const angle[4] A = pi; angle[4] a; bool result; '
+                           + loop + ' { result = a < A; }')
+
+    def test_boolean_array_bit_and_numeric_destinations_and_nested_comparisons(self):
+        self.clean('''angle[4] a; angle[8] b; bool result = a < b;
+            result = (a == b) != (a < b); bit flag = a == b;
+            int integer = a > b; uint unsigned = a >= b; float real = a <= b;
+            array[bool, 2] values = {false, true}; int index = 1;
+            values[index] = a != b; flag = values[index] && a <= b;''')
+
+    def test_caller_temporaries_survive_comparison_emission_and_failure(self):
+        converter = self.converter('angle[4] a; angle[8] b; uint[8] zero = 0;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        for source in ('a < b', 'a == b / zero'):
+            expression = self.program(f'if ({source}) {{ }}').statements[0].condition
+            converter._QASM2QCXConverter__emit_condition(expression, 'YES', 'NO')
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
+        expression = self.program('if (a < b) { }').statements[0].condition
+        with patch.object(converter, '_QASM2QCXConverter__angle_expression_type', side_effect=RuntimeError('injected')):
+            with self.assertRaisesRegex(RuntimeError, 'injected'):
+                converter._QASM2QCXConverter__emit_condition(expression, 'YES', 'NO')
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
+
+    def test_skipped_logical_operands_still_validate_all_names_and_types(self):
+        for expression in ('a < MISSING', 'a < angle[1 - 1](0.0)', 'a < uint[4](0)', 'a < bit(0)'):
+            for wrapper in ('bool result = false && ({});', 'bool result = true || ({});',
+                            'while (false && ({})) {{ }}', 'if (false) {{ if ({}) {{ }} }}'):
+                with self.subTest(expression=expression, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    self.clean('angle[4] a; ' + wrapper.format(expression))
+
+
 class AngleMultiplicativeAssignmentTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)
