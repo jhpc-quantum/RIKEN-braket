@@ -4693,7 +4693,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
         target_type, _ = self.__loop_expression_info(target, iterators)
         rhs_type, _ = self.__loop_expression_info(statement.rvalue, iterators)
-        if statement.op.name in ('<<=', '>>='):
+        if target_type == ValueType.ANGLE and statement.op.name in ('&=', '|=', '^='):
+            self.__validate_angle_assignment(statement, iterators)
+        elif statement.op.name in ('<<=', '>>='):
             expression = ast.BinaryExpression(ast.BinaryOperator[statement.op.name[:-1]], target, statement.rvalue)
             self.__validate_shift_types(expression, target_type, rhs_type, iterators)
         else:
@@ -5991,7 +5993,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError('angle indexing')
         if statement.op.name == '=':
             return statement.rvalue
-        if statement.op.name not in ('+=', '-=', '*=', '/='):
+        if statement.op.name not in ('+=', '-=', '*=', '/=', '&=', '|=', '^='):
             raise UnsupportedOpenQASMError(f'angle assignment operator {statement.op.name}')
         # Preserve the binary operation's promoted width before converting
         # back to the destination. Pre-narrowing the RHS could lose a borrow.
