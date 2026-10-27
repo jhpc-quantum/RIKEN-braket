@@ -336,6 +336,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     MAX_EXPANDED_LOOP_STATEMENTS = 100000
     MAX_LOOP_OUTPUT_LINES = 1000000
     MAX_GATE_POWER_OUTPUT_LINES = 100000
+    # Keep literal instruction metadata within bra's ANGLEBITS2PHASE limits.
+    MAX_ANGLE_PHASE_MODIFIERS = 1024
+    MAX_ANGLE_PHASE_LITERAL_CHARS = 4096
     default_gates_qcx_map: dict[str, str] = {'U': 'U3'}
 
     # OpenQASM overload order is significant: inputs, never the destination,
@@ -2268,7 +2271,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 elif isinstance(exponent, float):
                     has_float = True
                 else:
-                    power *= exponent
                     constant_factors.append(exponent)
             elif modifier.modifier == ast.GateModifierName.inv:
                 ordered.append(_OrderedGateModifier(modifier.modifier))
@@ -2279,6 +2281,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # Do not use the integer product or inverse parity for this path.
             # An intermediate operation may cross the principal branch cut.
             return _OrderedGateModifierInfo(tuple(ordered), tuple(controls))
+        for exponent in constant_factors:
+            power *= exponent
         return _GateModifierInfo(power, tuple(controls), tuple(runtime_exponents),
                                  tuple(constant_factors) if runtime_exponents else ())
 
@@ -2445,8 +2449,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         angle_parameter = self.__angle_phase_parameter(statement)
         if angle_parameter is not None:
-            if not isinstance(info, _GateModifierInfo):
-                raise UnsupportedOpenQASMError('floating-point powers of angle-valued phase gates')
+            if isinstance(info, _OrderedGateModifierInfo):
+                self.__emit_parameterized_phase_gate(statement, info, qcx_gate_name)
+                return
             output_start = (len(self.__qcx_lines) if any(
                 modifier.modifier == ast.GateModifierName.pow for modifier in statement.modifiers) else None)
             constant = self.__constant_angle_gate_value(angle_parameter)
@@ -2563,10 +2568,52 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError('angle-valued parameter on a non-phase gate')
         if len(arguments) != 1:
             raise UnsupportedOpenQASMError('angle-valued phase gate requires one parameter')
-        # Integer powers/inversion commute with controls; fractional powers
-        # require branch-aware spectral handling, not powers of individual R's.
-        self.__analyze_gate_modifiers(statement.modifiers, iterators, allow_runtime=True, allow_float=False)
+        # Fractional powers operate on the whole exact angle, never on the
+        # individual R contributions used by the integer-only lowering.
+        info = self.__analyze_gate_modifiers(statement.modifiers, iterators, allow_runtime=True, allow_float=True)
+        if isinstance(info, _OrderedGateModifierInfo):
+            self.__angle_phase_descriptors(info)
         return angle_arguments[0]
+
+    @classmethod
+    def __angle_phase_descriptors(cls, info: _OrderedGateModifierInfo) -> tuple[str, ...]:
+        descriptors = []
+        count = 0
+        # Source modifiers are outermost first; the native descriptor chain
+        # is in evaluation order. Controls stay in the quantum operands.
+        for modifier in reversed(info.modifiers):
+            if modifier.kind not in (ast.GateModifierName.inv, ast.GateModifierName.pow):
+                continue
+            count += 1
+            if count > cls.MAX_ANGLE_PHASE_MODIFIERS:
+                raise UnsupportedOpenQASMError(
+                    f'ANGLEBITS2PHASE chain exceeds {cls.MAX_ANGLE_PHASE_MODIFIERS} modifiers')
+            if modifier.kind == ast.GateModifierName.inv:
+                descriptors.append('INV')
+                continue
+            if isinstance(modifier.argument, _RuntimeGateExponent):
+                raise UnsupportedOpenQASMError('runtime integer factors in floating-point pow chains')
+            try:
+                # repr retains the binary64 value and floating spelling;
+                # str preserves integer factors beyond binary64/native INT.
+                literal = repr(modifier.argument) if isinstance(modifier.argument, float) else str(modifier.argument)
+            except ValueError as error:
+                raise UnsupportedOpenQASMError('ANGLEBITS2PHASE exponent literal exceeds host serialization limits') from error
+            if len(literal) > cls.MAX_ANGLE_PHASE_LITERAL_CHARS:
+                raise UnsupportedOpenQASMError(
+                    f'ANGLEBITS2PHASE exponent exceeds {cls.MAX_ANGLE_PHASE_LITERAL_CHARS} characters')
+            descriptors.extend(('POW', literal))
+        return tuple(descriptors)
+
+    @contextlib.contextmanager
+    def __powered_angle_phase(
+            self, expression: ast.Expression, info: _OrderedGateModifierInfo) -> Iterator[str]:
+        descriptors = self.__angle_phase_descriptors(info)
+        with self.__captured_angle_bits(expression) as (snapshot, angle_type):
+            phase = self.__add_new_temporary_variable(ValueType.FLOAT)
+            self.__qcx_lines.append(
+                f'APPLY {phase} <- ANGLEBITS2PHASE {snapshot} {angle_type.width} {" ".join(descriptors)}')
+            yield phase
 
     def __constant_angle_gate_value(
             self, expression: ast.Expression,
@@ -2994,6 +3041,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     @contextlib.contextmanager
     def __powered_phase_angle(
             self, expression: ast.Expression, info: _OrderedGateModifierInfo) -> Iterator[str]:
+        if ((isinstance(expression, ast.Cast) and isinstance(expression.type, ast.AngleType))
+                or self.__angle_expression_type(expression) is not None):
+            with self.__powered_angle_phase(expression, info) as angle:
+                yield angle
+            return
         factors = self.__phase_power_factors(info)
         with self.__evaluated_phase_angle(expression) as (angle, coefficient):
             self.__emit_phase_modifiers(((angle, coefficient),), info, factors)
@@ -4453,7 +4505,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     self.__validate_angle_phase_qubits(child, iterators)
                 if isinstance(modifier_info, _OrderedGateModifierInfo):
                     mnemonic = (self.default_gates_qcx_map | self.stdgates_qcx_map)[child.name.name]
-                    if (self.qcx_controlled_gate_families[mnemonic][0] in ('U1', 'EX', 'EY', 'EZ')
+                    if angle_parameter is not None:
+                        self.__angle_phase_descriptors(modifier_info)
+                    elif (self.qcx_controlled_gate_families[mnemonic][0] in ('U1', 'EX', 'EY', 'EZ')
                             or child.name.name in ('u2', 'u3', 'U', 'cu')):
                         self.__phase_power_factors(modifier_info)
                     else:
@@ -4471,7 +4525,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 modifier_info = self.__analyze_gate_modifiers(
                     child.modifiers, iterators, allow_runtime=True, allow_float=True)
                 if isinstance(modifier_info, _OrderedGateModifierInfo):
-                    self.__phase_power_factors(modifier_info)
+                    if angle_parameter is not None:
+                        self.__angle_phase_descriptors(modifier_info)
+                    else:
+                        self.__phase_power_factors(modifier_info)
                     if not self.__is_initialization_process:
                         indices = [index for qubit in child.qubits if isinstance(qubit, ast.IndexedIdentifier)
                                    for group in qubit.indices

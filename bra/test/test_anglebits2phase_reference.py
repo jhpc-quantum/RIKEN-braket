@@ -201,7 +201,7 @@ class ResourceTests(unittest.TestCase):
 
     def test_design_document_records_integration_status_and_shared_limits(self):
         document = (Path(__file__).parents[2] / 'docs' / 'anglebits2phase-design.md').read_text()
-        self.assertIn('The qasm2qcx integration described below remains planned', document)
+        self.assertIn('User documentation and final review are Stage 4', document)
         for limit in (DEFAULT_LIMITS.max_modifiers, DEFAULT_LIMITS.max_literal_chars, DEFAULT_LIMITS.max_exact_bits):
             self.assertIn(f'{limit:,}', document)
 

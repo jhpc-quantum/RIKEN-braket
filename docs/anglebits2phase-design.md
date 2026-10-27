@@ -5,8 +5,8 @@ an ordered INV/POW chain. Exact turn arithmetic preserves branch decisions
 through nested powers. This is the design contract for
 [issue #396](https://github.com/jhpc-quantum/RIKEN-braket/issues/396).
 
-Status: Stage 2 implements the native bra function and its APPLY interface.
-The qasm2qcx integration described below remains planned.
+Status: Stages 2 and 3 implement the native bra function, its APPLY interface,
+and qasm2qcx integration. User documentation and final review are Stage 4.
 
 ## Interface
 
@@ -143,7 +143,7 @@ validation on a reached invocation.
 
 ## Integration boundaries and validation
 
-The future converter integration covers `p`, `phase`, `u1`, `cp`, `cphase`,
+The converter integration covers `p`, `phase`, `u1`, `cp`, `cphase`,
 and `gphase`, with constant or runtime angle inputs and literal descriptor
 chains folded at conversion time. Integer-only paths remain unchanged.
 Runtime floating exponents and mixed runtime-integer/floating-power chains
