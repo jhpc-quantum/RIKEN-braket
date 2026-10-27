@@ -90,6 +90,57 @@ class BackendTests(unittest.TestCase):
             self.check_zero_qubit('angle[4] a = pi; uint[4] factor = 2; gphase(a / factor);',
                                   4, 4, fused=fused)
 
+    def test_compound_results_at_every_width_and_aliasing(self):
+        for width in range(1, self.module.QASM2QCXConverter.QCX_UINT_WIDTH + 1):
+            modulus = 1 << width
+            for bits in sorted({0, 1, modulus // 2, modulus - 1}):
+                factor = min(3, modulus - 1)
+                self.exact(f'''angle[{width}] a; uint[{width}] u = {factor};
+                    angle[{width}] product = a; product *= u;
+                    angle[{width}] quotient = a; quotient /= u;
+                    angle[{width}] nested = a; nested *= a / angle[{width}](pi);
+                    angle[{width}] self = a; self /= uint[{width}](1);''',
+                    ('a', 'u', 'product', 'quotient', 'nested', 'self'),
+                    (bits, factor, bits * factor % modulus, bits // factor,
+                     bits * (bits // (modulus // 2)) % modulus, bits), raw=(('a', bits),))
+
+    def test_compound_reentry_break_continue_and_array_reads(self):
+        self.exact('''angle[4] a; array[uint[4], 3] factors = {2, 3, 5}; int index = 0;
+            while (index < 3) { a *= factors[index]; index += 1; }
+            for uint[4] u in factors { a /= u; }''', ('a',), (0,), raw=(('a', 7),))
+        self.exact('''angle[4] a; uint[4] factor = 3;
+            for int i in [0:4] { if (i == 1) { continue; } a *= factor; if (i == 3) { break; } }
+            a /= uint[4](2);''', ('a', 'factor'), (6, 3), raw=(('a', 7),))
+        for operator in ('*=', '/='):
+            self.exact(f'''angle[4] a; const uint[4] U = 2;
+                array[uint[4], 2] factors = {{2, 3}};
+                for uint[4] U in factors {{ a {operator} U; }}''',
+                ('a',), (10 if operator == '*=' else 1,), raw=(('a', 7),))
+        for wrapper in ('if (false) { %s }', 'while (false) { %s }', 'for int i in [1:0] { %s }'):
+            self.exact('angle[4] a; ' + wrapper % 'a /= uint[4](0);', ('a',), (7,), raw=(('a', 7),))
+        result = self.execute(self.program('angle[4] a = pi; a /= uint[4](0);'))
+        self.assertNotEqual(result.returncode, 0)
+        type(self).checked += 1
+
+    def test_compound_phase_matrices_and_power_modifiers(self):
+        prefix = 'angle[4] a = 5 * pi / 8; uint[4] u = 3; a *= u; a /= uint[4](2); '
+        for fused in (False, True):
+            for gate in ('p', 'phase', 'u1', 'cp', 'cphase'):
+                controlled = gate in ('cp', 'cphase')
+                wires, operands = ((2, 0), 'q[2], q[0]') if controlled else ((0,), 'q[0]')
+                for basis in (*range(8), None):
+                    self.check_phase(prefix + f'{gate}(a) {operands};', 4, 7, (wires,),
+                                     fused=fused, basis=basis, preserved=(('a', 7), ('u', 3)))
+            self.check_phase(prefix + 'negctrl @ inv @ pow(0.5) @ p(a) q[2], q[0];',
+                             5, 25, (((2, 0), 0),), fused=fused)
+            self.check_phase(prefix + 'uint[4] exponent = a / angle[4](pi / 4); pow(exponent) @ p(a) q[0];',
+                             4, 5, ((0,),), fused=fused)
+            self.check_phase(prefix + 'p(a) q;', 4, 7, ((0,), (1,), (2,)), fused=fused)
+            self.check_phase(prefix + 'gphase(a);', 4, 7, ((),), fused=fused)
+            self.check_phase(prefix + 'negctrl @ gphase(a) q[1];',
+                             4, 7, (((1, 0),),), fused=fused)
+            self.check_zero_qubit(prefix + 'gphase(a);', 4, 7, fused=fused, preserved=(('a', 7), ('u', 3)))
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)

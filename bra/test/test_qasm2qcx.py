@@ -17026,11 +17026,66 @@ class AngleMultiplicativeFoundationTests(unittest.TestCase):
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables,
                          {caller, converter._QASM2QCXConverter__value})
 
-    def test_compound_assignments_remain_for_later_stage(self):
-        for source in ('angle[4] a; a *= uint[4](2);', 'angle[4] a; a /= uint[4](2);',
-                       'angle[4] a; a /= a;'):
-            with self.subTest(source=source), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
-                self.converter(source)
+
+class AngleMultiplicativeAssignmentTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    clean = RuntimeAngleArithmeticTests.clean
+
+    def test_compound_rhs_is_captured_before_single_destination_write(self):
+        for operator in ('*=', '/='):
+            converter = self.converter('angle[4] a; array[uint[4], 2] factors = {2, 3}; int index = 1;')
+            statement = self.program(f'a {operator} factors[index];').statements[0]
+            name = converter._QASM2QCXConverter__capitalize_variable_name('a')
+            start = len(converter._QASM2QCXConverter__qcx_lines)
+            with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+                converter.visit(statement)
+            self.assertEqual(sum(call.args[0] is statement.rvalue for call in visit.call_args_list), 1)
+            lines = converter._QASM2QCXConverter__qcx_lines[start:]
+            self.assertEqual(sum(line.endswith(' := ' + name) for line in lines), 1)
+            self.assertEqual([line for line in lines if line.startswith(f'LET {name} ')], [lines[-1]])
+            self.assertTrue(lines[-1].startswith(f'LET {name} := '))
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+            self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
+
+    def test_nested_self_reference_and_native_sizedness(self):
+        self.clean('''angle[4] a = pi; uint[4] u = 2;
+            a *= u + uint[4](1); a /= a / a;
+            angle native = pi; uint factor = 2; native *= factor; native /= factor;''')
+        width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        self.clean(f'angle a = pi; uint[{width}] u = 2; a *= u; a /= u;')
+        self.clean(f'angle[{width}] a = pi; uint u = 2; a *= u; a /= u;')
+
+    def test_invalid_factors_and_angle_quotient_are_rejected_on_all_paths(self):
+        for wrapper in ('{}', 'if (false) {{ {} }}', 'while (false) {{ {} }}', 'for int i in [1:0] {{ {} }}'):
+            for operator in ('*=', '/='):
+                for rhs in ('a', 'uint[8](2)', '2', '0.5', 'true', 'MISSING', 'u + 1'):
+                    with self.subTest(wrapper=wrapper, operator=operator, rhs=rhs):
+                        with self.assertRaises(qasm2qcx.QASM2QCXError):
+                            self.clean('angle[4] a; uint[4] u = 2; ' + wrapper.format(f'a {operator} {rhs};'))
+
+    def test_constants_stay_read_only_and_iterator_shadowing_is_respected(self):
+        for operator in ('*=', '/='):
+            for wrapper in ('{}', 'if (false) {{ {} }}', 'for int i in [1:0] {{ {} }}'):
+                with self.assertRaisesRegex(qasm2qcx.InvalidDeclarationException, 'read-only'):
+                    self.clean('const angle[4] A = pi; ' + wrapper.format(f'A {operator} uint[4](2);'))
+        self.clean('''angle[4] a = pi; const uint[4] U = 2;
+            array[uint[4], 2] factors = {2, 3}; for uint[4] U in factors { a *= U; } a /= U;''')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.clean('angle[4] a; const uint[4] U = 2; for int U in [1:0] { a *= U; }')
+
+    def test_failed_compound_emission_preserves_destination_and_callers(self):
+        converter = self.converter('angle[4] a; uint[4] u = 2;')
+        name = converter._QASM2QCXConverter__capitalize_variable_name('a')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        for operator in ('*=', '/='):
+            start = len(converter._QASM2QCXConverter__qcx_lines)
+            with patch.object(converter, '_QASM2QCXConverter__normalize_uint_storage', side_effect=RuntimeError('injected')):
+                with self.assertRaisesRegex(RuntimeError, 'injected'):
+                    converter.visit(self.program(f'a {operator} u;').statements[0])
+            self.assertFalse(any(line.startswith(f'LET {name} ') for line in converter._QASM2QCXConverter__qcx_lines[start:]))
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
 
 
 class RuntimeAngleMultiplicativeTests(unittest.TestCase):

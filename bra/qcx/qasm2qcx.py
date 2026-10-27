@@ -5922,10 +5922,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError('angle indexing')
         if statement.op.name == '=':
             return statement.rvalue
-        if statement.op.name not in ('+=', '-='):
+        if statement.op.name not in ('+=', '-=', '*=', '/='):
             raise UnsupportedOpenQASMError(f'angle assignment operator {statement.op.name}')
         # Preserve the binary operation's promoted width before converting
         # back to the destination. Pre-narrowing the RHS could lose a borrow.
+        # Multiplicative typing also checks UINT factor widths. Angle/angle
+        # produces UINT, which the destination conversion rejects.
         return ast.BinaryExpression(ast.BinaryOperator[statement.op.name[:-1]], statement.lvalue, statement.rvalue)
 
     def __reject_constant_angle_target(
