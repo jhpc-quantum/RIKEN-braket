@@ -19,7 +19,10 @@ int main()
   using type = bra::variable_type;
   using function = bra::classical_function_id;
   auto const& signatures = bra::classical_function_signatures();
-  require(signatures.size() == 18u);
+  require(signatures.size() == 19u);
+  require(bra::classical_function_from_name("ANGLEBITS2PHASE") == function::anglebits2phase);
+  require(bra::resolve_classical_function(function::anglebits2phase, {type::unsigned_integer, type::integer}).result_types
+          == std::vector<type>{type::real});
   require(bra::classical_function_from_name("ANGLEBITS") == function::anglebits);
   require(bra::resolve_classical_function(function::anglebits, {type::real, type::integer}).result_types
             == std::vector<type>{type::unsigned_integer});

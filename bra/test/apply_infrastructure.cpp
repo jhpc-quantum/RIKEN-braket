@@ -288,6 +288,39 @@ int main()
   state.generate_new_variable("ANGLE_OUT", type::unsigned_integer, 1);
   state.invoke_apply_operation({"ANGLE_OUT"}, function::anglebits, {":HALF_PI", "4"});
   state.invoke_assert_operation("ANGLE_OUT", bra::compare_operation_type::equal_to, "4");
+  state.invoke_apply_operation({"R:N"}, function::anglebits2phase, {"ANGLE_OUT", "3", "INV", "POW", "0.5"});
+  check_close("R:1", std::acos(bra::real_type{-1}) / 2);
+  state.invoke_apply_operation({"RESULT"}, function::anglebits2phase, {":UINT:4", ":INT:3", "POW", "0.5", "INV"});
+  check_close("RESULT", -std::acos(bra::real_type{-1}) / 2);
+  state.invoke_apply_operation({"RESULT"}, function::anglebits2phase, {"U:N:N", "3"});
+  check_close("RESULT", 0);
+  state.invoke_apply_operation({"RESULT"}, function::anglebits2phase, {"ANGLE_OUT", "3", "POW", "2", "POW", "0.5"});
+  check_close("RESULT", 0);
+  state.invoke_assign_operation("R:1", bra::assign_operation_type::assign, "7");
+  for (auto const& operands: {std::vector<std::string>{"ANGLE_OUT", "0", "POW", "0"},
+                             std::vector<std::string>{"ANGLE_OUT", "2", "POW", "0"}})
+  {
+    expect_failure([&] { state.invoke_apply_operation({"R:N"}, function::anglebits2phase, operands); },
+                   bra::apply_instruction({"R:N"}, function::anglebits2phase, operands));
+    state.invoke_assert_operation("R:1", bra::compare_operation_type::equal_to, "7");
+  }
+  expect_failure([&] { state.invoke_apply_operation({"RESULT"}, function::anglebits2phase, {"R", "3"}); },
+                 "unsupported operand signature");
+  expect_failure([&] { state.invoke_apply_operation({"N"}, function::anglebits2phase, {"ANGLE_OUT", "3"}); },
+                 "wrong destination type");
+  expect_failure([&] { state.invoke_apply_operation({"RESULT"}, function::anglebits2phase, {"U:999", "3"}); },
+                 "index out of range");
+  auto excessive_precision = std::vector<std::string>{"ANGLE_OUT", "3"};
+  for (auto index = 0; index < 62; ++index)
+  {
+    excessive_precision.push_back("POW");
+    excessive_precision.push_back("5e-324");
+  }
+  excessive_precision.push_back("POW");
+  excessive_precision.push_back("0");
+  expect_failure([&] { state.invoke_apply_operation({"R:N"}, function::anglebits2phase, excessive_precision); },
+                 bra::apply_instruction({"R:N"}, function::anglebits2phase, excessive_precision) + ": ANGLEBITS2PHASE exact arithmetic");
+  state.invoke_assert_operation("R:1", bra::compare_operation_type::equal_to, "7");
   for (auto const& input: {":REAL:+inf", ":REAL:-inf", ":REAL:+nan", ":REAL:+INF", ":REAL:-INF", ":REAL:+NAN"})
   {
     expect_failure([&] { state.invoke_apply_operation({"ANGLE_OUT"}, function::anglebits, {input, "4"}); },
@@ -316,6 +349,10 @@ int main()
   auto const abs_interpreter = bra::interpreter{abs_stream};
   require(tokens(abs_interpreter.back_circuit().back()->representation()) == std::vector<std::string>{
     "APPLY", "RESULT:INDEX", "<-", "ABS", "SOURCE:INDEX"});
+  auto phase_stream = std::istringstream{"QUBITS 1\napply result:index <- anglebits2phase source:index width inv pow .5\n"};
+  auto const phase_interpreter = bra::interpreter{phase_stream};
+  require(tokens(phase_interpreter.back_circuit().back()->representation()) == std::vector<std::string>{
+    "APPLY", "RESULT:INDEX", "<-", "ANGLEBITS2PHASE", "SOURCE:INDEX", "WIDTH", "INV", "POW", ".5"});
   auto sqrt_stream = std::istringstream{"QUBITS 1\napply result:index <- sqrt source:index\n"};
   auto const sqrt_interpreter = bra::interpreter{sqrt_stream};
   require(tokens(sqrt_interpreter.back_circuit().back()->representation()) == std::vector<std::string>{

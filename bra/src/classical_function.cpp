@@ -16,6 +16,8 @@
 
 #include <bra/classical_function_call.hpp>
 
+#include "anglebits2phase_detail.hpp"
+
 
 namespace bra
 {
@@ -322,6 +324,63 @@ namespace bra
     }
   }
 
+  auto evaluate_anglebits2phase(::bra::uint_type const bits, ::bra::int_type const width,
+                               ::bra::anglebits2phase_chain const& chain) -> ::bra::real_type
+  {
+    using namespace anglebits2phase_detail;
+    using limits = std::numeric_limits< ::bra::real_type >;
+    if (width < 1 or width > std::numeric_limits< ::bra::uint_type >::digits)
+      throw std::domain_error{"ANGLEBITS2PHASE width must be in [1, native UINT width]"};
+    if (integer{bits} >= (integer{1} << width))
+      throw std::domain_error{"ANGLEBITS2PHASE bits exceed the specified width"};
+    if (limits::radix != 2 or not limits::is_iec559)
+      throw std::domain_error{"ANGLEBITS2PHASE requires IEC 559 binary REAL storage"};
+    auto phase = dyadic{integer{bits}, static_cast<unsigned>(width)};
+    principal(phase);
+    for (auto const& factor: chain.factors)
+    {
+      phase.numerator *= factor.numerator;
+      phase.denominator_power += factor.denominator_power;
+      principal(phase);
+    }
+    if (phase.numerator == 0) return ::bra::real_type{0};
+    auto const negative = phase.numerator < 0;
+    auto const turn = binary_significand(boost::math::constants::two_pi< ::bra::real_type >());
+    integer numerator = (negative ? -phase.numerator : phase.numerator) * turn.first;
+    integer denominator = integer{1} << phase.denominator_power;
+    if (turn.second >= 0) numerator <<= turn.second;
+    else denominator <<= -turn.second;
+    auto const rounded = rounded_binary(numerator, denominator, limits::digits, limits::min_exponent - limits::digits);
+    auto result = ::bra::real_type{0};
+    if (rounded.numerator != 0)
+    {
+      auto const high_bit = boost::multiprecision::msb(rounded.numerator);
+      auto const subnormal = static_cast<int>(high_bit) - static_cast<int>(rounded.denominator_power) < limits::min_exponent - 1;
+      // Build a normal significand using exact operations, then scale only to
+      // a normal value. For subnormals, synthesize the stored representation
+      // without arithmetic on a subnormal (which DAZ/FTZ could erase).
+      auto const unit_power = subnormal ? limits::min_exponent - limits::digits
+                                       : -static_cast<int>(rounded.denominator_power);
+      integer significand = rounded.numerator;
+      if (subnormal) significand <<= -unit_power - rounded.denominator_power;
+      for (auto bit = static_cast<int>(boost::multiprecision::msb(significand)); bit >= 0; --bit)
+        result = result * ::bra::real_type{2} + (boost::multiprecision::bit_test(significand, bit) ? ::bra::real_type{1} : ::bra::real_type{0});
+      if (subnormal)
+      {
+        result = ::bra::real_type{1} + std::ldexp(result, 1 - limits::digits);
+        auto const unit = ::bra::real_type{1};
+        unsigned char storage[sizeof(result)], unit_storage[sizeof(unit)];
+        std::memcpy(storage, &result, sizeof(result));
+        std::memcpy(unit_storage, &unit, sizeof(unit));
+        for (auto index = std::size_t{0u}; index < sizeof(result); ++index)
+          storage[index] &= static_cast<unsigned char>(~unit_storage[index]);
+        std::memcpy(&result, storage, sizeof(result));
+      }
+      else result = std::ldexp(result, unit_power);
+    }
+    return negative ? boost::math::changesign(result) : result;
+  }
+
   auto evaluate_classical_function(::bra::classical_function_call const& call)
     -> std::vector< ::bra::classical_function_value >
   {
@@ -331,6 +390,12 @@ namespace bra
     auto const& registered = ::bra::resolve_classical_function(signature.function, signature.operand_types);
     if (signature.result_types != registered.result_types)
       throw std::invalid_argument{"unsupported result signature"};
+    if (signature.function == ::bra::classical_function_id::anglebits2phase)
+    {
+      auto const chain = call.phase_chain() ? call.phase_chain() : ::bra::parse_anglebits2phase_chain({});
+      return {::bra::evaluate_anglebits2phase(boost::get< ::bra::uint_type >(call.operands()[0u]),
+                                            boost::get< ::bra::int_type >(call.operands()[1u]), *chain)};
+    }
     if (signature.function == ::bra::classical_function_id::anglebits)
       return {angle_bits(boost::get< ::bra::real_type >(call.operands()[0u]),
                          boost::get< ::bra::int_type >(call.operands()[1u]))};

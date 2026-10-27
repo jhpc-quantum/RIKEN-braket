@@ -9,6 +9,7 @@
 
 # include <bra/types.hpp>
 # include <bra/classical_function.hpp>
+# include <bra/anglebits2phase.hpp>
 
 
 namespace bra
@@ -70,14 +71,19 @@ namespace bra
     ::bra::classical_function_signature signature_;
     std::vector< ::bra::classical_function_destination > destinations_;
     std::vector< ::bra::classical_function_value > operands_;
+    ::bra::anglebits2phase_chain_ptr phase_chain_;
 
    public:
     classical_function_call(
       ::bra::classical_function_signature signature,
       std::vector< ::bra::classical_function_destination > destinations,
-      std::vector< ::bra::classical_function_value > operands)
-      : signature_{std::move(signature)}, destinations_{std::move(destinations)}, operands_{std::move(operands)}
+      std::vector< ::bra::classical_function_value > operands,
+      ::bra::anglebits2phase_chain_ptr phase_chain = {})
+      : signature_{std::move(signature)}, destinations_{std::move(destinations)}, operands_{std::move(operands)},
+        phase_chain_{std::move(phase_chain)}
     {
+      if (phase_chain_ and signature_.function != ::bra::classical_function_id::anglebits2phase)
+        throw std::invalid_argument{"unexpected ANGLEBITS2PHASE metadata"};
       if (destinations_.size() != signature_.result_types.size())
         throw std::invalid_argument{"wrong destination count"};
       if (operands_.size() != signature_.operand_types.size())
@@ -100,6 +106,7 @@ namespace bra
 
     auto signature() const -> ::bra::classical_function_signature const& { return signature_; }
     auto operands() const -> std::vector< ::bra::classical_function_value > const& { return operands_; }
+    auto phase_chain() const -> ::bra::anglebits2phase_chain_ptr const& { return phase_chain_; }
 
     void commit_results(std::vector< ::bra::classical_function_value > const& results) const
     {

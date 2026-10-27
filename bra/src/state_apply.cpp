@@ -234,22 +234,30 @@ namespace bra
 
   void state::invoke_apply_operation(
     std::vector<std::string> const& destinations, ::bra::classical_function_id const function,
-    std::vector<std::string> const& operands)
+    std::vector<std::string> const& operands, ::bra::anglebits2phase_chain_ptr phase_chain)
   {
     auto const instruction = ::bra::apply_instruction(destinations, function, operands);
     try
     {
+      auto operand_count = operands.size();
+      if (function == ::bra::classical_function_id::anglebits2phase)
+      {
+        if (operand_count < 2u) throw std::invalid_argument{"wrong operand count for ANGLEBITS2PHASE"};
+        if (not phase_chain)
+          phase_chain = ::bra::parse_anglebits2phase_chain({operands.begin() + 2, operands.end()});
+        operand_count = 2u;
+      }
       auto locations = std::vector< ::bra::classical_function_destination >{};
       for (auto const& destination: destinations)
         locations.push_back(resolve_apply_destination(destination));
       auto types = std::vector< ::bra::variable_type >{};
-      for (auto const& operand: operands)
-        types.push_back(apply_operand_type(operand));
+      for (auto index = std::size_t{0u}; index < operand_count; ++index)
+        types.push_back(apply_operand_type(operands[index]));
       auto const& signature = ::bra::resolve_classical_function(function, types);
       auto values = std::vector< ::bra::classical_function_value >{};
-      for (auto const& operand: operands)
-        values.push_back(read_apply_operand(operand));
-      auto const call = ::bra::classical_function_call{signature, std::move(locations), std::move(values)};
+      for (auto index = std::size_t{0u}; index < operand_count; ++index)
+        values.push_back(read_apply_operand(operands[index]));
+      auto const call = ::bra::classical_function_call{signature, std::move(locations), std::move(values), std::move(phase_chain)};
       call.commit_results(::bra::evaluate_classical_function(call));
     }
     catch (std::exception const& error) { throw ::bra::apply_error{instruction, error.what()}; }

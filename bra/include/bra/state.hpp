@@ -731,7 +731,8 @@ namespace bra
     void invoke_jump_operation(std::string const& label, std::string const& lhs_variable_name, ::bra::compare_operation_type const op, std::string const& rhs_literal_or_variable_name);
     void invoke_assert_operation(std::string const& lhs_variable_name, ::bra::compare_operation_type const op, std::string const& rhs_literal_or_variable_name);
     void invoke_apply_operation(std::vector<std::string> const& destinations, ::bra::classical_function_id function,
-                                std::vector<std::string> const& operands);
+                                std::vector<std::string> const& operands,
+                                ::bra::anglebits2phase_chain_ptr phase_chain = {});
     boost::optional<std::string> const& maybe_label() const { return maybe_label_; }
     void delete_label() { maybe_label_ = boost::none; }
 

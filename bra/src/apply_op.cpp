@@ -14,11 +14,24 @@ namespace bra
 
     apply_op::apply_op(std::vector<std::string> destinations, ::bra::classical_function_id const function,
                        std::vector<std::string> operands)
-      : destinations_{std::move(destinations)}, function_{function}, operands_{std::move(operands)} { }
+      : destinations_{std::move(destinations)}, function_{function}, operands_{std::move(operands)}
+    {
+      if (function_ == ::bra::classical_function_id::anglebits2phase)
+      {
+        try
+        {
+          if (operands_.size() < 2u) throw std::invalid_argument{"wrong operand count for ANGLEBITS2PHASE"};
+          if (destinations_.size() != 1u) throw std::invalid_argument{"wrong destination count"};
+          phase_chain_ = ::bra::parse_anglebits2phase_chain({operands_.begin() + 2, operands_.end()});
+        }
+        catch (std::exception const& error)
+        { throw ::bra::apply_error{::bra::apply_instruction(destinations_, function_, operands_), error.what()}; }
+      }
+    }
 
     ::bra::state& apply_op::do_apply(::bra::state& state) const
     {
-      state.invoke_apply_operation(destinations_, function_, operands_);
+      state.invoke_apply_operation(destinations_, function_, operands_, phase_chain_);
       return state;
     }
 

@@ -5,6 +5,7 @@
 # include <vector>
 
 # include <bra/classical_function.hpp>
+# include <bra/anglebits2phase.hpp>
 # include <bra/gate/gate.hpp>
 
 
@@ -17,6 +18,7 @@ namespace bra
       std::vector<std::string> destinations_;
       ::bra::classical_function_id function_;
       std::vector<std::string> operands_;
+      ::bra::anglebits2phase_chain_ptr phase_chain_;
       static std::string const name_;
 
      public:
