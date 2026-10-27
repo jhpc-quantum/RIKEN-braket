@@ -14,7 +14,8 @@ namespace bra
   enum class classical_function_id : int
   {
     exp = 0, arg = 1, abs = 2, sqrt = 3, complex_ = 4, log = 5, sin = 6, cos = 7, tan = 8,
-    arcsin = 9, arccos = 10, arctan = 11, ceiling = 12, floor = 13, mod = 14, anglebits = 15
+    arcsin = 9, arccos = 10, arctan = 11, ceiling = 12, floor = 13, mod = 14, anglebits = 15,
+    anglebits2phase = 16
   };
 
   struct classical_function_signature
@@ -45,6 +46,7 @@ namespace bra
     case ::bra::classical_function_id::floor: return "FLOOR";
     case ::bra::classical_function_id::mod: return "MOD";
     case ::bra::classical_function_id::anglebits: return "ANGLEBITS";
+    case ::bra::classical_function_id::anglebits2phase: return "ANGLEBITS2PHASE";
     }
     throw std::invalid_argument{"unknown classical function identifier"};
   }
@@ -52,9 +54,9 @@ namespace bra
   // Overload lookup must compare operand types only. Result types are checked
   // against destinations after selecting the signature, never used to select it.
   inline auto classical_function_signatures()
-    -> std::array< ::bra::classical_function_signature, 18u > const&
+    -> std::array< ::bra::classical_function_signature, 19u > const&
   {
-    static auto const signatures = std::array< ::bra::classical_function_signature, 18u >{{
+    static auto const signatures = std::array< ::bra::classical_function_signature, 19u >{{
       {::bra::classical_function_id::exp, {::bra::variable_type::real}, {::bra::variable_type::real}},
       {::bra::classical_function_id::exp, {::bra::variable_type::complex_}, {::bra::variable_type::complex_}},
       {::bra::classical_function_id::arg, {::bra::variable_type::complex_}, {::bra::variable_type::real}},
@@ -75,7 +77,9 @@ namespace bra
       {::bra::classical_function_id::mod, {::bra::variable_type::real, ::bra::variable_type::real},
                                        {::bra::variable_type::real}},
       {::bra::classical_function_id::anglebits, {::bra::variable_type::real, ::bra::variable_type::integer},
-                                             {::bra::variable_type::unsigned_integer}}
+                                             {::bra::variable_type::unsigned_integer}},
+      {::bra::classical_function_id::anglebits2phase,
+       {::bra::variable_type::unsigned_integer, ::bra::variable_type::integer}, {::bra::variable_type::real}}
     }};
     return signatures;
   }

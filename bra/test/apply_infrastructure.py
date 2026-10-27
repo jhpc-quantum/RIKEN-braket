@@ -42,6 +42,7 @@ APPLY R:N:999 <- ARCTAN nonexistent
 APPLY R:N:999 <- CEILING nonexistent
 APPLY R:N:999 <- FLOOR nonexistent
 APPLY R:N:999 <- MOD nonexistent R:N:999
+APPLY R:N:999 <- ANGLEBITS2PHASE nonexistent R:N:999 INV POW 0.5
 @DONE
 PRINTLN R
 ''')
@@ -60,6 +61,35 @@ PRINTLN R
     result = run(setup + 'JUMP DONE\nAPPLY R <- BOGUS R\n@DONE\n')
     if result.returncode == 0 or 'unknown function BOGUS' not in result.stderr:
         raise RuntimeError(f'unknown function was not rejected while parsing: {result}')
+
+    # Literal descriptors are instruction metadata: reject malformed chains
+    # while loading even if the instruction will be skipped.
+    for suffix in ('INV extra', 'POW', 'POW N', 'POW 0 POW NaN', 'POW 1e9999',
+                   'POW ' + '0' * 4097, 'INV ' * 1025):
+        instruction = 'APPLY R <- ANGLEBITS2PHASE missing missing ' + suffix
+        result = run(setup + f'JUMP DONE\n{instruction}\n@DONE\n')
+        if result.returncode == 0 or 'APPLY R <- ANGLEBITS2PHASE' not in result.stderr:
+            raise RuntimeError(f'invalid skipped descriptor accepted: {result}')
+    for instruction in ('APPLY R <- ANGLEBITS2PHASE missing',
+                        'APPLY R R <- ANGLEBITS2PHASE missing missing'):
+        result = run(setup + f'JUMP DONE\n{instruction}\n@DONE\n')
+        if result.returncode == 0 or instruction.upper() not in result.stderr:
+            raise RuntimeError(f'invalid ANGLEBITS2PHASE shape accepted: {result}')
+
+    result = run(setup + '''VAR U UINT
+LET U := 4
+apply r <- anglebits2phase u 3 inv pow 0.5
+PRINTLN R
+APPLY R <- ANGLEBITS2PHASE :UINT:4 :INT:3 POW 0.5 INV
+PRINTLN R
+APPLY R <- ANGLEBITS2PHASE U 3 POW 2 POW 0.5
+PRINTLN R
+''')
+    if result.returncode or len(result.stdout.splitlines()) != 3:
+        raise RuntimeError(f'ANGLEBITS2PHASE CLI failed: {result}')
+    for actual, expected in zip(map(float, result.stdout.splitlines()), (math.pi / 2, -math.pi / 2, 0)):
+        if not math.isclose(actual, expected, rel_tol=1e-5, abs_tol=1e-7):
+            raise RuntimeError(f'ANGLEBITS2PHASE CLI phase: {actual} != {expected}')
 
     result = run(setup + 'apply r <- exp r\nPRINTLN R\n')
     if result.returncode != 0 or not math.isclose(float(result.stdout.strip()), math.exp(2), rel_tol=1e-5):

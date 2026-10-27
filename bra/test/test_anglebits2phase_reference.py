@@ -199,9 +199,9 @@ class ResourceTests(unittest.TestCase):
             with self.subTest(chain=chain), self.assertRaises((ChainSyntaxError, PhaseDomainError)):
                 evaluate_turns(0, 0, chain)
 
-    def test_design_document_records_planned_status_and_shared_limits(self):
+    def test_design_document_records_integration_status_and_shared_limits(self):
         document = (Path(__file__).parents[2] / 'docs' / 'anglebits2phase-design.md').read_text()
-        self.assertIn('neither bra nor qasm2qcx currently implements this function', document)
+        self.assertIn('The qasm2qcx integration described below remains planned', document)
         for limit in (DEFAULT_LIMITS.max_modifiers, DEFAULT_LIMITS.max_literal_chars, DEFAULT_LIMITS.max_exact_bits):
             self.assertIn(f'{limit:,}', document)
 

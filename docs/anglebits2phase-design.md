@@ -1,12 +1,12 @@
 # ANGLEBITS2PHASE design contract
 
-The planned evaluator converts fixed-point angle bits into a REAL phase after
+The evaluator converts fixed-point angle bits into a REAL phase after
 an ordered INV/POW chain. Exact turn arithmetic preserves branch decisions
 through nested powers. This is the design contract for
 [issue #396](https://github.com/jhpc-quantum/RIKEN-braket/issues/396).
 
-Status: Stage 1 contract and reference model. The syntax below is planned;
-neither bra nor qasm2qcx currently implements this function.
+Status: Stage 2 implements the native bra function and its APPLY interface.
+The qasm2qcx integration described below remains planned.
 
 ## Interface
 
@@ -14,7 +14,7 @@ neither bra nor qasm2qcx currently implements this function.
 APPLY result <- ANGLEBITS2PHASE bits width INV POW 0.5
 ```
 
-The proposed signature has one REAL destination, a UINT bit pattern, an INT
+The native signature has one REAL destination, a UINT bit pattern, an INT
 width, and an optional sequence of literal modifier descriptors. Ordinary
 APPLY scalar operand rules apply to `bits` and `width`, including indexed
 elements and explicitly typed operands. Result types do not select overloads.
