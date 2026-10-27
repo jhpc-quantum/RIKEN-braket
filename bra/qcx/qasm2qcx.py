@@ -6268,32 +6268,45 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __visit_angle_bitwise(self, expression: ast.UnaryExpression | ast.BinaryExpression) -> None:
         _, angle_type, runtime = self.__angle_operand_info(expression)
-        if runtime:
-            if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
-                raise NoConstantExpressionException
-            raise UnsupportedOpenQASMError('runtime angle bitwise operations')
+        if runtime and self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+            raise NoConstantExpressionException
         previous_used = self.__used_temporary_variables.copy()
+        result = None
+        keep = False
         try:
             operands = ([expression.expression] if isinstance(expression, ast.UnaryExpression)
                         else [expression.lhs, expression.rhs])
             values = [self.__angle_arithmetic_operand(operand, angle_type) for operand in operands]
-            if not all(isinstance(value, int) for value in values):
-                raise UnsupportedOpenQASMError('runtime angle bitwise operations')
-            if not self.__evaluate_constant:
-                value = 0
-            elif isinstance(expression, ast.UnaryExpression):
-                value = ~values[0]
-            elif expression.op.name == '&':
-                value = values[0] & values[1]
-            elif expression.op.name == '|':
-                value = values[0] | values[1]
+            unary = isinstance(expression, ast.UnaryExpression)
+            if all(isinstance(value, int) for value in values):
+                if not self.__evaluate_constant:
+                    value = 0
+                elif unary:
+                    value = ~values[0]
+                elif expression.op.name == '&':
+                    value = values[0] & values[1]
+                elif expression.op.name == '|':
+                    value = values[0] | values[1]
+                else:
+                    value = values[0] ^ values[1]
+                self.__value, self.__value_kind = value & angle_type.mask, ValueKind.LITERAL
             else:
-                value = values[0] ^ values[1]
-            self.__value, self.__value_type, self.__value_kind = value & angle_type.mask, ValueType.ANGLE, ValueKind.LITERAL
+                if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                    raise NoConstantExpressionException
+                storage = _UnsignedIntegerType(angle_type.width, True)
+                result = self.__add_new_temporary_variable(ValueType.UINT, storage)
+                operator = '^=' if unary else expression.op.name + '='
+                rhs = angle_type.mask if unary else values[1]
+                self.__qcx_lines.extend([f'LET {result} := {values[0]}', f'LET {result} {operator} {rhs}'])
+                self.__normalize_uint_storage(result, storage)
+                self.__value, self.__value_kind = result, ValueKind.TEMPORARY
+            self.__value_type = ValueType.ANGLE
             self.__angle_expression_types[id(expression)] = (expression, angle_type)
+            keep = result is not None
         finally:
             for temporary in self.__used_temporary_variables - previous_used:
-                self.__release_temporary_variable(temporary)
+                if not keep or temporary != result:
+                    self.__release_temporary_variable(temporary)
 
     def __angle_comparison_info(
             self, expression: ast.BinaryExpression,
