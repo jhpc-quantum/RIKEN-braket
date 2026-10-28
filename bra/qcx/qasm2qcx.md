@@ -109,6 +109,8 @@ The converter currently covers:
 - scalar angle comparisons with width promotion and unsigned angle ordering;
 - scalar angle bitwise expressions (`~`, `&`, `|`, `^`) and `&=`/`|=`/`^=`
   assignments, with width promotion and angle result types;
+- scalar angle shifts (`<<`, `>>`, `<<=`, `>>=`), rejecting negative counts
+  and producing zero for counts at least the angle width;
 - scalar angle parameters for `p`, `phase`, `u1`, `cp`, `cphase`, and `gphase`, including
   inverse/control modifiers and constant/runtime integer powers;
 - scalar built-in `exp`, `sqrt`, `log`, `sin`, `cos`, `tan`, `arcsin`, `arccos`,
@@ -163,6 +165,8 @@ Both `angle[n]` and `const angle[n]` accept a `float` expression or another
 angle as an initializer. Mutable scalar angles support `=` assignment and
 `+=`, `-=`, `&=`, `|=`, and `^=` with an angle RHS. Scaling assignments `*=` and
 `/=` require a UINT RHS with matching effective width.
+Shift assignments `<<=` and `>>=` accept INT or UINT counts without promoting
+the destination angle's width.
 Explicit casts use `angle[n](value)` or `angle(value)`. Integer, Boolean, bit,
 and complex inputs are not accepted directly; use `float(...)` first when an
 existing numeric conversion is appropriate. Constants require constant inputs,
@@ -218,8 +222,8 @@ conversion domain checks or skipped arithmetic. Empty loops still validate
 names, widths, types, and read-only targets.
 
 This is not full angle support. Mixed angle/non-angle comparisons and bitwise
-operations, shifts, indexing, compound assignments other than `+=`, `-=`, `*=`,
-`/=`, `&=`, `|=`, and `^=`, angle arrays/iteration, numeric or bit casts from
+operations, indexing, compound assignments other than `+=`, `-=`, `*=`,
+`/=`, `&=`, `|=`, `^=`, `<<=`, and `>>=`, angle arrays/iteration, numeric or bit casts from
 angles, and angle-typed trigonometric
 calls remain unsupported.
 Use an angle comparison or `bool(a)` explicitly in a condition; a bare angle
@@ -501,7 +505,7 @@ An all-zero operand does not suppress evaluation of the other operand. Reached
 conversion, access, and division errors still fail; skipped branches,
 short-circuited expressions, and empty loops do not execute those checks.
 Names, types, widths, operators, and read-only targets are validated even on
-skipped paths. Angle shifts, rotations, and `popcount` remain separate work.
+skipped paths. Angle rotations and `popcount` remain separate work.
 
 <!-- angle-bitwise-example -->
 ```qasm
@@ -536,6 +540,93 @@ h q;
 p(a) q[0];
 if ((~a & fine) != a) {
   negctrl @ inv @ pow(0.5) @ gphase(a) q[2]; // Phase -5*pi/16 when q[2] is zero.
+}
+pragma riken_braket.amplitudes
+```
+
+#### Scalar angle shifts
+
+Scalar angle expressions support `<<`, `>>`, `<<=`, and `>>=` during constant
+evaluation and runtime execution. Shifts operate on the stored bit pattern,
+following the [OpenQASM shift rules](https://openqasm.com/language/classical.html#classical-bits-and-registers).
+The result retains the left operand's angle width and sizedness. The count's
+type and width do not promote or resize that angle.
+
+The converter uses this angle-shift policy:
+
+- Counts may be scalar UINT or nonnegative INT expressions. Negative signed
+  counts fail before unsigned conversion. Boolean, bit, floating-point,
+  complex, and angle counts require an appropriate explicit integer conversion
+  where one is supported.
+- Left shifts move bits toward higher indices; right shifts move them toward
+  lower indices. Vacated positions are zero-filled and shifted-out bits are
+  discarded. Left-shift results are masked to the angle width.
+- A zero count preserves the angle. A count at least as large as its width
+  produces zero, including counts such as native `UINT_MAX`.
+- `a <<= count` and `a >>= count` behave like assigning the complete binary
+  result to `a`, preserving self-reference and read-only constant checks.
+
+For four-bit angle bits `1001`, shifting left by two gives `0100`, while
+shifting right by two gives `0010`. Shifting by four or more gives `0000`.
+An explicit cast such as `uint(-1)` produces an unsigned count according to
+the existing cast rules; that oversized value produces zero rather than a
+negative-count error.
+
+Accepting nonnegative signed counts and producing zero for oversized counts
+are documented converter choices. The specification describes unsigned counts
+and discarding shifted-out bits but does not explicitly settle the boundary
+cases in that section. Our policy matches bit-register shifts; scalar INT/UINT
+shifts retain their existing requirement that the count be below the operand's
+width. Rotations have separate count semantics and are not added for angles here.
+
+Constant folding checks for oversized counts before shifting, avoiding enormous
+intermediate integers. Runtime lowering captures the angle before the count,
+evaluates each once, and preserves sources in private storage. It checks signed
+negativity and branches to a zero result before an oversized native shift.
+UINT counts are not narrowed or converted through signed INT. No new bra
+instruction or floating-point shift calculation is required.
+
+An oversized count does not suppress source conversion or access errors;
+likewise a zero angle does not suppress errors while computing the count.
+Evaluated constant errors fail conversion, and reached executable errors fail
+at runtime. Skipped branches, short-circuit operands, and empty loops retain
+their normal behavior, with names, types, widths, and read-only targets still
+validated. Supported arithmetic, bitwise operators, comparisons, loops, and
+phase gates can consume the angle result.
+
+<!-- angle-shift-example -->
+```qasm
+OPENQASM 3.0;
+const angle[4] A = 9 * pi / 8;        // Bits: 1001.
+const angle[4] LEFT = A << 2;         // Bits: 0100.
+const angle[4] RIGHT = A >> 2;        // Bits: 0010.
+const angle[4] ZERO = A << 4;         // Bits: 0000.
+angle[4] a = A;
+uint[8] count = 1;
+angle[4] left = a << count;          // Bits: 0010; width remains four.
+angle[4] right = a >> count;         // Bits: 0100.
+angle[8] after = a >> 1;             // Bits: 01000000; shift before widening.
+angle[8] before = angle[8](a) >> 1;   // Bits: 01001000; widen before shifting.
+a >>= count;                        // Bits: 0100.
+a <<= 1;                            // Bits: 1000.
+a >>= uint(-1);                     // Bits: 0000; oversized unsigned count.
+bool skipped = false && bool(a << -1); // false; no negative-count error.
+```
+
+<!-- angle-shift-phase-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit[3] q;
+angle[4] a = 9 * pi / 8;
+uint[8] count = 1;
+a >>= count;
+a <<= 1;
+a ^= angle[4](pi / 8);               // a represents 9*pi/8 again.
+h q;
+p(a) q[0];
+if ((a >> 1) < a) {
+  negctrl @ pow(0.5) @ gphase(a) q[2]; // Principal phase -7*pi/16 when q[2] is zero.
 }
 pragma riken_braket.amplitudes
 ```
@@ -4387,7 +4478,8 @@ The current prototype does not reliably support:
   `mod`/`popcount`/`rotl`/`rotr`/`real`/`imag` subset above;
 - angle-by-angle multiplication, scaling by types other than same-width UINT,
   `uint / angle`, `angle /= angle`, mixed angle/non-angle comparisons and bitwise
-  operations, shifts, compound operators other than `+=`/`-=`/`*=`/`/=`/`&=`/`|=`/`^=`, indexing, arrays/iteration,
+  operations, compound operators other than `+=`/`-=`/`*=`/`/=`/`&=`/`|=`/`^=`/`<<=`/`>>=`,
+  angle rotations and `popcount`, indexing, arrays/iteration,
   numeric or bit casts from angles, angle-typed trigonometric arguments, angle-valued gates outside
   `p`/`phase`/`u1`/`cp`/`cphase`/`gphase`; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
@@ -4467,6 +4559,18 @@ Unit tests additionally check exhaustive four-bit constants, sizedness metadata,
 once-only operand capture, invalid mixed operands, read-only targets, declaration
 hoisting, and temporary cleanup. Run with `--bra /path/to/bra`, including a UBSan
 build.
+
+`bra/test/qasm2qcx_angle_shift_numerical.py` checks exact shift results at every
+supported angle width, count boundaries, signed and unsigned counts, UINT_MAX,
+huge literals, count widths, sizedness, source preservation, and self-referencing
+compound assignments. It covers repeated execution, iterator shadowing,
+measurement-controlled updates, skipped/reached errors, and integration with
+arithmetic, bitwise operations, comparisons, and phase gates. Complete phase
+matrices check modifiers, negative controls, global phase, zero qubits, and
+fusion. Both shift examples above are executed. Unit tests additionally cover
+constant evaluation, invalid types and widths on skipped paths, once-only
+capture, declaration hoisting, and cleanup with caller-owned temporaries.
+Run with `--bra /path/to/bra`, including a UBSan build.
 
 `bra/test/qasm2qcx_angle_phase_numerical.py` compares whole diagonal phase
 matrices with the generated angle-phase circuits, without discarding global
