@@ -359,9 +359,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         'sqrt': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='SQRT'),
                  _BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.COMPLEX, qcx_function='SQRT')),
         'log': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='LOG'),),
-        'sin': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='SIN'),),
-        'cos': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='COS'),),
-        'tan': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='TAN'),),
+        'sin': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='SIN'),
+                _BuiltinFunctionSignature((ValueType.ANGLE,), ValueType.FLOAT, qcx_function='SIN')),
+        'cos': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='COS'),
+                _BuiltinFunctionSignature((ValueType.ANGLE,), ValueType.FLOAT, qcx_function='COS')),
+        'tan': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='TAN'),
+                _BuiltinFunctionSignature((ValueType.ANGLE,), ValueType.FLOAT, qcx_function='TAN')),
         'arcsin': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='ARCSIN'),),
         'arccos': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='ARCCOS'),),
         'arctan': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='ARCTAN'),),
@@ -503,6 +506,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__register_shift_index: int = 0
         self.__angle_shift_index: int = 0
         self.__rotation_index: int = 0
+        self.__angle_trigonometric_index: int = 0
         self.__population_count_index: int = 0
         self.__power_index: int = 0
         self.__gate_power_index: int = 0
@@ -5464,6 +5468,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def visit_FunctionCall(self, expression: ast.FunctionCall) -> None:
         signature, runtime = self.__function_call_info(expression)
+        if expression.name.name in ('sin', 'cos', 'tan') and signature.operand_types == (ValueType.ANGLE,):
+            self.__visit_angle_trigonometric(expression, runtime)
+            return
         if (signature.rotation or signature.population_count) and signature.operand_types[0] == ValueType.ANGLE:
             self.__visit_angle_bit_function(expression, signature, runtime)
             return
@@ -5517,6 +5524,144 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         finally:
             for temporary in self.__used_temporary_variables - previous_used:
                 self.__release_temporary_variable(temporary)
+
+    @staticmethod
+    def __fold_angle_trigonometric(name: str, bits: int, angle_type: _AngleType) -> float:
+        denominator = 1 << angle_type.width
+        # Choose the nearest quarter turn using integer arithmetic, including
+        # width one. Keep the small signed distance before converting to REAL;
+        # subtracting rounded radians would lose low bits near axes and poles.
+        quadrant = (4 * bits + denominator // 2) // denominator
+        residual = 4 * bits - quadrant * denominator
+        quadrant %= 4
+        if residual == 0:
+            if name == 'sin':
+                return (0.0, 1.0, 0.0, -1.0)[quadrant]
+            if name == 'cos':
+                return (1.0, 0.0, -1.0, 0.0)[quadrant]
+            if quadrant % 2:
+                raise InvalidConstantFunctionException('Function tan: exact angle tangent pole')
+            return 0.0  # Canonical positive zero at exact axes.
+        reduced = math.ldexp(float(residual), -angle_type.width) * (math.pi / 2)
+        if name == 'tan':
+            tangent = math.tan(reduced)
+            return -1.0 / tangent if quadrant % 2 else tangent
+        sine, cosine = math.sin(reduced), math.cos(reduced)
+        return ((sine, cosine, -sine, -cosine) if name == 'sin'
+                else (cosine, -sine, -cosine, sine))[quadrant]
+
+    def __visit_angle_trigonometric(self, expression: ast.FunctionCall, runtime: bool) -> None:
+        if self.__expression_kind != ExpressionKind.CONST_ARITHMETIC:
+            if self.__expression_kind not in (ExpressionKind.ARITHMETIC, ExpressionKind.CONDITIONAL):
+                raise UnsupportedOpenQASMError('function call outside a value expression')
+            self.__visit_runtime_angle_trigonometric(expression)
+            return
+        if runtime:
+            raise NoConstantExpressionException
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        try:
+            argument = expression.arguments[0]
+            _, angle_type, _ = self.__angle_operand_info(argument)
+            self.visit(argument)
+            if self.__value_kind != ValueKind.LITERAL:
+                raise NoConstantExpressionException
+            result = (self.__fold_angle_trigonometric(expression.name.name, int(self.__value), angle_type)
+                      if self.__evaluate_constant else 0.0)
+            self.__value, self.__value_type, self.__value_kind = result, ValueType.FLOAT, ValueKind.LITERAL
+        except Exception:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            raise
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
+    def __visit_runtime_angle_trigonometric(self, expression: ast.FunctionCall) -> None:
+        previous = (self.__expression_kind, self.__value, self.__value_type, self.__value_kind)
+        previous_used = self.__used_temporary_variables.copy()
+        keep = None
+        prefix = f'QASM2QCX_ANGLE_TRIG_{self.__angle_trigonometric_index}'
+        self.__angle_trigonometric_index += 1
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            argument = expression.arguments[0]
+            _, angle_type, _ = self.__angle_operand_info(argument)
+            bits = self.__angle_arithmetic_operand(argument, angle_type)
+            quadrant = self.__add_new_temporary_variable(ValueType.INT)
+            residual = self.__add_new_temporary_variable(ValueType.INT)
+            reduced = self.__add_new_temporary_variable(ValueType.FLOAT)
+            result = self.__add_new_temporary_variable(ValueType.FLOAT)
+            if angle_type.width == 1:
+                self.__qcx_lines.extend([
+                    f'LET {quadrant} := :INT:{bits}', f'LET {quadrant} *= 2', f'LET {residual} := 0',
+                ])
+            else:
+                # Split before converting to INT: a full-width angle can
+                # exceed INT_MAX, but its quadrant and offset always fit.
+                offset = self.__add_new_temporary_variable(ValueType.UINT)
+                quarter = 1 << (angle_type.width - 2)
+                self.__qcx_lines.extend([
+                    f'LET {offset} := {bits}', f'LET {offset} >>= {angle_type.width - 2}',
+                    f'LET {quadrant} := :INT:{offset}',
+                    f'LET {offset} := {bits}', f'LET {offset} &= {quarter - 1}',
+                    f'LET {residual} := :INT:{offset}',
+                ])
+                if angle_type.width >= 3:
+                    self.__qcx_lines.extend([
+                        f'JUMPIF {prefix}_REDUCED {residual} < {quarter // 2}',
+                        f'LET {residual} -= {quarter}', f'LET {quadrant} += 1',
+                        f'LET {quadrant} &= 3', f'@{prefix}_REDUCED',
+                    ])
+            self.__qcx_lines.extend([
+                f'LET {reduced} := :REAL:{residual}',
+                # The power-of-two scale is exact in every REAL precision;
+                # native PI avoids limiting wider backends to host binary64.
+                f'LET {reduced} *= {math.ldexp(1.0, 1 - angle_type.width)!r}',
+                f'LET {reduced} *= :PI',
+            ])
+            name = expression.name.name
+            if name == 'tan':
+                self.__qcx_lines.extend([
+                    f'JUMPIF {prefix}_NONAXIS {residual} \\= 0',
+                    f'ASSERT {quadrant} \\= 1', f'ASSERT {quadrant} \\= 3',
+                    f'LET {result} := 0.0', f'JUMP {prefix}_DONE', f'@{prefix}_NONAXIS',
+                    f'APPLY {result} <- TAN {reduced}',
+                    f'LET {quadrant} &= 1', f'JUMPIF {prefix}_DONE {quadrant} == 0',
+                    f'LET {reduced} := -1.0', f'LET {reduced} /= {result}',
+                    f'LET {result} := {reduced}',
+                ])
+            else:
+                for index in range(3):
+                    self.__qcx_lines.append(f'JUMPIF {prefix}_Q{index} {quadrant} == {index}')
+                self.__qcx_lines.append(f'JUMP {prefix}_Q3')
+                functions = ('SIN', 'COS', 'SIN', 'COS') if name == 'sin' else ('COS', 'SIN', 'COS', 'SIN')
+                axes = (0.0, 1.0, 0.0, -1.0) if name == 'sin' else (1.0, 0.0, -1.0, 0.0)
+                for index, (function, axis) in enumerate(zip(functions, axes)):
+                    negative = index >= 2 if name == 'sin' else index in (1, 2)
+                    self.__qcx_lines.extend([
+                        f'@{prefix}_Q{index}',
+                        f'JUMPIF {prefix}_AXIS{index} {residual} == 0',
+                        f'APPLY {result} <- {function} {reduced}',
+                    ])
+                    if negative:
+                        self.__qcx_lines.append(f'LET {result} *= -1.0')
+                    self.__qcx_lines.extend([
+                        f'JUMP {prefix}_DONE', f'@{prefix}_AXIS{index}',
+                        f'LET {result} := {axis!r}', f'JUMP {prefix}_DONE',
+                    ])
+            self.__qcx_lines.append(f'@{prefix}_DONE')
+            self.__expression_kind = previous[0]
+            self.__value, self.__value_type, self.__value_kind = result, ValueType.FLOAT, ValueKind.TEMPORARY
+            keep = result
+        except Exception:
+            self.__expression_kind, self.__value, self.__value_type, self.__value_kind = previous
+            raise
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                if temporary != keep:
+                    self.__release_temporary_variable(temporary)
 
     def __visit_angle_bit_function(
             self, expression: ast.FunctionCall, signature: _BuiltinFunctionSignature, runtime: bool) -> None:
