@@ -6288,7 +6288,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             iterators: set[str] | dict[str, ValueType] | None = None
             ) -> tuple[_AngleType, ValueType, bool] | None:
         lhs_type, angle_type, lhs_runtime = self.__angle_operand_info(expression.lhs, iterators)
-        count_type, count_runtime = self.__loop_expression_info(expression.rhs, iterators)
+        # Resolve integer promotion precisely: narrow UINT mixed with INT can
+        # produce a signed count that must be checked before any UINT capture.
+        count_type, _, count_runtime = self.__integer_operand_info(expression.rhs, iterators)
         if lhs_type != ValueType.ANGLE:
             # Angle quotients can supply ordinary integer shift counts.
             return None

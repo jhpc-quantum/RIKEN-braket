@@ -5,7 +5,10 @@ Run with --bra /path/to/bra (including a UBSan build).
 """
 
 import argparse
+import cmath
+import math
 import pathlib
+import re
 import resource
 import unittest
 
@@ -21,6 +24,32 @@ class BackendTests(unittest.TestCase):
     exact = arithmetic.BackendTests.exact
     check_phase = arithmetic.BackendTests.check_phase
     check_zero_qubit = arithmetic.BackendTests.check_zero_qubit
+
+    def test_documented_shift_examples(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx' / 'qasm2qcx.md').read_text()
+        examples = {}
+        for marker in ('angle-shift-example', 'angle-shift-phase-example'):
+            matches = re.findall(r'<!-- ' + marker + r' -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+            self.assertEqual(len(matches), 1)
+            examples[marker] = matches[0]
+        self.exact(examples['angle-shift-example'], ('a', 'count', 'left', 'right', 'after', 'before', 'skipped'),
+                   (0, 1, 2, 4, 64, 72, 0))
+        for fused in (False, True):
+            lines = self.program(examples['angle-shift-phase-example'])
+            if fused:
+                lines.insert(1, 'BEGIN FUSION')
+                lines.insert(len(lines) - 1, 'END FUSION')
+            result = self.execute(lines)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            actual = {int(index, 2): complex(float(real), float(imaginary))
+                      for index, real, imaginary in re.findall(r'^([01]+) => (\S+) \+ (\S+) i$', result.stdout, re.MULTILINE)}
+            self.assertEqual(set(actual), set(range(8)), result.stdout)
+            for index in range(8):
+                phase = (9 * math.pi / 8 if index & 1 else 0)
+                phase -= 7 * math.pi / 16 if not index & 4 else 0
+                self.assertTrue(cmath.isclose(actual[index], cmath.exp(1j * phase) / math.sqrt(8),
+                                             rel_tol=1e-5, abs_tol=2e-6), (index, actual[index]))
+            type(self).checked += 1
 
     def test_every_width_and_boundary_counts_with_both_count_types(self):
         native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
@@ -125,6 +154,22 @@ class BackendTests(unittest.TestCase):
                 if (outcome) { a <<= uint[8](1); } else { a >>= 1; }
                 bool smaller = a < angle[4](pi);''', ('a', 'outcome', 'smaller'),
                 (2 if measured else 4, measured, 1), raw=(('a', 9),))
+
+    def test_mixed_signed_unsigned_count_promotion(self):
+        for count in ('u + negative', 'u - 1', '-int(u) - 1'):
+            prefix = 'angle[4] a; uint[4] u = 0; int negative = -1; '
+            result = self.execute(self.program(prefix + f'angle[4] result = a << ({count});'))
+            self.assertNotEqual(result.returncode, 0, count)
+            type(self).checked += 1
+            self.exact(prefix + f'if (false) {{ a >>= ({count}); }}', ('a',), (9,), raw=(('a', 9),))
+        prefix = 'const angle[4] A = pi; const uint[4] U = 0; const int NEGATIVE = -1; '
+        result = self.execute(self.program(prefix + 'angle[4] result = A << (U + NEGATIVE);'))
+        self.assertNotEqual(result.returncode, 0)
+        type(self).checked += 1
+        self.exact('''angle[4] a; uint[4] small = 1; int offset = 1;
+            angle[4] signed_count = a << (small + offset);
+            uint native = 0; int negative = -1; angle[4] unsigned_count = a >> (native + negative);''',
+            ('a', 'signed_count', 'unsigned_count'), (9, 4, 0), raw=(('a', 9),))
 
     def test_shifted_phase_matrices_modifiers_and_fusion(self):
         prefix = '''angle[4] a = 9 * pi / 8; uint[8] count = 1;

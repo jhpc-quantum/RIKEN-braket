@@ -17244,6 +17244,32 @@ class AngleShiftAssignmentTests(unittest.TestCase):
     program = staticmethod(ScalarAngleFoundationTests.program)
     clean = RuntimeAngleArithmeticTests.clean
 
+    def test_documented_shift_examples(self):
+        document = (CONVERTER_PATH.parent / 'qasm2qcx.md').read_text()
+        for marker in ('angle-shift-example', 'angle-shift-phase-example'):
+            examples = re.findall(r'<!-- ' + marker + r' -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+            self.assertEqual(len(examples), 1)
+            converter = self.clean(examples[0].removeprefix('OPENQASM 3.0;'))
+            if marker == 'angle-shift-example':
+                values = converter._QASM2QCXConverter__const_angle_values
+                self.assertEqual([values[name].value for name in ('LEFT', 'RIGHT', 'ZERO')], [4, 2, 0])
+            else:
+                self.assertEqual(list(converter)[-1], 'DO AMPLITUDES')
+
+    def test_mixed_integer_count_promotion_keeps_signed_negative_checks(self):
+        for prefix, count in (
+                ('angle[4] a; uint[4] u = 0; int negative = -1;', 'u + negative'),
+                ('angle[4] a; uint[4] u = 0; int negative = -1;', 'u - 1'),
+                ('const angle[4] a = pi; const uint[4] u = 0; const int negative = -1;', 'u + negative')):
+            converter = self.converter(prefix)
+            expression = ScalarAngleArithmeticFoundationTests.expression(self, f'a << ({count})')
+            self.assertEqual(converter._QASM2QCXConverter__angle_shift_info(expression)[1], qasm2qcx.ValueType.INT)
+            lines = list(self.clean(prefix + f'angle[4] result = a << ({count});'))
+            guard = next(line.split() for line in lines if line.startswith('JUMPIF QASM2QCX_ANGLE_SHIFT_END_'))
+            self.assertIn(f'VAR {guard[2]} INT', lines)
+            self.assertIn(f'ASSERT {guard[2]} >= 0', lines)
+        self.clean('angle[4] a; uint u = 0; int negative = -1; angle[4] result = a << (u + negative);')
+
     def test_compound_rhs_is_captured_once_before_single_destination_write(self):
         for operator in ('<<=', '>>='):
             converter = self.converter('angle[4] a; uint[8] count = 16;')
