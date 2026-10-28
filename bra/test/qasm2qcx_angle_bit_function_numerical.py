@@ -25,6 +25,8 @@ class BackendTests(unittest.TestCase):
     program = arithmetic.BackendTests.program
     execute = arithmetic.BackendTests.execute
     exact = arithmetic.BackendTests.exact
+    check_phase = arithmetic.BackendTests.check_phase
+    check_zero_qubit = arithmetic.BackendTests.check_zero_qubit
 
     def test_all_widths_patterns_and_native_distance_boundaries(self):
         converter = self.module.QASM2QCXConverter
@@ -83,6 +85,68 @@ class BackendTests(unittest.TestCase):
             uint[4] ratio = rotr(a, 1) / angle[4](pi / 8);
             bool order = rotl(a, 1) < a;''', ('a', 'result', 'count', 'wide', 'ratio', 'order'),
             (9, 9, 2, 49, 12, 1), raw=(('a', 9),))
+
+    def test_exhaustive_four_bit_runtime_rotations(self):
+        for bits in range(16):
+            for distance in range(-8, 9):
+                self.exact(f'''angle[4] a; int distance = {distance};
+                    angle[4] left = rotl(a, distance); angle[4] right = rotr(a, distance);
+                    uint count = popcount(a);''', ('a', 'left', 'right', 'count'),
+                    (bits, rotate(bits, 4, distance, 'rotl'), rotate(bits, 4, distance, 'rotr'), bin(bits).count('1')),
+                    raw=(('a', bits),))
+
+    def test_self_assignment_counts_and_integer_promotion(self):
+        native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
+        for width in sorted({1, 4, 8, native}):
+            for bits in sorted({0, 1, (1 << width) - 1, ((1 << width) - 1) // 3}):
+                count = bin(bits).count('1')
+                self.exact(f'''angle[{width}] a;
+                    angle[{width}] self = a; self = rotl(self, int(popcount(self)));
+                    angle[{width}] back = rotr(self, int(popcount(self)));
+                    uint count = popcount(a); count += popcount(self);
+                    array[uint, 2] counts = {{0, 0}}; int index = 1; counts[index] = popcount(a);
+                    uint stored = counts[index];''', ('a', 'self', 'back', 'count', 'stored'),
+                    (bits, rotate(bits, width, count, 'rotl'), bits, count * 2, count), raw=(('a', bits),))
+        self.exact('''angle[4] a; uint[4] small = 0; int negative = -1;
+            angle[4] result = rotl(a, small + negative);''', ('a', 'result'), (9, 12), raw=(('a', 9),))
+        result = self.execute(self.program('angle[4] a; uint native = 0; int negative = -1; '
+                                          'angle[4] result = rotl(a, native + negative);'))
+        self.assertNotEqual(result.returncode, 0)
+        type(self).checked += 1
+
+    def test_iterator_shadowing_and_repeated_calls(self):
+        self.exact('''const angle[4] A = pi; angle[4] a; uint count = 0; uint[8] unsigned = 0;
+            array[float, 3] radians = {pi / 2, pi, 3 * pi / 2};
+            for float A in radians { a = rotl(angle[4](A), 1); count += popcount(a); }
+            array[uint[8], 2] integers = {1, 3};
+            for uint[8] A in integers { unsigned = rotl(A, 1); count += popcount(A); }
+            bool restored = rotr(A, 1) == angle[4](pi / 2);
+            int iteration = 0; while (iteration < 3) { a = rotr(a, 1); iteration += 1; }
+            for int i in [0:3] { if (i == 1) { continue; } a = rotl(a, 1); if (i == 2) { break; } }''',
+            ('a', 'count', 'unsigned', 'restored'), (12, 7, 6, 1))
+
+    def test_measurement_controlled_rotations(self):
+        for measured in (0, 1):
+            self.exact('''include "stdgates.inc"; qubit q; bit outcome; angle[4] a;
+                ''' + ('x q; ' if measured else '') + '''outcome = measure q;
+                if (outcome) { a = rotl(a, 1); } else { a = rotr(a, 1); }
+                uint count = popcount(a); bool order = a < angle[4](pi);''',
+                ('a', 'outcome', 'count', 'order'), (3 if measured else 12, measured, 2, measured), raw=(('a', 9),))
+
+    def test_phase_matrices_population_count_exponents_and_fusion(self):
+        prefix = 'angle[4] a = 9 * pi / 8; uint count = popcount(a); a = rotl(a, int(count)); '
+        for fused in (False, True):
+            for gate in ('p', 'phase', 'u1', 'cp', 'cphase'):
+                controlled = gate in ('cp', 'cphase')
+                wires, operands = ((2, 0), 'q[2], q[0]') if controlled else ((0,), 'q[0]')
+                for basis in (*range(8), None):
+                    self.check_phase(prefix + f'{gate}(a) {operands};', 4, 6, (wires,),
+                                     fused=fused, basis=basis, preserved=(('a', 6), ('count', 2)))
+            self.check_phase(prefix + 'negctrl @ inv @ pow(0.5) @ p(a) q[2], q[0];',
+                             5, 26, (((2, 0), 0),), fused=fused)
+            self.check_phase(prefix + 'pow(popcount(a)) @ p(a) q[0];', 4, 12, ((0,),), fused=fused)
+            self.check_phase(prefix + 'p(angle[4](float(popcount(a)))) q[0];', 4, 5, ((0,),), fused=fused)
+            self.check_zero_qubit(prefix + 'pow(0.5) @ gphase(a);', 5, 6, fused=fused)
 
 
 def main():

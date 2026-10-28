@@ -5545,6 +5545,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 distance = self.__constant_rotation_distance(expression.arguments[1])
                 value = (self.__fold_rotation(bits, angle_type.width, distance, expression.name.name)
                          if self.__evaluate_constant else 0)
+                self.__uint_expression_types.pop(id(expression), None)
                 self.__angle_expression_types[id(expression)] = (expression, angle_type)
             else:
                 value = bits.bit_count() if self.__evaluate_constant else 0
@@ -5595,6 +5596,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__value = (self.__fold_rotation(value, uint_type.width, distance, expression.name.name)
                             if self.__evaluate_constant else 0)
             self.__value_type, self.__value_kind = ValueType.UINT, ValueKind.LITERAL
+            self.__angle_expression_types.pop(id(expression), None)
             self.__uint_expression_types[id(expression)] = (expression, uint_type)
             self.__expression_kind = previous[0]
         except Exception:
@@ -5649,8 +5651,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__normalize_uint_storage(result, uint_type)
             self.__qcx_lines.append(f'@{prefix}_DONE')
             if angle_type is None:
+                self.__angle_expression_types.pop(id(expression), None)
                 self.__uint_expression_types[id(expression)] = (expression, uint_type)
             else:
+                self.__uint_expression_types.pop(id(expression), None)
                 self.__angle_expression_types[id(expression)] = (expression, angle_type)
             self.__expression_kind = previous[0]
             result_type = ValueType.ANGLE if angle_type is not None else ValueType.UINT
