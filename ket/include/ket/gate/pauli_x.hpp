@@ -204,10 +204,10 @@ namespace ket
           for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
             std::iter_swap(
               first
-                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + i xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel),
+                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, ((base_index + i) xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel),
               first
                 + ::ket::gate::utility::ranges::index_with_qubits(
-                    index_wo_qubits, (base_index + (num_target_indices - std::size_t{1u} - i) xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel));
+                    index_wo_qubits, ((base_index + (num_target_indices - std::size_t{1u} - i)) xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel));
         },
         qubit1, qubit2, qubit3, qubits...);
 # else // KET_USE_BIT_MASKS_EXPLICITLY
@@ -233,10 +233,10 @@ namespace ket
           for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
             std::iter_swap(
               first
-                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + i xor negative_control_mask), qubit_masks, index_masks),
+                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, ((base_index + i) xor negative_control_mask), qubit_masks, index_masks),
               first
                 + ::ket::gate::utility::ranges::index_with_qubits(
-                    index_wo_qubits, (base_index + (num_target_indices - std::size_t{1u} - i) xor negative_control_mask), qubit_masks, index_masks));
+                    index_wo_qubits, ((base_index + (num_target_indices - std::size_t{1u} - i)) xor negative_control_mask), qubit_masks, index_masks));
         },
         qubit1, qubit2, qubit3, qubits...);
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
@@ -332,10 +332,10 @@ namespace ket
               for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
                 std::iter_swap(
                   first
-                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + i xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel),
+                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, ((base_index + i) xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel),
                   first
                     + ::ket::gate::utility::ranges::index_with_qubits(
-                        index_wo_qubits, (base_index + (num_target_indices - std::size_t{1u} - i) xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel));
+                        index_wo_qubits, ((base_index + (num_target_indices - std::size_t{1u} - i)) xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel));
             },
             boost::join(
               target_qubits,
@@ -355,10 +355,10 @@ namespace ket
               for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
                 std::iter_swap(
                   first
-                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + i xor negative_control_mask), qubit_masks, index_masks),
+                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, ((base_index + i) xor negative_control_mask), qubit_masks, index_masks),
                   first
                     + ::ket::gate::utility::ranges::index_with_qubits(
-                        index_wo_qubits, (base_index + (num_target_indices - std::size_t{1u} - i) xor negative_control_mask), qubit_masks, index_masks));
+                        index_wo_qubits, ((base_index + (num_target_indices - std::size_t{1u} - i)) xor negative_control_mask), qubit_masks, index_masks));
             },
             boost::join(
               target_qubits,

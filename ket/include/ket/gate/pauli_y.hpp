@@ -250,10 +250,10 @@ namespace ket
             using std::end;
             auto iter1
               = first
-                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + i xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
+                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, ((base_index + i) xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
             auto iter2
               = first
-                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + j xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
+                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, ((base_index + j) xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
             std::iter_swap(iter1, iter2);
             *iter1 *= (num_target_qubits - num_ones_in_i) % BitInteger{2u} == BitInteger{0u} ? coefficient : -coefficient;
             *iter2 *= (num_target_qubits - num_ones_in_j) % BitInteger{2u} == BitInteger{0u} ? coefficient : -coefficient;
@@ -312,10 +312,10 @@ namespace ket
             using std::end;
             auto iter1
               = first
-                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + i xor negative_control_mask), qubit_masks, index_masks);
+                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, ((base_index + i) xor negative_control_mask), qubit_masks, index_masks);
             auto iter2
               = first
-                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + j xor negative_control_mask), qubit_masks, index_masks);
+                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, ((base_index + j) xor negative_control_mask), qubit_masks, index_masks);
             std::iter_swap(iter1, iter2);
             *iter1 *= (num_target_qubits - num_ones_in_i) % BitInteger{2u} == BitInteger{0u} ? coefficient : -coefficient;
             *iter2 *= (num_target_qubits - num_ones_in_j) % BitInteger{2u} == BitInteger{0u} ? coefficient : -coefficient;
@@ -454,10 +454,10 @@ namespace ket
                         : ::ket::utility::minus_imaginary_unit<complex_type>();
                 auto iter1
                   = first
-                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + i xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
+                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, ((base_index + i) xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
                 auto iter2
                   = first
-                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + j xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
+                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, ((base_index + j) xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
                 std::iter_swap(iter1, iter2);
                 *iter1 *= (num_target_qubits - num_ones_in_i) % bit_integer_type{2u} == bit_integer_type{0u} ? coefficient : -coefficient;
                 *iter2 *= (num_target_qubits - num_ones_in_j) % bit_integer_type{2u} == bit_integer_type{0u} ? coefficient : -coefficient;
@@ -510,10 +510,10 @@ namespace ket
 
                 auto iter1
                   = first
-                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + i xor negative_control_mask), qubit_masks, index_masks);
+                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, ((base_index + i) xor negative_control_mask), qubit_masks, index_masks);
                 auto iter2
                   = first
-                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + j xor negative_control_mask), qubit_masks, index_masks);
+                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, ((base_index + j) xor negative_control_mask), qubit_masks, index_masks);
                 std::iter_swap(iter1, iter2);
                 *iter1 *= (num_target_qubits - num_ones_in_i) % bit_integer_type{2u} == bit_integer_type{0u} ? coefficient : -coefficient;
                 *iter2 *= (num_target_qubits - num_ones_in_j) % bit_integer_type{2u} == bit_integer_type{0u} ? coefficient : -coefficient;
