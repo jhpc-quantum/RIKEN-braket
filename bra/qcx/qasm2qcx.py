@@ -275,10 +275,13 @@ class _RuntimeIteratorBinding:
     storage: str
     value_type: ValueType = ValueType.INT
     uint_type: _UnsignedIntegerType | None = None
+    angle_type: _AngleType | None = None
 
     def __post_init__(self) -> None:
         if (self.value_type == ValueType.UINT) != (self.uint_type is not None):
             raise ValueError('UINT iterator bindings require width metadata; other types must not have it')
+        if (self.value_type == ValueType.ANGLE) != (self.angle_type is not None):
+            raise ValueError('ANGLE iterator bindings require width metadata; other types must not have it')
 
 
 @dataclasses.dataclass(frozen=True)
@@ -4475,7 +4478,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __validate_loop_header(statement: ast.ForInLoop) -> None:
         typed_collection_loop = (
             isinstance(statement.set_declaration, ast.Identifier)
-            and (isinstance(statement.type, (ast.FloatType, ast.UintType, ast.BoolType, ast.ComplexType))
+            and (isinstance(statement.type, (ast.FloatType, ast.UintType, ast.BoolType, ast.ComplexType, ast.AngleType))
                  or (isinstance(statement.type, ast.BitType) and statement.type.size is None)))
         if not isinstance(statement.type, ast.IntType) and not typed_collection_loop:
             raise UnsupportedOpenQASMError('for-loop iterator requires int or a supported collection type')
@@ -4719,7 +4722,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 value_type = self.__source_value_type(child.type)
                 # Width metadata must follow the same nested shadowing as
                 # value types, even when no enclosing iteration executes.
-                binding = _RuntimeIteratorBinding('QASM2QCX_VALIDATION_ITERATOR', value_type, uint_type)
+                angle_type = self.__angle_type(child.type, iterators) if value_type == ValueType.ANGLE else None
+                binding = _RuntimeIteratorBinding('QASM2QCX_VALIDATION_ITERATOR', value_type, uint_type, angle_type)
                 with self.__iterator_binding(child.identifier.name, binding):
                     self.__validate_loop_body(child.block, iterators | {child.identifier.name: value_type})
             if isinstance(child, ast.WhileLoop):
@@ -4997,8 +5001,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return variable_name, size, ValueType.BIT, None
         if isinstance(variable_type, ast.ArrayType):
             if not isinstance(variable_type.base_type, (
-                    ast.IntType, ast.UintType, ast.FloatType, ast.BoolType, ast.ComplexType)):
-                raise UnsupportedOpenQASMError('iteration over classical array other than int, uint, float, bool, or complex')
+                    ast.IntType, ast.UintType, ast.FloatType, ast.BoolType, ast.ComplexType, ast.AngleType)):
+                raise UnsupportedOpenQASMError('iteration over classical array other than int, uint, float, bool, complex, or angle')
             value_type = self.__source_value_type(variable_type.base_type)
             if self.__source_value_type(iteration_type) != value_type:
                 raise UnsupportedOpenQASMError('array iteration requires matching element and iterator types')
@@ -5007,16 +5011,21 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 uint_type = self.__unsigned_integer_type(iteration_type, iterators)
                 if uint_type.width != self.__uint_variable_types[variable_name].width:
                     raise UnsupportedOpenQASMError('UINT array iteration requires matching effective widths')
+            if value_type == ValueType.ANGLE:
+                angle_type = self.__angle_type(iteration_type, iterators)
+                if angle_type.width != self.__angle_array_types[variable_name].width:
+                    raise UnsupportedOpenQASMError('angle array iteration requires matching effective widths')
             if (not self.__is_initialization_process
                     and variable_name not in self.__array_element_types):
                 raise NoVariableNameException(name)
             return variable_name, self.__array_source_sizes[name], value_type, uint_type
-        raise UnsupportedOpenQASMError('for-loop identifier other than an int/uint/float/bool/complex array or bit register')
+        raise UnsupportedOpenQASMError('for-loop identifier other than an int/uint/float/bool/complex/angle array or bit register')
 
     def __visit_collection_for(self, statement: ast.ForInLoop) -> None:
         source, size, value_type, uint_type = self.__collection_loop_info(
             statement.set_declaration, statement.type)
-        binding = _RuntimeIteratorBinding(f'QASM2QCX_LOOP_{self.__loop_index}_ITERATOR', value_type, uint_type)
+        angle_type = self.__angle_type(statement.type) if value_type == ValueType.ANGLE else None
+        binding = _RuntimeIteratorBinding(f'QASM2QCX_LOOP_{self.__loop_index}_ITERATOR', value_type, uint_type, angle_type)
         with self.__iterator_binding(statement.identifier.name, binding):
             self.__validate_loop_body(statement.block, self.__loop_iterator_types())
         self.__validate_loop_syntax(statement)
@@ -5033,6 +5042,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 for child in statement.block:
                     self.visit(child)
             return
+
+        if value_type == ValueType.ANGLE:
+            raise UnsupportedOpenQASMError('runtime angle-array iteration')
 
         previous_temporaries = self.__declared_temporary_variables.copy()
         previous_used = self.__used_temporary_variables.copy()
@@ -6242,6 +6254,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if isinstance(source_type, ast.ArrayType) and isinstance(source_type.base_type, ast.AngleType):
                 return True
         if isinstance(expression, ast.Identifier):
+            for scope in reversed(self.__loop_bindings):
+                if expression.name in scope:
+                    binding = scope[expression.name]
+                    return isinstance(binding, _RuntimeIteratorBinding) and binding.value_type == ValueType.ANGLE
             return (expression.name in self.__const_angle_values
                     or isinstance(self.__classical_source_types.get(expression.name), ast.AngleType))
         for field in dataclasses.fields(expression):
@@ -6255,6 +6271,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __is_angle_identifier(self, name: str, iterators: dict[str, ValueType]) -> bool:
         # Do not ask scalar expression lookup about unrelated register/array
         # names. Active iterators can shadow either angle kind.
+        if name in iterators or any(name in scope for scope in self.__loop_bindings):
+            return self.__loop_identifier_info(ast.Identifier(name), iterators)[0] == ValueType.ANGLE
         return ((name in self.__const_angle_values
                  or isinstance(self.__classical_source_types.get(name), ast.AngleType))
                 and self.__loop_identifier_info(ast.Identifier(name), iterators)[0] == ValueType.ANGLE)
@@ -6632,8 +6650,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
              self.__value_kind, self.__evaluate_constant) = previous
 
     def __identifier_angle_type(self, name: str) -> _AngleType | None:
-        if any(name in scope for scope in self.__loop_bindings):
-            return None
+        for scope in reversed(self.__loop_bindings):
+            if name in scope:
+                binding = scope[name]
+                return binding.angle_type if isinstance(binding, _RuntimeIteratorBinding) else None
         constant = self.__const_angle_values.get(name)
         return (constant.angle_type if constant is not None
                 else self.__angle_variable_types.get(self.__capitalize_variable_name(name)))
