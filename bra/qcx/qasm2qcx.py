@@ -1316,6 +1316,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__visit_power_binary(expression)
             return
         if expression.op.name in ('<<', '>>'):
+            if self.__expression_mentions_angle(expression):
+                info = self.__angle_shift_info(expression)
+                if info is not None:
+                    self.__visit_angle_shift(expression, info)
+                    return
             self.__visit_shift_binary(expression)
             return
         if expression.op.name in ('&', '|', '^'):
@@ -4272,6 +4277,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __loop_binary_info(
             self, expression: ast.BinaryExpression, iterators: set[str] | dict[str, ValueType] | None
             ) -> tuple[ValueType, bool]:
+        if expression.op.name in ('<<', '>>') and self.__expression_mentions_angle(expression):
+            info = self.__angle_shift_info(expression, iterators)
+            if info is not None:
+                return ValueType.ANGLE, info[2]
         if expression.op.name in ('&', '|', '^') and self.__expression_mentions_angle(expression):
             value_type, _, runtime = self.__angle_operand_info(expression, iterators)
             return value_type, runtime
@@ -6227,6 +6236,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # Shared, non-evaluating inference for arithmetic and skipped bodies.
         # Recurse through arithmetic and bitwise nodes, rather than re-analyzing both
         # subtrees separately for value types, widths, and runtime dependence.
+        if (isinstance(expression, ast.BinaryExpression) and expression.op.name in ('<<', '>>')
+                and self.__expression_mentions_angle(expression)):
+            info = self.__angle_shift_info(expression, iterators)
+            if info is not None:
+                return ValueType.ANGLE, info[0], info[2]
         if (isinstance(expression, ast.BinaryExpression) and expression.op.name in ('*', '/')
                 and self.__expression_mentions_angle(expression)):
             info = self.__angle_multiplicative_info(expression, iterators)
@@ -6267,6 +6281,53 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if angle_type is None:
             raise UnsupportedOpenQASMError('angle expression without width metadata')
         return value_type, angle_type, runtime
+
+    def __angle_shift_info(
+            self, expression: ast.BinaryExpression,
+            iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> tuple[_AngleType, ValueType, bool] | None:
+        lhs_type, angle_type, lhs_runtime = self.__angle_operand_info(expression.lhs, iterators)
+        count_type, count_runtime = self.__loop_expression_info(expression.rhs, iterators)
+        if lhs_type != ValueType.ANGLE:
+            # Angle quotients can supply ordinary integer shift counts.
+            return None
+        if count_type not in (ValueType.INT, ValueType.UINT):
+            raise UnsupportedOpenQASMError('angle shift count must be a scalar int or uint')
+        return angle_type, count_type, lhs_runtime or count_runtime
+
+    def __visit_angle_shift(
+            self, expression: ast.BinaryExpression, info: tuple[_AngleType, ValueType, bool]) -> None:
+        angle_type, _, runtime = info
+        if runtime:
+            if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                raise NoConstantExpressionException
+            raise UnsupportedOpenQASMError('runtime angle shifts')
+        previous_used = self.__used_temporary_variables.copy()
+        try:
+            value = self.__angle_arithmetic_operand(expression.lhs, angle_type)
+            self.visit(expression.rhs)
+            if not isinstance(value, int) or self.__value_kind != ValueKind.LITERAL:
+                raise UnsupportedOpenQASMError('runtime angle shifts')
+            count = int(self.__value)
+            if not self.__evaluate_constant:
+                result = 0
+            elif count < 0:
+                if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                    raise InvalidShiftException('Angle shift count must not be negative')
+                # Executable literal failures must stay skippable. Runtime
+                # lowering, including this case, is added in the next stage.
+                raise UnsupportedOpenQASMError('runtime angle shift with negative count')
+            elif count >= angle_type.width:
+                # Check before shifting: even an enormous count is bounded
+                # work and never creates a huge intermediate Python integer.
+                result = 0
+            else:
+                result = value << count if expression.op.name == '<<' else value >> count
+            self.__value, self.__value_type, self.__value_kind = result & angle_type.mask, ValueType.ANGLE, ValueKind.LITERAL
+            self.__angle_expression_types[id(expression)] = (expression, angle_type)
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
 
     def __visit_angle_bitwise(self, expression: ast.UnaryExpression | ast.BinaryExpression) -> None:
         _, angle_type, runtime = self.__angle_operand_info(expression)
