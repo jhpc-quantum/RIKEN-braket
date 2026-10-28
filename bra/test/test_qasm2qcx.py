@@ -9626,9 +9626,9 @@ class AngleArrayDeclarationTests(unittest.TestCase):
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
         self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
 
-    def test_iteration_remains_deferred(self):
-        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
-            self.converter('array[angle[4], 2] a; for angle[4] x in a {}')
+    def test_iteration_copies_array_elements_to_uint_storage(self):
+        converter = self.converter('array[angle[4], 2] a; for angle[4] x in a {}')
+        self.assertIn('LET QASM2QCX_UINT_0 := A1:QASM2QCX_INT_0', converter._QASM2QCXConverter__qcx_lines)
 
 
 class AngleArrayLoopValidationTests(unittest.TestCase):
@@ -9760,13 +9760,75 @@ class AngleArrayLoopValidationTests(unittest.TestCase):
                                'int width = 4; array[angle[4], 2] phases; '
                                'for int outer in [1:0] {' + loop + '}')
 
-    def test_runtime_lowering_is_deferred_without_leaking_bindings(self):
+    def test_runtime_lowering_restores_bindings(self):
         program = self.program('array[angle[4], 2] phases; for angle[4] phase in phases {}')
         converter = qasm2qcx.QASM2QCXConverter(program)
-        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'runtime angle-array iteration'):
-            converter.visit(program)
+        converter.visit(program)
         self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+
+class AngleArrayLoopLoweringTests(unittest.TestCase):
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def converter(self, source):
+        converter = ScalarAngleFoundationTests.converter(self, source)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
+        ForLoopControlLoweringTests.assert_resolved_jumps(converter._QASM2QCXConverter__qcx_lines)
+        return converter
+
+    def test_loop_reads_live_source_once_per_iteration_into_private_uint(self):
+        converter = self.converter('array[angle[4], 3] phases; angle[4] total; '
+                                   'for angle[4] phase in phases { phases[1] = pi; total += phase; }')
+        lines = converter._QASM2QCXConverter__qcx_lines
+        body = lines.index('@QASM2QCX_LOOP_0_BODY')
+        self.assertIn('VAR QASM2QCX_UINT_0 UINT', lines[:body])
+        self.assertIn('VAR QASM2QCX_INT_0 INT', lines[:body])
+        self.assertEqual(lines[body + 1], 'LET QASM2QCX_UINT_0 := PHASES63:QASM2QCX_INT_0')
+        self.assertEqual(sum(line.startswith('LET PHASES63:1 := ') for line in lines), 1)
+        self.assertEqual(converter._QASM2QCXConverter__temporary_uint_types['QASM2QCX_UINT_0'],
+                         qasm2qcx._UnsignedIntegerType(4, True))
+        self.assertFalse(any(line.startswith('VAR ') and ' ANGLE' in line for line in lines))
+
+    def test_sizedness_of_iterator_controls_storage_metadata(self):
+        native = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        for base, iterator, sized in (('angle', f'angle[{native}]', True),
+                                      (f'angle[{native}]', 'angle', False)):
+            with self.subTest(iterator=iterator):
+                converter = self.converter(f'array[{base}, 1] phases; for {iterator} phase in phases {{}}')
+                self.assertEqual(converter._QASM2QCXConverter__temporary_uint_types['QASM2QCX_UINT_0'],
+                                 qasm2qcx._UnsignedIntegerType(native, sized))
+
+    def test_nested_iterators_keep_separate_storage_and_restore_shadowed_source(self):
+        self.converter('array[angle[4], 2] phases; array[angle[8], 1] other; angle[4] result; '
+                       'for angle[4] phases in phases { result += phases; '
+                       'for angle[8] phases in other { result += angle[4](phases); } '
+                       'result += phases; } result += phases[0];')
+
+    def test_break_continue_and_reentry_resolve_all_labels(self):
+        for outer in ('for int outer in [0:2]', 'for int outer in [0:stop]',
+                      'while (visits < 3)'):
+            with self.subTest(outer=outer):
+                self.converter('array[angle[4], 2] phases; int stop = 2; int visits = 0; '
+                               'angle[4] result; ' + outer + ' { visits += 1; '
+                               'for angle[4] phase in phases { '
+                               'if (phase == angle[4](0.0)) { continue; } '
+                               'if (phase == angle[4](pi)) { break; } result += phase; }}')
+
+    def test_failed_lowering_releases_loop_storage_and_restores_outer_binding(self):
+        converter = self.converter('array[angle[4], 2] phases; angle[4] result;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        statement = self.program('for angle[4] phase in phases { result = phase + phases[2]; }').statements[0]
+        with converter._QASM2QCXConverter__iterator_binding('outer', 2):
+            with self.assertRaises(qasm2qcx.QASM2QCXError):
+                converter.visit(statement)
+            self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [{'outer': 2}])
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
+        # Allocation happened before the value-dependent error in the body.
+        self.assertIn('VAR QASM2QCX_UINT_1 UINT', converter._QASM2QCXConverter__qcx_lines)
 
 
 class AngleArrayAccessTests(unittest.TestCase):
@@ -9898,7 +9960,7 @@ class AngleArrayIntegrationTests(unittest.TestCase):
 
     def test_slices_whole_array_operations_and_bit_indexing_remain_unsupported(self):
         for statement in ('a = a;', 'a[0:1] = a[0:1];', 'bit b = a[0][0];',
-                           'a[0][0] = true;', 'for angle[4] x in a {}'):
+                           'a[0][0] = true;'):
             with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter('array[angle[4], 2] a = {pi, pi}; ' + statement)
 

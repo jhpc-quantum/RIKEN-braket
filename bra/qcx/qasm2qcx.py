@@ -5043,12 +5043,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     self.visit(child)
             return
 
-        if value_type == ValueType.ANGLE:
-            raise UnsupportedOpenQASMError('runtime angle-array iteration')
-
         previous_temporaries = self.__declared_temporary_variables.copy()
         previous_used = self.__used_temporary_variables.copy()
-        iterator = self.__add_new_temporary_variable(value_type, uint_type)
+        # Angle values use raw UINT storage while the scoped binding retains
+        # their source type, width, and sizedness for expression lowering.
+        storage_type = ValueType.UINT if angle_type is not None else value_type
+        storage_uint_type = (_UnsignedIntegerType(angle_type.width, angle_type.is_sized)
+                             if angle_type is not None else uint_type)
+        iterator = self.__add_new_temporary_variable(storage_type, storage_uint_type)
         index = self.__add_new_temporary_variable(ValueType.INT)
         try:
             # QCX stores a singleton bit register as a scalar INT, unlike
@@ -5058,7 +5060,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                                     f'LET {iterator} := {operand}'])
             # Read the current element on each iteration, not a loop-entry
             # snapshot. Keep its copied value and index reserved across the body.
-            with self.__iterator_binding(statement.identifier.name, _RuntimeIteratorBinding(iterator, value_type, uint_type)), \
+            with self.__iterator_binding(statement.identifier.name, dataclasses.replace(binding, storage=iterator)), \
                     self.__loop_context(end_label, next_label):
                 for child in statement.block:
                     self.visit(child)
