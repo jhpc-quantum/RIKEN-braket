@@ -17027,6 +17027,111 @@ class AngleMultiplicativeFoundationTests(unittest.TestCase):
                          {caller, converter._QASM2QCXConverter__value})
 
 
+class AngleTrigonometricFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    seed_angle = ScalarAngleFoundationTests.seed_constant
+    expression = ScalarAngleArithmeticFoundationTests.expression
+
+    def test_direct_angle_overloads_return_float_and_compose_with_other_functions(self):
+        converter = self.converter('''const angle[4] A = pi / 2; const float S = sin(A);
+            const float C = cos(A); const float SUM = sin(A) + cos(A);
+            const float BACK = arccos(cos(A)); const angle[4] ROUNDTRIP = BACK;
+            const float WRAPPED = sin(angle[4](-pi / 2));
+            const float QUANTIZED = sin(angle[4](pi / 2 + 1e-12));
+            const float NESTED = cos(sin(A));''')
+        floats = converter._QASM2QCXConverter__const_float_variable_name_values_map
+        for name, expected in (('S', 1.0), ('C', 0.0), ('SUM', 1.0), ('WRAPPED', -1.0), ('QUANTIZED', 1.0)):
+            self.assertEqual(floats[name], [expected], name)
+        self.assertEqual(floats['NESTED'], [math.cos(1.0)])
+        self.assertEqual(converter._QASM2QCXConverter__const_angle_values['ROUNDTRIP'].value, 4)
+        self.assertEqual(list(converter), ['QUBITS 0'])
+
+    def test_axes_are_exact_with_canonical_zero_at_all_widths(self):
+        converter = self.converter('')
+        for width in range(1, qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH + 1):
+            modulus = 1 << width
+            axes = {0: (0.0, 1.0, 0.0), modulus // 2: (0.0, -1.0, 0.0)}
+            if width >= 2:
+                axes[modulus // 4] = (1.0, 0.0, None)
+                axes[3 * modulus // 4] = (-1.0, 0.0, None)
+            for bits, expected_values in axes.items():
+                self.seed_angle(converter, 'A', width, bits)
+                for name, expected in zip(('sin', 'cos', 'tan'), expected_values):
+                    converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONST_ARITHMETIC
+                    expression = self.expression(f'{name}(A)')
+                    if expected is None:
+                        with self.assertRaisesRegex(qasm2qcx.InvalidConstantFunctionException, 'pole'):
+                            converter.visit(expression)
+                    else:
+                        converter.visit(expression)
+                        self.assertEqual(converter._QASM2QCXConverter__value, expected)
+                        self.assertEqual(converter._QASM2QCXConverter__value_type, qasm2qcx.ValueType.FLOAT)
+                        if expected == 0.0:
+                            self.assertEqual(math.copysign(1.0, converter._QASM2QCXConverter__value), 1.0)
+
+    def test_tangent_poles_are_based_on_quantized_bits(self):
+        for expression in ('tan(A)', 'tan(angle[4](pi / 2 + 1e-12))', 'tan(angle[4](-pi / 2))'):
+            with self.assertRaisesRegex(qasm2qcx.InvalidConstantFunctionException, 'pole'):
+                self.converter('const angle[4] A = pi / 2; const float RESULT = ' + expression + ';')
+        converter = self.converter('const angle[1] A = pi; const float RESULT = tan(A);')
+        self.assertEqual(converter._QASM2QCXConverter__const_float_variable_name_values_map['RESULT'], [0.0])
+
+    def test_sizedness_unsized_angles_and_integer_inputs_select_the_right_overload(self):
+        converter = self.converter('const angle A = pi / 2; const angle[4] B = pi;')
+        for source in ('sin(A)', 'cos(B)', 'tan(B)'):
+            signature, runtime = converter._QASM2QCXConverter__function_call_info(self.expression(source))
+            self.assertEqual((signature.operand_types, signature.result_type, runtime),
+                             ((qasm2qcx.ValueType.ANGLE,), qasm2qcx.ValueType.FLOAT, False))
+        for source in ('sin(1)', 'cos(uint[4](1))', 'tan(true)'):
+            signature, _ = converter._QASM2QCXConverter__function_call_info(self.expression(source))
+            self.assertEqual(signature.operand_types, (qasm2qcx.ValueType.FLOAT,))
+        self.assertEqual(self.converter('const angle A = pi / 2; const float S = sin(A);')
+                         ._QASM2QCXConverter__const_float_variable_name_values_map['S'], [1.0])
+
+    def test_skipped_constant_calls_validate_types_without_evaluating_poles(self):
+        converter = self.converter('''const angle[4] A = pi / 2; const uint[4] ZERO = 0;
+            const bool LEFT = false && bool(tan(A));
+            const bool RIGHT = true || bool(sin(A / ZERO));
+            const bool NONFINITE = false && bool(cos(angle[4](1e309)));''')
+        self.assertEqual(converter._QASM2QCXConverter__const_bool_variable_values_map,
+                         {'LEFT': 0, 'RIGHT': 1, 'NONFINITE': 0})
+        for source in ('sin(MISSING)', 'cos(A, A)', 'tan()', 'sin(bit(0))', 'cos(1im)',
+                       'tan(angle[1 - 1](0.0))', 'sin(angle[width](0.0))'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('int width = 4; const angle[4] A = pi; const bool RESULT = false && bool(' + source + ');')
+
+    def test_inference_is_non_evaluating_and_rejects_runtime_constant_dependencies(self):
+        converter = self.converter('angle[4] a;')
+        fields = ('__value', '__value_type', '__value_kind', '__expression_kind', '__evaluate_constant')
+        before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        lines = list(converter._QASM2QCXConverter__qcx_lines)
+        signature, runtime = converter._QASM2QCXConverter__function_call_info(self.expression('tan(a)'))
+        self.assertEqual((signature.result_type, runtime), (qasm2qcx.ValueType.FLOAT, True))
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
+        with self.assertRaises(qasm2qcx.NoConstantExpressionException):
+            self.converter('angle[4] a = pi / 2; const float RESULT = tan(a);')
+
+    def test_failed_constant_call_restores_state_without_releasing_caller_storage(self):
+        converter = self.converter('const angle[4] A = pi / 2;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONST_ARITHMETIC
+        fields = ('__value', '__value_type', '__value_kind', '__expression_kind', '__evaluate_constant')
+        previous = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        with self.assertRaises(qasm2qcx.InvalidConstantFunctionException):
+            converter.visit(self.expression('tan(A)'))
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], previous)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+
+    def test_general_angle_to_float_casts_and_runtime_trig_remain_unsupported(self):
+        for source in ('angle[4] a; float RESULT = sin(a);', 'const angle[4] A = pi; float RESULT = cos(A);'):
+            with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'runtime angle trigonometric'):
+                self.converter(source)
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.converter('const angle[4] A = pi; const float RESULT = float(A);')
+
+
 class AngleBitFunctionFoundationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)

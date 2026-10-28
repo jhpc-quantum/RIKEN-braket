@@ -359,9 +359,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         'sqrt': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='SQRT'),
                  _BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.COMPLEX, qcx_function='SQRT')),
         'log': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='LOG'),),
-        'sin': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='SIN'),),
-        'cos': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='COS'),),
-        'tan': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='TAN'),),
+        'sin': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='SIN'),
+                _BuiltinFunctionSignature((ValueType.ANGLE,), ValueType.FLOAT, qcx_function='SIN')),
+        'cos': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='COS'),
+                _BuiltinFunctionSignature((ValueType.ANGLE,), ValueType.FLOAT, qcx_function='COS')),
+        'tan': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='TAN'),
+                _BuiltinFunctionSignature((ValueType.ANGLE,), ValueType.FLOAT, qcx_function='TAN')),
         'arcsin': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='ARCSIN'),),
         'arccos': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='ARCCOS'),),
         'arctan': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='ARCTAN'),),
@@ -5464,6 +5467,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def visit_FunctionCall(self, expression: ast.FunctionCall) -> None:
         signature, runtime = self.__function_call_info(expression)
+        if expression.name.name in ('sin', 'cos', 'tan') and signature.operand_types == (ValueType.ANGLE,):
+            self.__visit_angle_trigonometric(expression, runtime)
+            return
         if (signature.rotation or signature.population_count) and signature.operand_types[0] == ValueType.ANGLE:
             self.__visit_angle_bit_function(expression, signature, runtime)
             return
@@ -5510,6 +5516,56 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if self.__evaluate_constant:
                 result = self.__fold_builtin_function(expression.name.name, signature, tuple(operands))
             self.__value, self.__value_type, self.__value_kind = result, signature.result_type, ValueKind.LITERAL
+        except Exception:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            raise
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
+    @staticmethod
+    def __fold_angle_trigonometric(name: str, bits: int, angle_type: _AngleType) -> float:
+        denominator = 1 << angle_type.width
+        # Choose the nearest quarter turn using integer arithmetic, including
+        # width one. Keep the small signed distance before converting to REAL;
+        # subtracting rounded radians would lose low bits near axes and poles.
+        quadrant = (4 * bits + denominator // 2) // denominator
+        residual = 4 * bits - quadrant * denominator
+        quadrant %= 4
+        if residual == 0:
+            if name == 'sin':
+                return (0.0, 1.0, 0.0, -1.0)[quadrant]
+            if name == 'cos':
+                return (1.0, 0.0, -1.0, 0.0)[quadrant]
+            if quadrant % 2:
+                raise InvalidConstantFunctionException('Function tan: exact angle tangent pole')
+            return 0.0  # Canonical positive zero at exact axes.
+        reduced = math.ldexp(float(residual), -angle_type.width) * (math.pi / 2)
+        if name == 'tan':
+            tangent = math.tan(reduced)
+            return -1.0 / tangent if quadrant % 2 else tangent
+        sine, cosine = math.sin(reduced), math.cos(reduced)
+        return ((sine, cosine, -sine, -cosine) if name == 'sin'
+                else (cosine, -sine, -cosine, sine))[quadrant]
+
+    def __visit_angle_trigonometric(self, expression: ast.FunctionCall, runtime: bool) -> None:
+        if self.__expression_kind != ExpressionKind.CONST_ARITHMETIC:
+            raise UnsupportedOpenQASMError('runtime angle trigonometric functions')
+        if runtime:
+            raise NoConstantExpressionException
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        try:
+            argument = expression.arguments[0]
+            _, angle_type, _ = self.__angle_operand_info(argument)
+            self.visit(argument)
+            if self.__value_kind != ValueKind.LITERAL:
+                raise NoConstantExpressionException
+            result = (self.__fold_angle_trigonometric(expression.name.name, int(self.__value), angle_type)
+                      if self.__evaluate_constant else 0.0)
+            self.__value, self.__value_type, self.__value_kind = result, ValueType.FLOAT, ValueKind.LITERAL
         except Exception:
             (self.__expression_kind, self.__value, self.__value_type,
              self.__value_kind, self.__evaluate_constant) = previous
