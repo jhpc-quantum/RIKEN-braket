@@ -4781,7 +4781,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if width is None:
             return False  # An active scalar iterator shadows the register.
         if (statement.op.name == '=' and not selected_target
-                and not isinstance(statement.rvalue, (ast.UnaryExpression, ast.BinaryExpression, ast.FunctionCall))
+                and not isinstance(statement.rvalue, (ast.UnaryExpression, ast.BinaryExpression, ast.FunctionCall, ast.Cast))
                 and not self.__is_constant_bit_source(statement.rvalue)
                 and not self.__is_register_bit_selection(statement.rvalue)):
             return False  # Preserve the existing literal/copy assignment path.
@@ -5370,8 +5370,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if info[0] == ValueType.BIT_REGISTER:
                 raise InvalidBitOperandException('A register cast requires a bit-register expression context')
             if self.__expression_kind != ExpressionKind.CONST_ARITHMETIC:
-                raise UnsupportedOpenQASMError('runtime angle/bit-register casts')
-            self.__visit_constant_angle_bit_cast(expression, info)
+                if self.__expression_kind not in (ExpressionKind.ARITHMETIC, ExpressionKind.CONDITIONAL):
+                    raise UnsupportedOpenQASMError('angle/bit-register cast outside a value expression')
+                self.__visit_runtime_bit_to_angle_cast(expression)
+            else:
+                self.__visit_constant_angle_bit_cast(expression, info)
             return
         if isinstance(expression.type, ast.AngleType):
             angle_type = self.__angle_type(expression.type)
@@ -6499,6 +6502,73 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             for temporary in self.__used_temporary_variables - previous_used:
                 self.__release_temporary_variable(temporary)
 
+    def __visit_runtime_bit_to_angle_cast(self, expression: ast.Cast) -> None:
+        previous = (self.__expression_kind, self.__value, self.__value_type, self.__value_kind)
+        previous_used = self.__used_temporary_variables.copy()
+        keep = None
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            angle_type = self.__angle_type(expression.type)
+            with self.__bit_register_expression_value(expression.argument) as values:
+                result = self.__add_new_temporary_variable(
+                    ValueType.UINT, _UnsignedIntegerType(angle_type.width, True))
+                literal = sum(value << index for index, value in enumerate(values) if isinstance(value, int))
+                self.__qcx_lines.append(f'LET {result} := {literal}')
+                scratch = None
+                for index, value in enumerate(values):
+                    if isinstance(value, int):
+                        continue
+                    if scratch is None:
+                        scratch = self.__add_new_temporary_variable(ValueType.UINT)
+                    self.__qcx_lines.append(f'LET {scratch} := :UINT:{value}')
+                    if index:
+                        self.__qcx_lines.append(f'LET {scratch} <<= {index}')
+                    self.__qcx_lines.append(f'LET {result} |= {scratch}')
+            self.__angle_expression_types[id(expression)] = (expression, angle_type)
+            self.__expression_kind = previous[0]
+            self.__value, self.__value_type, self.__value_kind = result, ValueType.ANGLE, ValueKind.TEMPORARY
+            keep = result
+        except Exception:
+            self.__expression_kind, self.__value, self.__value_type, self.__value_kind = previous
+            raise
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                if temporary != keep:
+                    self.__release_temporary_variable(temporary)
+
+    @contextlib.contextmanager
+    def __angle_to_bit_register_value(self, expression: ast.Cast) -> Iterator[tuple[str | int, ...]]:
+        previous = (self.__expression_kind, self.__value, self.__value_type, self.__value_kind)
+        previous_used = self.__used_temporary_variables.copy()
+        owned = None
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            _, angle_type, _ = self.__angle_operand_info(expression.argument)
+            # Capture the complete angle once before extracting any bits.
+            bits = self.__angle_arithmetic_operand(expression.argument, angle_type)
+            if isinstance(bits, int):
+                owned = self.__used_temporary_variables - previous_used
+                yield tuple((bits >> index) & 1 for index in range(angle_type.width))
+                return
+            scratch = self.__add_new_temporary_variable(ValueType.UINT)
+            values = []
+            for index in range(angle_type.width):
+                bit = self.__add_new_temporary_variable(ValueType.BIT)
+                self.__qcx_lines.append(f'LET {scratch} := {bits}')
+                if index:
+                    self.__qcx_lines.append(f'LET {scratch} >>= {index}')
+                self.__qcx_lines.extend([f'LET {scratch} &= 1', f'LET {bit} := :INT:{scratch}'])
+                values.append(bit)
+            owned = self.__used_temporary_variables - previous_used
+            yield tuple(values)
+        finally:
+            self.__expression_kind, self.__value, self.__value_type, self.__value_kind = previous
+            # The consumer may allocate its result while these bits are
+            # yielded. Release only this context's storage, not that result.
+            temporaries = owned if owned is not None else self.__used_temporary_variables - previous_used
+            for temporary in temporaries:
+                self.__release_temporary_variable(temporary)
+
     def __angle_type(
             self, variable_type: ast.AngleType,
             iterators: set[str] | dict[str, ValueType] | None = None) -> _AngleType:
@@ -7205,6 +7275,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, expression: ast.Expression) -> Iterator[tuple[str | int, ...]]:
         # The caller validates widths first. Each result owns its temporary
         # bits until the assignment finishes; no destination is written here.
+        if isinstance(expression, ast.Cast):
+            info = self.__angle_bit_cast_info(expression)
+            if info is not None and info[0] == ValueType.BIT_REGISTER:
+                with self.__angle_to_bit_register_value(expression) as values:
+                    yield values
+                return
         if isinstance(expression, ast.FunctionCall) and expression.name.name in ('rotl', 'rotr'):
             with self.__bit_register_expression_value(expression.arguments[0]) as values:
                 with self.__rotate_bit_register_value(expression, values) as result:
@@ -7280,7 +7356,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             expression: ast.Expression) -> None:
         constant_source = self.__is_constant_bit_source(expression)
         if target_is_register and (constant_source or isinstance(
-                expression, (ast.UnaryExpression, ast.BinaryExpression, ast.FunctionCall))):
+                expression, (ast.UnaryExpression, ast.BinaryExpression, ast.FunctionCall, ast.Cast))):
             width = self.__bit_register_expression_width(expression)
             if width is None:
                 raise InvalidBitOperandException('A bit-register assignment requires a register value')

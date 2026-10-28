@@ -17164,7 +17164,7 @@ class AngleBitCastFoundationTests(unittest.TestCase):
         self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], previous)
         self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
 
-    def test_failed_constant_cast_restores_state_and_runtime_is_deferred(self):
+    def test_failed_constant_cast_restores_state(self):
         converter = self.converter('')
         caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
         converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONST_ARITHMETIC
@@ -17174,10 +17174,53 @@ class AngleBitCastFoundationTests(unittest.TestCase):
             converter.visit(self.expression('angle[4]("1000" << -1)'))
         self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], previous)
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
-        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'runtime angle/bit-register casts'):
-            self.converter('bit[4] b; angle[4] a = angle[4](b);')
 
 
+
+
+class AngleBitCastRuntimeTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    expression = ScalarAngleArithmeticFoundationTests.expression
+
+    def test_nested_cast_captures_source_once_and_retains_result_storage(self):
+        converter = self.converter('angle[4] a = pi / 4;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONDITIONAL
+        expression = self.expression('angle[4](bit[4](a))')
+        source = expression.argument.argument
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            converter.visit(expression)
+        self.assertEqual(sum(call.args[0] is source for call in visit.call_args_list), 1)
+        result = converter._QASM2QCXConverter__value
+        self.assertNotEqual(result, caller)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller, result})
+        self.assertEqual(converter._QASM2QCXConverter__expression_kind, qasm2qcx.ExpressionKind.CONDITIONAL)
+        self.assertEqual(converter._QASM2QCXConverter__value_type, qasm2qcx.ValueType.ANGLE)
+        self.assertEqual(converter._QASM2QCXConverter__value_kind, qasm2qcx.ValueKind.TEMPORARY)
+        self.assertEqual(converter._QASM2QCXConverter__angle_expression_type(expression), qasm2qcx._AngleType(4, True))
+
+    def test_bit_result_context_releases_its_storage_after_consumer_failure(self):
+        converter = self.converter('angle[4] a = pi / 4;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        fields = ('__value', '__value_type', '__value_kind', '__expression_kind', '__evaluate_constant')
+        previous = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        with self.assertRaisesRegex(RuntimeError, 'consumer failed'):
+            with converter._QASM2QCXConverter__bit_register_expression_value(self.expression('bit[4](a)')) as bits:
+                self.assertEqual(len(bits), 4)
+                consumer = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+                raise RuntimeError('consumer failed')
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller, consumer})
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], previous)
+
+    def test_runtime_register_assignments_use_cast_expressions_and_release_scratch(self):
+        converter = self.converter('bit[4] bits = "1001"; angle[4] a = angle[4](bits); '
+                                   'bits = bit[4](a); bits ^= bit[4](a); '
+                                   'bits[{3, 2, 1, 0}] = bit[4](a); '
+                                   'a = angle[4](bits | bit[4](a));')
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        # Exact bit copying never invokes float-to-angle quantization.
+        self.assertFalse(any(' <- ANGLEBITS ' in line for line in converter))
 
 
 class AngleTrigonometricFoundationTests(unittest.TestCase):
