@@ -2684,6 +2684,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             value_type, runtime = self.__loop_identifier_info(expression, iterators)
             return self.__const_angle_values.get(expression.name) if value_type == ValueType.ANGLE and not runtime else None
         if isinstance(expression, ast.Cast) and isinstance(expression.type, ast.AngleType):
+            if self.__angle_bit_cast_info(expression, iterators) is not None:
+                return None  # Executable register reinterpretation, not an angle copy.
             target = self.__angle_type(expression.type, iterators)
             source = self.__constant_angle_gate_value(expression.argument, iterators)
             if source is not None:

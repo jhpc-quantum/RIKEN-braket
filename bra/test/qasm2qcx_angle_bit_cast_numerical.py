@@ -10,6 +10,7 @@ import cmath
 import math
 import pathlib
 import random
+import re
 import resource
 import unittest
 
@@ -182,6 +183,36 @@ class BackendTests(unittest.TestCase):
         self.check_exact('include "stdgates.inc"; qubit q; x q; bit[4] flags = "0000"; '
                          'flags[2] = measure q; angle[4] a = angle[4](flags); bit[4] out = bit[4](a);',
                          (('flags', 4), ('a', None), ('out', 4)), (4, 4, 4))
+
+    def test_documented_angle_bit_cast_example(self):
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- angle-bit-cast-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        source = examples[0].removeprefix('OPENQASM 3.0;')
+        self.check_exact(source, (('bits', 4), ('a', None), ('copied', 4)), (6, 6, 6))
+        expected = (1 / math.sqrt(2), cmath.exp(3j * math.pi / 4) / math.sqrt(2))
+        for fused in (False, True):
+            BackendAuditTests.check(self, self.program(examples[0], fused=fused), expected)
+
+    def test_direct_cast_phase_gate_arguments_and_modifiers(self):
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        phase = 3 * math.pi / 4
+        for expression in ('angle[4](bits)', 'angle[4](BITS)', 'angle[4]("0110")',
+                           'angle[4](bit[4](a))', 'angle[8](angle[4](bits))'):
+            source = ('include "stdgates.inc"; qubit[2] q; const bit[4] BITS = "0110"; '
+                      'bit[4] bits = BITS; angle[4] a = angle[4](bits); h q; ')
+            for gate, expected in (
+                    (f'p({expression}) q[0];',
+                     tuple(cmath.exp(1j * phase) / 2 if index & 1 else 0.5 for index in range(4))),
+                    (f'pow(0.5) @ p({expression}) q[0];',
+                     tuple(cmath.exp(0.5j * phase) / 2 if index & 1 else 0.5 for index in range(4))),
+                    (f'ctrl @ p({expression}) q[0], q[1];', (0.5, 0.5, 0.5, cmath.exp(1j * phase) / 2)),
+                    (f'negctrl @ gphase({expression}) q[0];',
+                     tuple(0.5 if index & 1 else cmath.exp(1j * phase) / 2 for index in range(4)))):
+                for fused in (False, True):
+                    BackendAuditTests.check(self, self.program(source + gate, fused=fused), expected)
 
 
 if __name__ == '__main__':
