@@ -635,7 +635,7 @@ namespace ket
             using std::end;
             auto const iter
               = first
-                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + i xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
+                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, ((base_index + i) xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
             *iter *= coefficient;
           }
         },
@@ -685,7 +685,7 @@ namespace ket
             using std::end;
             auto const iter
               = first
-                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + i xor negative_control_mask), qubit_masks, index_masks);
+                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, ((base_index + i) xor negative_control_mask), qubit_masks, index_masks);
             *iter *= coefficient;
           }
         },
@@ -917,7 +917,7 @@ namespace ket
             using std::end;
             auto const iter
               = first
-                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + i xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
+                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, ((base_index + i) xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
             *iter *= coefficient;
           }
         },
@@ -967,7 +967,7 @@ namespace ket
             using std::end;
             auto const iter
               = first
-                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + i xor negative_control_mask), qubit_masks, index_masks);
+                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, ((base_index + i) xor negative_control_mask), qubit_masks, index_masks);
             *iter *= coefficient;
           }
         },
@@ -1354,7 +1354,7 @@ namespace ket
 
                 auto const iter
                   = first
-                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + i xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
+                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, ((base_index + i) xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
                 *iter *= coefficient;
               }
             },
@@ -1399,7 +1399,7 @@ namespace ket
 
                 auto const iter
                   = first
-                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + i xor negative_control_mask), qubit_masks, index_masks);
+                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, ((base_index + i) xor negative_control_mask), qubit_masks, index_masks);
                 *iter *= coefficient;
               }
             },
@@ -1616,7 +1616,7 @@ namespace ket
 
                 auto const iter
                   = first
-                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + i xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
+                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, ((base_index + i) xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
                 *iter *= coefficient;
               }
             },
@@ -1661,7 +1661,7 @@ namespace ket
 
                 auto const iter
                   = first
-                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + i xor negative_control_mask), qubit_masks, index_masks);
+                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, ((base_index + i) xor negative_control_mask), qubit_masks, index_masks);
                 *iter *= coefficient;
               }
             },
