@@ -121,7 +121,7 @@ The converter currently covers:
 - scalar built-in `exp`, `sqrt`, `log`, `sin`, `cos`, `tan`, `arcsin`, `arccos`,
   `arctan`, `ceiling`, `floor`, `real`, and `imag` calls in constant and runtime
   expressions, including nested calls;
-- fixed-size, one-dimensional `int`, `uint`, `float`, `bool`, and `complex` arrays
+- fixed-size, one-dimensional `int`, `uint`, `float`, `bool`, `complex`, and `angle` arrays
   with static and runtime element reads and writes;
 - scalar and register `bit` values, including bit-string initialization;
 - compile-time `const bit[n]` registers, expressions, and static selections;
@@ -229,8 +229,8 @@ conversion domain checks or skipped arithmetic. Empty loops still validate
 names, widths, types, and read-only targets.
 
 This is not full angle support. Mixed angle/non-angle comparisons and bitwise
-operations, indexing, compound assignments other than `+=`, `-=`, `*=`,
-`/=`, `&=`, `|=`, `^=`, `<<=`, and `>>=`, angle arrays/iteration, and numeric casts from
+operations, bit-level indexing, compound assignments other than `+=`, `-=`, `*=`,
+`/=`, `&=`, `|=`, `^=`, `<<=`, and `>>=`, direct angle-array iteration, and numeric casts from
 angles remain unsupported.
 Use an angle comparison or `bool(a)` explicitly in a condition; a bare angle
 is not a Boolean condition.
@@ -2271,7 +2271,7 @@ Even a one-element array requires explicit indexing
 when used as a scalar. Qubit indices remain static; bit-register elements also
 support runtime indices as described below.
 
-Unsigned, floating-point, Boolean, and complex arrays are supported as described below.
+Unsigned, floating-point, Boolean, complex, and angle arrays are supported as described below.
 Multidimensional arrays, arrays of other element types, slices,
 whole-array arithmetic or assignments, array-copy initializers, aliases, and
 block-local array declarations remain unsupported.
@@ -2471,9 +2471,75 @@ under [Complex-array for loops](#complex-array-for-loops). Multidimensional arra
 slices, whole-array expressions or assignments, array-copy initializers, aliases,
 and block-local declarations remain unsupported.
 
+### One-dimensional angle arrays
+
+The converter supports top-level `array[angle, N]` and `array[angle[n], N]`
+declarations. `N` must be a positive compile-time integer no larger than QCX
+`INT_MAX`. Element widths follow the scalar angle rules: `1 <= n <= W`, where
+`W` is native QCX UINT width; unsized `angle` uses `W`. Lengths and widths are
+resolved once in declaration scope and remain unchanged when later loop
+iterators shadow the constants used in them. Each element uses native UINT
+storage with distinct angle typing and its declared width.
+
+An optional initializer must be a flat list of exactly `N` expressions,
+evaluated in source order. Elements accept float and angle inputs using the
+scalar angle conversion rules, including float quantization and angle-width
+conversion. Initializers can read previously declared variables and array
+elements. Integer, Boolean, bit-register, and complex inputs require an
+appropriate explicit conversion; matching-width bit-register reinterpretation
+uses `angle[n](bits)`. Without an initializer, elements have undefined OpenQASM
+values until assigned; do not rely on backend zero initialization.
+
+Static and runtime integer indices, negative indices, bounds checks, and
+explicit singleton indexing follow the shared rules below. Reads retain the
+array's element angle width and sizedness, including through nested expressions.
+Elements support existing scalar angle arithmetic, comparisons, bitwise
+operations, shifts, `rotl`/`rotr`/`popcount`, trigonometric functions, and supported
+casts. They can supply parameters to the supported angle-valued phase gates;
+trigonometric results can supply ordinary floating-point gate parameters.
+Elements cannot receive measurements or implicitly become numeric values.
+
+Assignments support `=`, `+=`, `-=`, `*=`, `/=`, `&=`, `|=`, `^=`, `<<=`, and `>>=`
+with the scalar angle operand restrictions. In particular, scaling requires a
+UINT of matching effective width, and `angle /= angle` remains unsupported.
+Compound assignments compute at the binary operation's promoted width before
+converting back to the element width. A destination index is evaluated and
+checked once, and its old value is captured before evaluating a compound RHS.
+The complete result is computed before writing the destination. Explicit RHS
+accesses, including self-references, evaluate and check their own indices.
+
+Position-based loops can read and update elements. Skipped branches, loop
+bodies, and short-circuit operands suppress runtime index and operand domain
+checks; names, types, widths, and index syntax remain validated in empty loops.
+Sources and declaration metadata are preserved, and temporary storage is
+released after use. Gate parameters retain their captured values during fusion,
+even when array elements are changed before the gates execute.
+
+<!-- angle-array-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit q;
+const int W = 4;
+array[angle[W], 3] phases = {0.0, pi / 2, pi};
+int i = 1;
+phases[i] += angle[4](pi / 4);       // Stored bits: 0110, or 3*pi/4.
+bit[4] bits = bit[4](phases[i]);
+phases[-1] = angle[4](bits);         // Copies the exact pattern.
+h q;
+p(phases[i]) q;
+```
+
+Direct angle-array iteration, slices, whole-array operations and copying,
+aliases, multidimensional arrays, bit-level indexing of elements, and local
+array declarations remain unsupported. The positive-length restriction is an
+implementation limitation: [OpenQASM permits zero-length arrays](https://openqasm.com/language/types.html#arrays),
+which cannot be indexed. Zero-length support remains separate work for all
+classical array types. No new bra instruction or build option is required.
+
 ### Runtime array indexing
 
-Signed/unsigned integer, floating-point, Boolean, and complex arrays accept runtime
+Signed/unsigned integer, floating-point, Boolean, complex, and angle arrays accept runtime
 indices using scalar `int`, `uint`, supported integer arithmetic, enclosing runtime
 iterators, and indexed integer-array elements.
 Nested accesses such as `values[indices[i]]` are accepted. Floating-point,
@@ -4660,8 +4726,9 @@ The current prototype does not reliably support:
   runtime-dependent control counts;
 - runtime qubit indices, dynamic register ranges or discrete sets, ranges with
   omitted bounds, or multidimensional indexing;
-- classical arrays beyond the one-dimensional `int`, `uint`, `float`, `bool`, and
-  `complex` subsets above, whole-register casts other than the same-width
+- classical arrays beyond the one-dimensional `int`, `uint`, `float`, `bool`,
+  `complex`, and `angle` subsets above, zero-length arrays,
+  whole-register casts other than the same-width
   angle/bit-register conversions above, complex-to-Boolean casts,
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
@@ -4673,7 +4740,7 @@ The current prototype does not reliably support:
 - angle-by-angle multiplication, scaling by types other than same-width UINT,
   `uint / angle`, `angle /= angle`, mixed angle/non-angle comparisons and bitwise
   operations, compound operators other than `+=`/`-=`/`*=`/`/=`/`&=`/`|=`/`^=`/`<<=`/`>>=`,
-  indexing, arrays/iteration,
+  bit-level indexing, multidimensional angle arrays, direct angle-array iteration,
   numeric casts from angles, angle-valued gates outside
   `p`/`phase`/`u1`/`cp`/`cphase`/`gphase`; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
@@ -4704,6 +4771,18 @@ cleanup. `bra/test/classical_function_angle_numerical.py` checks native
 and long-double REAL builds in debug, release, and mixed-release modes. It covers
 rounding directions, stored subnormals, invalid inputs, and unchanged
 floating-point controls; `--sanitize` repeats the matrix with UBSan.
+
+`bra/test/qasm2qcx_angle_array_numerical.py` checks exact native UINT storage
+against integer-pattern and rational-quantization references, without converting
+outputs to floating point. It covers every angle width, singleton and unsized
+arrays, float and angle initializers, width conversion, static/runtime and
+negative indices, all supported compound assignments, mixed-width narrowing,
+self-references, bounds failures, and source preservation. Integration cases
+include casts, functions, loops, iterator shadowing, skipped domains, and phase
+gates with modifiers and fusion. The documented angle-array example is executed
+normally and with fusion. Unit tests additionally cover declaration and type
+errors, empty-body validation, once-only destination capture, and temporary
+cleanup. Run with `--bra /path/to/bra`, including a UBSan build.
 
 `bra/test/qasm2qcx_angle_arithmetic_numerical.py` checks exact stored bits at
 every supported width, mixed-width promotion and destination narrowing,
@@ -5382,6 +5461,7 @@ python3 bra/test/integer_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_math_function_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_angle_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_bit_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_global_phase_numerical.py --bra bra/bin/bra
