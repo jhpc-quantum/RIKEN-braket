@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
 """Audit angle trigonometry against a high-precision full-angle series (#410).
 
-Run without arguments to verify converter constant evaluation. The reference
+Run without arguments to verify converter constant evaluation, or pass
+--bra /path/to/bra to audit the default-double non-MPI backend. The reference
 uses independent Machin-formula pi and Decimal Taylor series, without binary
 libm calls or the converter's quadrant reduction.
 """
 
+import argparse
 import decimal
 import functools
 import math
 import random
+import pathlib
+import resource
 import unittest
 
+import qasm2qcx_math_function_numerical as functions
 from qasm2qcx_runtime_for_numerical import qasm2qcx
 from qasm2qcx_trigonometric_numerical import pi
 
@@ -103,7 +108,89 @@ class ConstantTests(unittest.TestCase):
                 self.check(bits, width)
 
 
+class BackendTests(unittest.TestCase):
+    bra = None
+    checked = 0
+    setUp = functions.BackendTests.setUp
+    execute = functions.BackendTests.execute
+    program = functions.BackendTests.program
+    check = functions.BackendTests.check
+
+    def raw_program(self, bits, width, names):
+        # Inject exact UINT storage after declaring the angle, independently
+        # of float-to-angle quantization and any source-language casts.
+        source = f'OPENQASM 3; angle[{width}] a; '
+        for name in names:
+            expected = reference(name, bits, width)
+            scale = abs(expected) if expected else 1.0
+            source += f'float {name}_out = {name}(a); {name}_out /= {scale!r}; '
+        program = qasm2qcx.openqasm3.parser.parse(source)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        for index, statement in enumerate(program.statements):
+            converter.visit(statement)
+            if index == 0:
+                operand = converter._QASM2QCXConverter__capitalize_variable_name('a')
+                converter._QASM2QCXConverter__qcx_lines.append(f'LET {operand} := {bits}')
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        lines = list(converter)
+        for name in names:
+            operand = converter._QASM2QCXConverter__capitalize_variable_name(f'{name}_out')
+            lines.append(f'PRINTLN {operand}')
+        lines.append(f'PRINTLN {converter._QASM2QCXConverter__capitalize_variable_name("a")}')
+        return lines
+
+    def test_all_widths_axes_neighbors_octants_and_source_preservation(self):
+        for width in range(1, qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH + 1):
+            modulus = 1 << width
+            patterns = set()
+            for axis in (0, modulus // 4, modulus // 2, 3 * modulus // 4):
+                patterns.update((axis + distance) % modulus for distance in (-2, -1, 0, 1, 2))
+            patterns.update(octant * modulus // 8 for octant in range(8))
+            for bits in sorted(patterns):
+                names = ('sin', 'cos') if width >= 2 and bits in (modulus // 4, 3 * modulus // 4) else ('sin', 'cos', 'tan')
+                result = self.execute(self.raw_program(bits, width, names))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                actual = list(map(float, result.stdout.split()))
+                self.assertEqual(len(actual), len(names) + 1)
+                self.assertEqual(actual[-1], bits)
+                for name, value in zip(names, actual):
+                    expected = reference(name, bits, width)
+                    normalized = math.copysign(1.0, expected) if expected else 0.0
+                    self.assertAlmostEqual(value, normalized, delta=2e-6, msg=(name, width, bits))
+                    if expected == 0:
+                        self.assertEqual(math.copysign(1.0, value), 1.0)
+                type(self).checked += 1
+
+    def test_reached_poles_fail_and_skipped_poles_do_not_execute(self):
+        for width in (2, 4, qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH):
+            for angle in ('pi / 2', '3 * pi / 2'):
+                source = f'angle[{width}] a = {angle}; float out = tan(a);'
+                result = self.execute(self.program(source))
+                self.assertNotEqual(result.returncode, 0)
+                type(self).checked += 1
+                self.check(f'angle[{width}] a = {angle}; bool out = false && bool(tan(a));',
+                           (('out', False),), (0,))
+                self.check(f'angle[{width}] a = {angle}; bool out = true || bool(tan(a));',
+                           (('out', False),), (1,))
+
+    def test_executable_literals_constants_and_compound_angle_arguments(self):
+        for name in ('sin', 'cos', 'tan'):
+            for expression in ('angle[4](3 * pi / 8)', 'A', 'a + angle[4](pi / 8)'):
+                expected = reference(name, 3, 4)
+                self.check('const angle[4] A = 3 * pi / 8; angle[4] a = pi / 4; '
+                           f'float out = {name}({expression});', (('out', False), ('a', False)),
+                           (expected, 2))
+
+
 if __name__ == '__main__':
-    result = unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromTestCase(ConstantTests))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--bra', type=pathlib.Path)
+    arguments = parser.parse_args()
+    BackendTests.bra = arguments.bra.resolve() if arguments.bra else None
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    suite = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromTestCase(case)
+                               for case in (ConstantTests, BackendTests))
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
     print(f'angle trigonometric constant calls checked: {ConstantTests.checked}')
+    print(f'angle trigonometric programs checked: {BackendTests.checked}')
     raise SystemExit(not result.wasSuccessful())

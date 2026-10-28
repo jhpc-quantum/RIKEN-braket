@@ -151,7 +151,7 @@ class ScalarAngleFoundationTests(unittest.TestCase):
     def test_angle_storage_does_not_enable_implicit_numeric_or_gate_uses(self):
         for expression in ('a + a', '-a', '~a', 'a << 1', 'a == uint[4](0)', 'a && a',
                            'int(a)', 'uint(a)', 'float(a)', 'complex(a)',
-                           'exp(a)', 'sin(a)', 'popcount(a, 1)'):
+                           'exp(a)', 'popcount(a, 1)'):
             with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter('angle[4] a; float out = ' + expression + ';')
         for target in ('int', 'uint', 'float', 'complex', 'bool', 'bit'):
@@ -17124,12 +17124,25 @@ class AngleTrigonometricFoundationTests(unittest.TestCase):
         self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], previous)
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
 
-    def test_general_angle_to_float_casts_and_runtime_trig_remain_unsupported(self):
+    def test_runtime_trig_emits_float_results_and_keeps_general_casts_unsupported(self):
         for source in ('angle[4] a; float RESULT = sin(a);', 'const angle[4] A = pi; float RESULT = cos(A);'):
-            with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'runtime angle trigonometric'):
-                self.converter(source)
+            converter = self.converter(source)
+            self.assertTrue(any(' <- SIN ' in line or ' <- COS ' in line for line in converter))
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
         with self.assertRaises(qasm2qcx.QASM2QCXError):
             self.converter('const angle[4] A = pi; const float RESULT = float(A);')
+
+    def test_runtime_call_retains_only_result_and_caller_owned_storage(self):
+        converter = self.converter('angle[4] a = pi / 4;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONDITIONAL
+        converter.visit(self.expression('sin(a + angle[4](pi / 8))'))
+        result = converter._QASM2QCXConverter__value
+        self.assertNotEqual(result, caller)
+        self.assertEqual(converter._QASM2QCXConverter__value_type, qasm2qcx.ValueType.FLOAT)
+        self.assertEqual(converter._QASM2QCXConverter__value_kind, qasm2qcx.ValueKind.TEMPORARY)
+        self.assertEqual(converter._QASM2QCXConverter__expression_kind, qasm2qcx.ExpressionKind.CONDITIONAL)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller, result})
 
 
 class AngleBitFunctionFoundationTests(unittest.TestCase):
