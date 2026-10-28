@@ -4,6 +4,7 @@
 
 # include <algorithm>
 # include <cctype>
+# include <cstddef>
 # include <memory>
 # include <stdexcept>
 # include <string>
@@ -30,7 +31,8 @@ namespace bra
     {
       if (value.numerator == 0) { value.denominator_power = 0u; return; }
       integer const magnitude = value.numerator < 0 ? -value.numerator : value.numerator;
-      auto const shift = std::min(value.denominator_power, boost::multiprecision::lsb(magnitude));
+      auto const shift = static_cast<unsigned>(std::min<std::size_t>(
+        value.denominator_power, boost::multiprecision::lsb(magnitude)));
       value.numerator /= integer{1} << shift;
       value.denominator_power -= shift;
     }
