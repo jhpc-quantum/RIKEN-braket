@@ -4829,6 +4829,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__validate_angle_assignment(node, iterators)
         # Register values need register-aware contexts, not accidental use as
         # scalar loop bounds, casts, or indices.
+        if isinstance(node, ast.Cast) and self.__angle_bit_cast_info(node, iterators) is not None:
+            # The cast validates its entire source in the appropriate angle
+            # or register context. A second scalar walk would reject valid
+            # register shifts and bitwise expressions in skipped bodies.
+            return
         if isinstance(node, ast.FunctionCall) and node.name.name in ('popcount', 'rotl', 'rotr'):
             # Its register argument is checked as a unit, not as a scalar
             # expression while recursively validating an empty loop body.

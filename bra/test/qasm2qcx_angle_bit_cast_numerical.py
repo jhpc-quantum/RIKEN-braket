@@ -6,6 +6,8 @@ integer patterns and individual little-endian bits, without floating point.
 """
 
 import argparse
+import cmath
+import math
 import pathlib
 import random
 import resource
@@ -19,6 +21,7 @@ class BackendTests(unittest.TestCase):
     checked = 0
     setUp = functions.BackendTests.setUp
     execute = functions.BackendTests.execute
+    program = functions.BackendTests.program
 
     def check_exact(self, source, outputs, expected):
         program = self.module.openqasm3.parser.parse('OPENQASM 3; ' + source)
@@ -91,6 +94,94 @@ class BackendTests(unittest.TestCase):
                          'bit[4] back = bit[4](a); '
                          'back[{3, 2, 1, 0}] = bit[4](angle[4](back));',
                          (('bits', 4), ('a', None), ('back', 4)), (11, 13, 11))
+
+    def test_expressions_runtime_rotations_shifts_and_static_selections(self):
+        bits = 0b10110101
+        for distance in (0, 1, 3, 8, 9, -1):
+            count = distance % 8
+            rotated = ((bits << count) | (bits >> (8 - count))) & 255
+            self.check_exact(f'bit[8] b = "{bits:08b}"; int count = {distance}; '
+                             'angle[8] a = angle[8](rotl(b, count)); '
+                             'bit[8] back = bit[8](a + angle[8]("00000001")); '
+                             'angle[8] out = angle[8](back ^ "01010101");',
+                             (('b', 8), ('a', None), ('back', 8), ('out', None)),
+                             (bits, rotated, (rotated + 1) & 255, ((rotated + 1) & 255) ^ 0x55))
+        for distance in (0, 1, 3, 8, 9):
+            shifted = (bits << distance) & 255
+            self.check_exact(f'bit[8] b = "{bits:08b}"; uint count = {distance}; '
+                             'angle[8] a = angle[8](b << count); '
+                             'bit[8] back = bit[8](a);',
+                             (('b', 8), ('a', None), ('back', 8)), (bits, shifted, shifted))
+        self.check_exact('bit[8] b = "11010110"; '
+                         'angle[4] a = angle[4](b[{7, 0, 5, 1}]); '
+                         'angle[4] repeated = angle[4](b[{0, 0, 1, 1}]); '
+                         'b[0:3] = bit[4](a); '
+                         'angle[4] slice = angle[4](b[0:3]);',
+                         (('a', None), ('repeated', None), ('b', 8), ('slice', None)), (9, 12, 0xD9, 9))
+
+    def test_conditions_runtime_loops_and_loop_bounds(self):
+        self.check_exact('angle[4] a = angle[4]("0000"); int count = 0; '
+                         'while (bit[4](a) != "1000") { '
+                         'a += angle[4]("0001"); '
+                         'if (bit[4](a) == "0011") { continue; } count += 1; '
+                         'if (bit[4](a) == "1111") { break; } } '
+                         'bit[4] out = bit[4](a);',
+                         (('a', None), ('count', None), ('out', 4)), (8, 7, 8))
+        self.check_exact('angle[4] a = angle[4]("0111"); int total = 0; '
+                         'int last = int(popcount(bit[4](a))); '
+                         'for int i in [int(popcount(bit[4](a))):last + 2] { total += i; } '
+                         'for int i in {int(popcount(bit[4](a))), int(popcount(bit[4](a + a)))} '
+                         '{ total += i; }', (('total', None), ('a', None)), (18, 7))
+        self.check_exact('array[float, 3] values = {0.0, pi / 2, pi}; '
+                         'angle[4] a; bit[4] b; uint total = 0; '
+                         'for float x in values { a = angle[4](x); b = bit[4](a); '
+                         'total += popcount(bit[4](angle[4](b))); }',
+                         (('a', None), ('b', 4), ('total', None)), (8, 8, 2))
+
+    def test_skipped_paths_suppress_cast_operand_domains(self):
+        for call in ('a = angle[4](b << count);',
+                     'b = bit[4](a / zero);',
+                     'b = bit[4](angle[4](1e309));'):
+            for wrapper in ('if (flag) {{ {} }}', 'while (flag) {{ {} }}',
+                            'for int i in [first:last] {{ {} }}', 'for int i in [1:0] {{ {} }}'):
+                self.check_exact('angle[4] a = angle[4]("0011"); bit[4] b = "1010"; '
+                                 'int count = -1; uint[4] zero = 0; bool flag = false; int first = 2; int last = 1; '
+                                 + wrapper.format(call), (('a', None), ('b', 4)), (3, 10))
+        for condition, expected in (('false && (bit[4](a / zero) == b)', 0),
+                                    ('true || bool(angle[4](b << count))', 1)):
+            self.check_exact('angle[4] a = pi; bit[4] b = "1000"; uint[4] zero = 0; int count = -1; '
+                             'bool out = ' + condition + ';', (('out', None),), (expected,))
+        for call in ('a = angle[4](b << count);', 'b = bit[4](a / zero);',
+                     'b = bit[4](angle[4](1e309));'):
+            result = self.execute(self.program('angle[4] a = pi; bit[4] b = "1000"; '
+                                               'int count = -1; uint[4] zero = 0; ' + call))
+            self.assertNotEqual(result.returncode, 0, call)
+            self.assertNotIn('runtime error:', result.stderr)
+            type(self).checked += 1
+
+    def test_gates_preserve_quantum_phases_with_and_without_fusion(self):
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        phase = 3 * math.pi / 4
+        expected = (1 / math.sqrt(2), cmath.exp(1j * phase) / math.sqrt(2))
+        for fused in (False, True):
+            lines = self.program('include "stdgates.inc"; qubit q; bit[4] bits = "0110"; '
+                                 'angle[4] a = angle[4](bits); h q; p(a) q; '
+                                 'bits = bit[4](a);', fused=fused)
+            BackendAuditTests.check(self, lines, expected)
+            theta = 1.0  # sin(pi/2), with no float-to-angle initialization.
+            lines = self.program('include "stdgates.inc"; qubit q; bit[4] bits = "0100"; '
+                                 'rx(sin(angle[4](bits))) q;', fused=fused)
+            BackendAuditTests.check(self, lines, (math.cos(theta / 2), -1j * math.sin(theta / 2)))
+
+    def test_iterator_shadowing_and_measurement_sources(self):
+        self.check_exact('bit[4] b = "1001"; angle[4] a; uint total = 0; '
+                         'array[float, 2] values = {0.0, pi / 2}; '
+                         'for float b in values { a = angle[4](b); total += popcount(bit[4](a)); } '
+                         'angle[4] out = angle[4](b);',
+                         (('a', None), ('total', None), ('out', None), ('b', 4)), (4, 1, 9, 9))
+        self.check_exact('include "stdgates.inc"; qubit q; x q; bit[4] flags = "0000"; '
+                         'flags[2] = measure q; angle[4] a = angle[4](flags); bit[4] out = bit[4](a);',
+                         (('flags', 4), ('a', None), ('out', 4)), (4, 4, 4))
 
 
 if __name__ == '__main__':

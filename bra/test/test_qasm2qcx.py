@@ -17222,6 +17222,34 @@ class AngleBitCastRuntimeTests(unittest.TestCase):
         # Exact bit copying never invokes float-to-angle quantization.
         self.assertFalse(any(' <- ANGLEBITS ' in line for line in converter))
 
+    def test_empty_loops_validate_register_cast_sources_as_registers(self):
+        converter = self.converter('bit[4] bits; angle[4] a; int count = -1; '
+                                   'for int i in [1:0] { a = angle[4](bits << count); '
+                                   'a = angle[4](~bits ^ "0011"); '
+                                   'bits = bit[4](a / uint[4](0)); }')
+        lines = list(converter)
+        self.assertFalse(any('ASSERT ' in line or ' <<= ' in line or ' /= ' in line for line in lines))
+        for expression in ('angle[3](bits)', 'angle[4](bits << true)',
+                           'angle[4](bits ^ "001")', 'angle[4](bits << missing)',
+                           'angle[4](bits[{0, 1, 2, 5}])', 'angle[4](bits << values[true])'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('bit[4] bits; angle[4] a; array[int, 1] values = {0}; '
+                               f'for int i in [1:0] {{ a = {expression}; }}')
+
+    def test_scalar_iterator_shadowing_cannot_use_outer_angle_or_register_metadata(self):
+        for source in ('angle[4] a; for int a in [1:0] { if (bit[4](a) == "0000") { } }',
+                       'bit[4] b; angle[4] a; for int b in [1:0] { a = angle[4](b); }'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(source)
+
+    def test_cli_invalid_constant_cast_emits_no_partial_qcx(self):
+        source = 'OPENQASM 3; qubit q; const angle[4] A = pi; const bit[3] B = bit[3](A);'
+        with patch('builtins.open', mock_open(read_data=source)):
+            with patch('sys.stdout') as stdout:
+                with self.assertRaisesRegex(SystemExit, 'equal widths'):
+                    qasm2qcx.main(['invalid.qasm'])
+        self.assertFalse(stdout.write.called)
+
 
 class AngleTrigonometricFoundationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
