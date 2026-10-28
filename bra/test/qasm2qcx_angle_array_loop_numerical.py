@@ -8,6 +8,7 @@ import argparse
 import cmath
 import math
 import pathlib
+import re
 import resource
 import unittest
 
@@ -51,27 +52,27 @@ class BackendTests(unittest.TestCase):
                                 else 'if (i == 3) { break; }' if mode == 'break' else '')
                     initializer = ', '.join(self.angle(width, value) for value in initial)
                     self.check_initializers(f'array[angle[{width}], {size}] phases = {{{initializer}}}; '
-                        f'angle[{width}] total; int i = 0; for angle[{width}] phase in phases {{ '
+                        f'angle[{width}] total = 0.0; int i = 0; for angle[{width}] phase in phases {{ '
                         f'i += 1; {transfer} if (i < {size}) {{ phases[i] += {self.angle(width, 1)}; }} '
                         f'phases[i - 1] = 0.0; total += phase; }}',
                         (('phases', size),), values, ('total', 'i'), (total, position))
 
     def test_nested_widths_and_iterator_shadowing_restore_outer_values(self):
-        self.check_initializers('angle[4] phase = angle[4]("0011"); angle[4] total; '
+        self.check_initializers('angle[4] phase = angle[4]("0011"); angle[4] total = 0.0; '
             'array[angle[4], 2] small = {angle[4]("0001"), angle[4]("0010")}; '
             'array[angle[8], 1] large = {angle[8]("00010000")}; '
             'for angle[4] phase in small { total += phase; '
             'for angle[8] phase in large { total += angle[4](phase); } total += phase; } '
             'total += phase;', (('small', 2), ('large', 1)), (1, 2, 16), ('total', 'phase'), (11, 3))
         self.check_initializers('array[angle[4], 2] phases = {angle[4]("0001"), angle[4]("0010")}; '
-            'angle[4] total; for angle[4] phases in phases { total += phases; } total += phases[0];',
+            'angle[4] total = 0.0; for angle[4] phases in phases { total += phases; } total += phases[0];',
             (('phases', 2),), (1, 2), ('total',), (4,))
 
     def test_reentry_resets_index_and_keeps_live_source_changes(self):
         for outer in ('for int outer in [0:2]', 'for int outer in [0:stop]',
                       'for int outer in {0, stop, 1}', 'while (visits < 3)'):
             self.check_initializers('array[angle[4], 2] phases = {angle[4]("0001"), angle[4]("0010")}; '
-                'angle[4] total; int visits = 0; int stop = 2; ' + outer + ' { visits += 1; '
+                'angle[4] total = 0.0; int visits = 0; int stop = 2; ' + outer + ' { visits += 1; '
                 'for angle[4] phase in phases { phases[1] += angle[4]("0001"); total += phase; }}',
                 (('phases', 2),), (1, 8), ('total', 'visits'), (2, 3))
 
@@ -79,19 +80,19 @@ class BackendTests(unittest.TestCase):
         native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
         for element, iterator in (('angle', f'angle[{native}]'), (f'angle[{native}]', 'angle')):
             self.check_initializers(f'array[{element}, 2] phases = {{0.0, pi}}; '
-                f'angle total; for {iterator} phase in phases {{ total += phase; }}',
+                f'angle total = 0.0; for {iterator} phase in phases {{ total += phase; }}',
                 (('phases', 2),), (0, 1 << (native - 1)), ('total',), (1 << (native - 1),))
 
     def test_nested_break_and_continue_apply_to_innermost_loop(self):
         self.check_initializers('array[angle[4], 3] phases = {0.0, pi / 2, pi}; '
-            'int visits = 0; angle[4] total; '
+            'int visits = 0; angle[4] total = 0.0; '
             'for angle[4] phase in phases { '
             'for angle[4] other in phases { if (other == angle[4](0.0)) { continue; } '
             'if (other == angle[4](pi)) { break; } visits += 1; total += phase + other; }}',
             (('phases', 3),), (0, 4, 8), ('total', 'visits'), (8, 3))
 
     def test_skipped_loops_and_transfers_do_not_evaluate_unreached_reads(self):
-        self.check_initializers('array[angle[4], 2] phases = {0.0, pi}; int bad = 2; angle[4] total; '
+        self.check_initializers('array[angle[4], 2] phases = {0.0, pi}; int bad = 2; angle[4] total = 0.0; '
             'if (false) { for angle[4] phase in phases { total += phases[bad]; }} '
             'for int outer in [1:0] { for angle[4] phase in phases { total += phases[bad]; }} '
             'for angle[4] phase in phases { continue; total += phases[bad]; } '
@@ -268,7 +269,7 @@ class BackendTests(unittest.TestCase):
         self.check_initializers('array[angle[4], 2] phases = {angle[4]("0011"), angle[4]("0101")}; '
             'array[float, 1] floats = {0.5}; array[uint[4], 1] integers = {1}; '
             'array[bool, 1] booleans = {true}; array[complex, 1] complexes = {1im}; bit[2] bits = "01"; '
-            'angle[4] total; int visits = 0; '
+            'angle[4] total = 0.0; int visits = 0; '
             'for angle[4] value in phases { total += value; '
             'for float value in floats { if (value > 0.0) { visits += 1; }} '
             'for uint[4] value in integers { visits += int(value); } '
@@ -280,7 +281,7 @@ class BackendTests(unittest.TestCase):
 
     def test_reached_domain_errors_and_skipped_invalid_operations(self):
         for expression in ('phase / zero', 'phase << negative', 'tan(phase)', 'phases[bad]'):
-            prefix = ('array[angle[4], 1] phases = {pi / 2}; angle[4] result; float f; '
+            prefix = ('array[angle[4], 1] phases = {pi / 2}; angle[4] result = 0.0; float f = 0.0; '
                       'uint[4] zero = 0; int negative = -1; int bad = 1; ')
             target = 'f' if expression == 'tan(phase)' else 'result'
             body = f'{target} = {expression};'
@@ -292,6 +293,17 @@ class BackendTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0, expression)
             self.assertNotIn('runtime error:', result.stderr)
             type(self).checked += 1
+
+    def test_documented_angle_array_loop_example(self):
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- angle-array-loop-example -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        source = examples[0].removeprefix('OPENQASM 3.0;')
+        self.check_initializers(source, (('phases', 3),), (0, 0, 0), ('total', 'i'), (10, 3))
+        expected = (1 / math.sqrt(2), cmath.exp(5j * math.pi / 4) / math.sqrt(2))
+        for fused in (False, True):
+            BackendAuditTests.check(self, self.program(examples[0], fused=fused), expected)
 
 
 if __name__ == '__main__':

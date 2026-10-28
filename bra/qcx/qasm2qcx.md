@@ -229,8 +229,8 @@ conversion domain checks or skipped arithmetic. Empty loops still validate
 names, widths, types, and read-only targets.
 
 This is not full angle support. Mixed angle/non-angle comparisons and bitwise
-operations, bit-level indexing, compound assignments other than `+=`, `-=`, `*=`,
-`/=`, `&=`, `|=`, `^=`, `<<=`, and `>>=`, direct angle-array iteration, and numeric casts from
+operations, bit-level indexing, compound assignments other than
+`+=`/`-=`/`*=`/`/=`/`&=`/`|=`/`^=`/`<<=`/`>>=`, and numeric casts from
 angles remain unsupported.
 Use an angle comparison or `bool(a)` explicitly in a condition; a bare angle
 is not a Boolean condition.
@@ -2508,9 +2508,11 @@ checked once, and its old value is captured before evaluating a compound RHS.
 The complete result is computed before writing the destination. Explicit RHS
 accesses, including self-references, evaluate and check their own indices.
 
-Position-based loops can read and update elements. Skipped branches, loop
-bodies, and short-circuit operands suppress runtime index and operand domain
-checks; names, types, widths, and index syntax remain validated in empty loops.
+Position-based loops can read and update elements. Direct iteration is supported
+as described under [Angle-array for loops](#angle-array-for-loops). Skipped
+branches, loop bodies, and short-circuit operands suppress runtime index and
+operand domain checks; names, types, widths, and index syntax remain validated
+in empty loops.
 Sources and declaration metadata are preserved, and temporary storage is
 released after use. Gate parameters retain their captured values during fusion,
 even when array elements are changed before the gates execute.
@@ -2530,10 +2532,10 @@ h q;
 p(phases[i]) q;
 ```
 
-Direct angle-array iteration, slices, whole-array operations and copying,
-aliases, multidimensional arrays, bit-level indexing of elements, and local
-array declarations remain unsupported. The positive-length restriction is an
-implementation limitation: [OpenQASM permits zero-length arrays](https://openqasm.com/language/types.html#arrays),
+Slices, whole-array operations and copying, aliases, multidimensional arrays,
+bit-level indexing of elements, and local array declarations remain unsupported.
+The positive-length restriction is an implementation limitation:
+[OpenQASM permits zero-length arrays](https://openqasm.com/language/types.html#arrays),
 which cannot be indexed. Zero-length support remains separate work for all
 classical array types. No new bra instruction or build option is required.
 
@@ -3887,8 +3889,8 @@ literal; sets containing them use the runtime-valued lowering described below.
 Non-integer elements require a supported explicit integer cast;
 implicit conversion of floating-point, Boolean, or complex elements is not
 supported. Signed/unsigned integer-array, floating-point-array, Boolean-array,
-complex-array, and bit-register iteration use the runtime lowering described below;
-alias iteration remains unsupported.
+complex-array, angle-array, and bit-register iteration use the runtime lowering
+described below; alias iteration remains unsupported.
 The installed parser requires a nonempty set in
 source code: the spelling `{}` is rejected. An empty discrete-set AST supplied
 directly to the converter emits no body instructions but still validates its
@@ -3990,8 +3992,8 @@ body copies of runtime-valued set loops and constant bit-register loops; repeate
 elements each count as an expanded iteration. A `break` does not reduce the
 generated iteration count.
 Runtime-bound range, signed/unsigned integer-array, floating-point-array,
-Boolean-array, complex-array, and bit-register loops do not expand their runtime
-iteration count.
+Boolean-array, complex-array, angle-array, and bit-register loops do not expand
+their runtime iteration count.
 
 ## Runtime-bound for loops
 
@@ -4224,8 +4226,8 @@ count, even when their iterator is runtime-valued or shadows an outer iterator.
 Runtime reentry into an already generated loop does not charge additional
 conversion-time iterations. Signed widths remain unenforced; unsigned expressions
 follow the normalization and promotion rules above. Signed/unsigned integer-array,
-floating-point-array, Boolean-array, complex-array, and bit-register iteration are
-described below; alias iteration remains unsupported.
+floating-point-array, Boolean-array, complex-array, angle-array, and bit-register
+iteration are described below; alias iteration remains unsupported.
 The parser still rejects
 an empty source set `{}`.
 
@@ -4285,9 +4287,9 @@ Runtime array iteration counts do not consume expansion budgets. Nested
 constant or set-loop body copies still consume their usual budgets, and an
 array loop inside an expanded loop contributes its generated statements and
 instructions. Unsigned-integer-array, floating-point-array, Boolean-array,
-complex-array, and bit-register iteration are described below. Iteration over
-slices, other unsupported array types, aliases, or arbitrary array expressions
-remains unsupported.
+complex-array, angle-array, and bit-register iteration are described below.
+Iteration over slices, other unsupported array types, aliases, or arbitrary
+array expressions remains unsupported.
 
 ## Unsigned-integer-array for loops
 
@@ -4497,6 +4499,83 @@ loops, without executing skipped arithmetic. Failed lowering releases loop-owned
 temporaries while preserving caller-owned storage. Slices, multidimensional
 arrays, aliases, arbitrary array expressions, and block-local declarations remain
 outside this subset.
+
+## Angle-array for loops
+
+The converter supports `for angle name in phases` and
+`for angle[n] name in phases` over previously declared one-dimensional angle
+arrays. Elements are visited in increasing index order, including repeated
+values. The iterator and array elements must have matching effective widths.
+Unsized `angle` and explicit `angle[W]` forms can be mixed at native QCX UINT
+width `W`; the iterator keeps the sizedness of its own declaration. Other
+width conversions and implicit iteration with a different element type remain
+unsupported, even where an explicit scalar conversion would be accepted.
+
+The source array and iterator width are resolved before introducing the
+iterator binding. A width must be a supported compile-time integer expression,
+independent of enclosing loop iterators. Array length and element width remain
+fixed when an iterator shadows a declaration constant.
+
+The live-read policy described under [Integer-array for loops](#integer-array-for-loops)
+also applies here. Each iteration copies the current element into private UINT
+storage with distinct angle typing and width metadata. A write to a future
+element affects its later visit; a write to the current element leaves the
+copied iterator unchanged. Reentry starts at index zero and reads the array's
+then-current contents. The source is resolved before binding the iterator, so
+`for angle[4] phases in phases` is accepted. Outer variables, constants, arrays,
+and iterators shadowed by the loop variable are restored after the body.
+
+Iterators support the scalar angle expressions, comparisons, bit functions,
+casts, and phase-gate parameters described above. Use an explicit comparison or
+`bool(value)` in a condition; a bare angle is not a Boolean condition. Integer
+results such as `popcount(value)` or an angle quotient can supply nested integer
+range/set values. Trigonometric results can supply floating-point gate parameters.
+Gate modifiers retain their existing restrictions, including constant-only
+floating-point powers. Fusion preserves the captured gate parameters when the
+iterator storage is reused or source elements are changed later.
+
+<!-- angle-array-loop-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit q;
+array[angle[4], 3] phases = {0.0, pi / 2, pi};
+angle[4] total = 0.0;
+int i = 0;
+h q;
+for angle[4] phase in phases {
+    if (phase == angle[4](0.0)) {
+        i += 1;
+        continue;
+    }
+    p(phase) q;
+    phases[i] = 0.0;              // The copied phase is unchanged.
+    total += phase;
+    if (i == 1) {
+        phases[2] = angle[4](3 * pi / 4); // The next visit sees this value.
+    }
+    i += 1;
+}
+// total has stored bits 1010 (5*pi/4); phases contains three zero angles.
+```
+
+Nested supported range, set, array, bit-register, and `while` loops are accepted.
+`break` exits the nearest loop; `continue` advances to its next iteration. As with
+other converter loops, assignments and measurements into active iterators are
+rejected, including in skipped bodies. Read-only iterators are a converter
+restriction: OpenQASM permits modifying the local loop variable without changing
+the source element. Source visibility, types, widths, index syntax, and read-only
+bindings are validated even in empty enclosing loops; skipped paths do not
+execute runtime arithmetic, index checks, or operand domain checks.
+
+The body is generated once using existing QCX instructions, with a private INT
+index and UINT iterator reserved throughout the body. An endpoint guard precedes
+index advancement. Loop-owned temporaries are released on success and failure
+while caller-owned storage is preserved. Runtime iteration counts do not consume
+expansion budgets; nested and enclosing expanded loops retain their accounting.
+No new bra instruction or build option is required. Angle ranges/sets, differing
+iterator widths, slices, aliases, arbitrary array expressions, multidimensional
+or zero-length arrays, and block-local declarations remain unsupported.
 
 ## Bit-register for loops
 
@@ -4718,7 +4797,7 @@ vector defined by the program's qubit declarations.
 The current prototype does not reliably support:
 
 - delays, iteration over arrays other than the supported
-  `int`/`uint`/`float`/`bool`/`complex` subset,
+  `int`/`uint`/`float`/`bool`/`complex`/`angle` subset,
   alias iteration, or `switch` statements;
 - user-defined gates, gate durations, runtime floating-point `pow` exponents,
   mixed runtime-integer/floating-point power chains, floating-point powers
@@ -4740,7 +4819,8 @@ The current prototype does not reliably support:
 - angle-by-angle multiplication, scaling by types other than same-width UINT,
   `uint / angle`, `angle /= angle`, mixed angle/non-angle comparisons and bitwise
   operations, compound operators other than `+=`/`-=`/`*=`/`/=`/`&=`/`|=`/`^=`/`<<=`/`>>=`,
-  bit-level indexing, multidimensional angle arrays, direct angle-array iteration,
+  bit-level indexing, multidimensional angle arrays, angle range/set iteration,
+  different-width angle-array iterators,
   numeric casts from angles, angle-valued gates outside
   `p`/`phase`/`u1`/`cp`/`cphase`/`gphase`; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
@@ -4783,6 +4863,17 @@ gates with modifiers and fusion. The documented angle-array example is executed
 normally and with fusion. Unit tests additionally cover declaration and type
 errors, empty-body validation, once-only destination capture, and temporary
 cleanup. Run with `--bra /path/to/bra`, including a UBSan build.
+
+`bra/test/qasm2qcx_angle_array_loop_numerical.py` checks live reads, copied
+iterator values, future/current source mutation, reentry, nested shadowing, and
+nearest-loop transfers. Exact raw-storage references cover all supported widths,
+arithmetic, comparisons, shifts, bit functions, casts, and cross-width promotion.
+Integration cases include trigonometric functions, dependent integer loops,
+mixed iterator types, reached/skipped errors, phase gates, modifiers, and fusion.
+The complete angle-array-loop example above is executed normally and with fusion.
+Unit tests additionally cover width/type restrictions, source visibility,
+read-only iterators in skipped bodies, expansion budgets, CLI failure output,
+and cleanup. Run with `--bra /path/to/bra`, including a UBSan build.
 
 `bra/test/qasm2qcx_angle_arithmetic_numerical.py` checks exact stored bits at
 every supported width, mixed-width promotion and destination narrowing,
@@ -5462,6 +5553,7 @@ python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_math_function_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_array_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_angle_array_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_bit_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_global_phase_numerical.py --bra bra/bin/bra
