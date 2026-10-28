@@ -17271,6 +17271,20 @@ class AngleBitFunctionIntegrationTests(unittest.TestCase):
     expression = ScalarAngleArithmeticFoundationTests.expression
     clean = RuntimeAngleArithmeticTests.clean
 
+    def test_documented_angle_bit_function_examples(self):
+        document = (CONVERTER_PATH.parent / 'qasm2qcx.md').read_text()
+        for marker in ('angle-bit-function-example', 'angle-bit-function-phase-example'):
+            examples = re.findall(r'<!-- ' + marker + r' -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+            self.assertEqual(len(examples), 1)
+            converter = self.clean(examples[0].removeprefix('OPENQASM 3.0;'))
+            if marker == 'angle-bit-function-example':
+                values = converter._QASM2QCXConverter__const_angle_values
+                self.assertEqual((values['LEFT'].value, values['RIGHT'].value), (3, 12))
+                integers = converter._QASM2QCXConverter__const_uint_variable_name_values_map
+                self.assertEqual((integers['ONES'], integers['NATIVE_COUNT']), ([2], [1]))
+            else:
+                self.assertEqual(list(converter)[-1], 'DO AMPLITUDES')
+
     def test_self_assignment_and_population_count_numeric_contexts(self):
         self.clean('''angle[4] a = 9 * pi / 8; uint count = popcount(a);
             a = rotl(a, int(popcount(a))); a = rotr(a, int(popcount(a)));

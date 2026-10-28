@@ -5,7 +5,10 @@ Run with --bra /path/to/bra (including a UBSan build).
 """
 
 import argparse
+import cmath
+import math
 import pathlib
+import re
 import resource
 import unittest
 
@@ -27,6 +30,34 @@ class BackendTests(unittest.TestCase):
     exact = arithmetic.BackendTests.exact
     check_phase = arithmetic.BackendTests.check_phase
     check_zero_qubit = arithmetic.BackendTests.check_zero_qubit
+
+    def test_documented_angle_bit_function_examples(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx' / 'qasm2qcx.md').read_text()
+        examples = {}
+        for marker in ('angle-bit-function-example', 'angle-bit-function-phase-example'):
+            matches = re.findall(r'<!-- ' + marker + r' -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+            self.assertEqual(len(matches), 1)
+            examples[marker] = matches[0]
+        self.exact(examples['angle-bit-function-example'],
+                   ('a', 'distance', 'left', 'right', 'count', 'same', 'turned_count', 'skipped'),
+                   (6, -1, 12, 3, 2, 1, 4, 0))
+        for fused in (False, True):
+            lines = self.program(examples['angle-bit-function-phase-example'])
+            if fused:
+                lines.insert(1, 'BEGIN FUSION')
+                lines.insert(len(lines) - 1, 'END FUSION')
+            result = self.execute(lines)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            actual = {int(index, 2): complex(float(real), float(imaginary))
+                      for index, real, imaginary in re.findall(r'^([01]+) => (\S+) \+ (\S+) i$', result.stdout, re.MULTILINE)}
+            self.assertEqual(set(actual), set(range(8)), result.stdout)
+            for index in range(8):
+                phase = (3 * math.pi / 4 if index & 1 else 0)
+                phase += 3 * math.pi / 2 if index & 2 else 0
+                phase -= 3 * math.pi / 8 if not index & 4 else 0
+                self.assertTrue(cmath.isclose(actual[index], cmath.exp(1j * phase) / math.sqrt(8),
+                                             rel_tol=1e-5, abs_tol=2e-6), (index, actual[index]))
+            type(self).checked += 1
 
     def test_all_widths_patterns_and_native_distance_boundaries(self):
         converter = self.module.QASM2QCXConverter
