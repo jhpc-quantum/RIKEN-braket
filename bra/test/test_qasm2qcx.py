@@ -166,7 +166,7 @@ class ScalarAngleFoundationTests(unittest.TestCase):
             with self.subTest(initializer=initializer), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(f'angle[4] a = {initializer};')
         for source in ('angle[4] a; a *= a;', 'angle[4] a; a[0] = true;',
-                       'array[angle[4], 2] values;', 'qubit q; angle a = measure q;'):
+                       'array[angle[4], 2, 2] values;', 'qubit q; angle a = measure q;'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(source)
 
@@ -9169,7 +9169,7 @@ class IntegerArrayDeclarationTests(unittest.TestCase):
 
     def test_unsupported_dimensions_and_base_types_are_rejected(self) -> None:
         for declaration in ('array[int, 2, 2] a;',
-                            'array[bit, 2] a;', 'array[angle, 2] a;'):
+                            'array[bit, 2] a;', 'array[duration, 2] a;'):
             with self.subTest(declaration=declaration), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                 convert('OPENQASM 3.0; ' + declaration)
 
@@ -9520,6 +9520,118 @@ class BooleanArrayLoopTests(unittest.TestCase):
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
         self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
         self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
+
+
+class AngleArrayDeclarationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def test_declarations_use_uint_storage_including_singletons(self):
+        native = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        for base in ('angle', f'angle[{native}]', 'angle[4]'):
+            with self.subTest(base=base):
+                self.assertEqual(convert(f'OPENQASM 3; array[{base}, 2] a;'),
+                                 ['QUBITS 0', 'VAR A1 UINT 2'])
+                self.assertEqual(convert(f'OPENQASM 3; array[{base}, 1] a;'),
+                                 ['QUBITS 0', 'VAR A1 UINT'])
+
+    def test_all_widths_retain_distinct_angle_array_metadata(self):
+        native = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        for width in range(1, native + 1):
+            converter = self.converter(f'array[angle[{width}], 2] a; array[angle, 1] b; angle[{width}] scalar;')
+            metadata = converter._QASM2QCXConverter__angle_array_types
+            self.assertEqual(metadata, {'A1': qasm2qcx._AngleType(width, True), 'B1': qasm2qcx._AngleType(native, False)})
+            self.assertEqual(converter._QASM2QCXConverter__array_element_types,
+                             {'A1': qasm2qcx.ValueType.ANGLE, 'B1': qasm2qcx.ValueType.ANGLE})
+            self.assertEqual(converter._QASM2QCXConverter__array_source_sizes, {'a': 2, 'b': 1})
+            self.assertNotIn('A1', converter._QASM2QCXConverter__angle_variable_types)
+            self.assertNotIn('A1', converter._QASM2QCXConverter__angle_variable_names)
+            self.assertNotIn('A1', converter._QASM2QCXConverter__uint_variable_types)
+            self.assertEqual(converter._QASM2QCXConverter__uint_variable_name_size_map, {'A1': 2, 'B1': 1})
+
+    def test_constant_angle_initializers_resize_patterns_using_scalar_rules(self):
+        converter = self.converter('const angle[4] A = angle[4]("0011"); '
+                                   'array[angle[8], 2] fine = {A, -A}; '
+                                   'array[angle[1], 2] coarse = {A, -A};')
+        lines = list(converter)
+        for source, values in (('fine', (48, 208)), ('coarse', (0, 1))):
+            name = converter._QASM2QCXConverter__capitalize_variable_name(source)
+            for index, value in enumerate(values):
+                self.assertIn(f'LET {name}:{index} := {value}', lines)
+        self.assertFalse(any(' <- ANGLEBITS ' in line for line in lines))
+
+    def test_runtime_initializers_use_scalar_angle_conversion_and_release_scratch(self):
+        converter = self.converter('angle[4] seed = pi / 4; float radians = -pi / 2; '
+                                   'array[angle[8], 4] a = {seed, radians, seed + angle[4](pi / 8), '
+                                   'angle[8]("11111111")};')
+        assignments = [line for line in converter if line.startswith('LET A1:') and ' := ' in line]
+        self.assertEqual(len(assignments), 4)
+        for index, assignment in enumerate(assignments):
+            self.assertTrue(assignment.startswith(f'LET A1:{index} := '))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_width_and_length_constants_are_resolved_in_declaration_scope(self):
+        converter = self.converter('const int W = 4; const uint N = 2; '
+                                   'array[angle[W], N] a = {0.0, pi}; '
+                                   'for int W in [0:1] {} for int N in [0:1] {}')
+        self.assertEqual(converter._QASM2QCXConverter__angle_array_types['A1'], qasm2qcx._AngleType(4, True))
+        self.assertEqual(converter._QASM2QCXConverter__array_source_sizes['a'], 2)
+        converter = self.converter('const uint W = 2; array[angle[W + 2], W + 1] a;')
+        self.assertEqual(converter._QASM2QCXConverter__angle_array_types['A1'].width, 4)
+        self.assertEqual(converter._QASM2QCXConverter__array_source_sizes['a'], 3)
+
+    def test_invalid_widths_lengths_and_dimensions_are_rejected(self):
+        native = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        prefix = 'const int ZERO = 0; const int NEGATIVE = -1; int n = 2; '
+        for width in ('ZERO', 'NEGATIVE', str(native + 1), 'n', 'true', '2.5', 'missing'):
+            with self.subTest(width=width), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(prefix + f'array[angle[{width}], 2] a;')
+        for size in ('0', 'NEGATIVE', 'n', 'true', '2.5', 'missing', str(qasm2qcx.QASM2QCXConverter.QCX_INT_MAX + 1)):
+            with self.subTest(size=size), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(prefix + f'array[angle[4], {size}] a;')
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            self.converter('array[angle[4], 2, 2] a;')
+
+    def test_initializers_require_matching_flat_lists_and_float_or_angle_elements(self):
+        for value in ('{}', '{0.0}', '{0.0, pi, pi}', '{{0.0}, {pi}}', 'other'):
+            with self.subTest(value=value), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('angle[4] other = pi; ' + f'array[angle[4], 2] a = {value};')
+        for value in ('1', 'uint(1)', 'true', 'bit(true)', '"1000"', '1im'):
+            with self.subTest(value=value), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(f'array[angle[4], 1] a = {{{value}}};')
+
+    def test_whole_arrays_cannot_be_used_as_scalars_or_implicitly_copied(self):
+        for size in (1, 2):
+            for statement in ('angle a = values;', 'uint n = values;', 'float f = float(values);',
+                              'array[angle[4], 1] other = {values};', 'array[angle[4], 2] other = values;'):
+                with self.subTest(size=size, statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    self.converter(f'array[angle[4], {size}] values; ' + statement)
+
+    def test_duplicate_forward_self_references_and_local_declarations_are_rejected(self):
+        for source in ('array[angle[4], 1] a; angle[4] a;', 'angle[4] a; array[angle[4], 1] a;',
+                       'array[angle[W], 1] a; const int W = 4;',
+                       'array[angle[4], 1] a = {seed}; angle[4] seed = pi;',
+                       'array[angle[4], 1] a = {a};',
+                       'if (false) { array[angle[4], 1] a; }',
+                       'for int i in [1:0] { array[angle[4], 1] a; }'):
+            with self.subTest(source=source), self.assertRaises((qasm2qcx.QASM2QCXError, qasm2qcx.openqasm3.parser.QASM3ParsingError)):
+                self.converter(source)
+
+    def test_failed_initializer_releases_scratch_but_preserves_caller_storage(self):
+        program = self.program('angle[4] seed = pi; array[angle[4], 2] a = {seed + angle[4](pi / 8), true};')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
+
+    def test_element_access_and_iteration_remain_deferred(self):
+        for statement in ('angle[4] x = a[0];', 'a[0] = pi;', 'int i = 0; angle[4] x = a[i];'):
+            with self.subTest(statement=statement), self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'angle-array element access'):
+                self.converter('array[angle[4], 2] a; ' + statement)
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            self.converter('array[angle[4], 2] a; for angle[4] x in a {}')
 
 
 class UnsignedArrayDeclarationTests(unittest.TestCase):

@@ -476,6 +476,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # expressions must not leave entries whose ids can later be reused.
         self.__uint_expression_types: dict[int, tuple[ast.Expression, _UnsignedIntegerType]] = {}
         self.__angle_variable_types: dict[str, _AngleType] = {}
+        self.__angle_array_types: dict[str, _AngleType] = {}
         self.__angle_variable_names: set[str] = set()
         self.__angle_expression_types: dict[int, tuple[ast.Expression, _AngleType]] = {}
         self.__array_element_types: dict[str, ValueType] = {}
@@ -4400,6 +4401,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return ValueType.BIT, False
         variable_type = self.__classical_source_types.get(name)
         if isinstance(variable_type, ast.ArrayType):
+            if isinstance(variable_type.base_type, ast.AngleType):
+                raise UnsupportedOpenQASMError('angle-array element access')
             return self.__source_value_type(variable_type.base_type), True
         if not isinstance(variable_type, ast.BitType):
             raise UnsupportedOpenQASMError('indexed non-bit loop operand')
@@ -7543,6 +7546,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__type_of(variable_name)  # Reject an active iterator shadowing the array.
         if variable_name not in self.__array_element_types:
             raise UnsupportedOpenQASMError('indexed non-array classical operand')
+        if variable_name in self.__angle_array_types:
+            raise UnsupportedOpenQASMError('angle-array element access')
         if not isinstance(selectors, list) or len(selectors) != 1 or not isinstance(selectors[0], ast.Expression):
             raise UnsupportedOpenQASMError('classical array slice or multidimensional selection')
         if isinstance(selectors[0], (ast.RangeDefinition, ast.DiscreteSet)):
@@ -7581,8 +7586,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if len(variable_type.dimensions) != 1:
             raise UnsupportedOpenQASMError('multidimensional classical array')
         if not isinstance(variable_type.base_type, (
-                ast.IntType, ast.UintType, ast.FloatType, ast.BoolType, ast.ComplexType)):
-            raise UnsupportedOpenQASMError('classical array base type other than int, uint, float, bool, or complex')
+                ast.IntType, ast.UintType, ast.FloatType, ast.BoolType, ast.ComplexType, ast.AngleType)):
+            raise UnsupportedOpenQASMError('classical array base type other than int, uint, float, bool, complex, or angle')
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
         try:
@@ -7619,11 +7624,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     f'{len(initializer.values)} elements; expected {size}')
             if any(isinstance(value, ast.ArrayLiteral) for value in initializer.values):
                 raise UnsupportedOpenQASMError('nested classical array initializer')
-        self.__declare_classical_variable(statement.type.base_type, variable_name, size)
+        # Angle arrays use UINT storage without becoming UINT expressions or
+        # scalar angle variables. Keep their element width in separate metadata.
+        storage_type = ast.UintType() if element_type == ValueType.ANGLE else statement.type.base_type
+        self.__declare_classical_variable(storage_type, variable_name, size)
         self.__array_element_types[variable_name] = element_type
         if initializer is None:
             return
         for index, expression in enumerate(initializer.values):
+            if element_type == ValueType.ANGLE:
+                self.__emit_angle_copy(f'{variable_name}:{index}', self.__angle_array_types[variable_name], expression)
+                continue
             value, value_type, value_kind = self.__condition_operand(expression)
             if element_type == ValueType.INT and value_type not in (ValueType.INT, ValueType.UINT):
                 if value_kind == ValueKind.TEMPORARY:
@@ -7649,9 +7660,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 # a later loop iterator can shadow their dimension constants.
                 self.__uint_variable_types[self.__capitalize_variable_name(statement.identifier.name)] = (
                     self.__unsigned_integer_type(base_type))
-            if isinstance(statement.type, ast.AngleType):
-                self.__angle_variable_types[self.__capitalize_variable_name(statement.identifier.name)] = (
-                    self.__angle_type(statement.type))
+            if isinstance(base_type, ast.AngleType):
+                metadata = (self.__angle_array_types if isinstance(statement.type, ast.ArrayType)
+                            else self.__angle_variable_types)
+                metadata[self.__capitalize_variable_name(statement.identifier.name)] = self.__angle_type(base_type)
             self.__classical_source_types[statement.identifier.name] = statement.type
             if isinstance(statement.type, ast.ArrayType):
                 # Resolve dimensions in declaration scope, before loop iterators
