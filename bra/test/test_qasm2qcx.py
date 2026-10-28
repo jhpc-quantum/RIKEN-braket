@@ -17144,6 +17144,26 @@ class AngleTrigonometricFoundationTests(unittest.TestCase):
         self.assertEqual(converter._QASM2QCXConverter__expression_kind, qasm2qcx.ExpressionKind.CONDITIONAL)
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller, result})
 
+    def test_empty_loops_skip_domains_but_validate_angle_function_arguments(self):
+        converter = self.converter('angle[4] a = pi / 2; uint[4] zero = 0; float out; '
+                                   'for int i in [1:0] { out = tan(a); out = sin(a / zero); }')
+        self.assertFalse(any('ANGLE_TRIG' in line or ' <- SIN ' in line or ' <- TAN ' in line for line in converter))
+        for expression in ('sin(missing)', 'cos(a, a)', 'tan(bit(0))', 'sin(1im)',
+                           'tan(angle[1 - 1](0.0))', 'sin(angle[width](0.0))'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('int width = 4; angle[4] a; float out; '
+                               f'for int i in [1:0] {{ out = {expression}; }}')
+
+    def test_function_results_are_float_in_runtime_validation(self):
+        for expression in ('sin(a) & 1', 'cos(a) % 2', '!tan(a)'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('angle[4] a; float out; '
+                               f'for int i in [1:0] {{ out = {expression}; }}')
+        converter = self.converter('angle[4] a = pi / 8; '
+                                   'array[float, 3] values = {sin(a), cos(a), tan(a)}; '
+                                   'complex z = sin(a); angle[4] b = cos(a);')
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
 
 class AngleBitFunctionFoundationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter

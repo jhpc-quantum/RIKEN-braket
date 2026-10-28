@@ -8,6 +8,7 @@ libm calls or the converter's quadrant reduction.
 """
 
 import argparse
+import cmath
 import decimal
 import functools
 import math
@@ -140,9 +141,10 @@ class BackendTests(unittest.TestCase):
         return lines
 
     def test_all_widths_axes_neighbors_octants_and_source_preservation(self):
+        random_source = random.Random(410)
         for width in range(1, qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH + 1):
             modulus = 1 << width
-            patterns = set()
+            patterns = set(range(modulus)) if width <= 6 else {random_source.randrange(modulus) for _ in range(8)}
             for axis in (0, modulus // 4, modulus // 2, 3 * modulus // 4):
                 patterns.update((axis + distance) % modulus for distance in (-2, -1, 0, 1, 2))
             patterns.update(octant * modulus // 8 for octant in range(8))
@@ -180,6 +182,67 @@ class BackendTests(unittest.TestCase):
                 self.check('const angle[4] A = 3 * pi / 8; angle[4] a = pi / 4; '
                            f'float out = {name}({expression});', (('out', False), ('a', False)),
                            (expected, 2))
+            self.check(f'angle a = pi / 2; float out = {name}(a / uint(2));',
+                       (('out', False),), (reference(name, 1, 3),))
+
+    def test_nested_calls_destinations_and_angle_operations(self):
+        sine, cosine, tangent = (reference(name, 3, 4) for name in ('sin', 'cos', 'tan'))
+        total = sine + cosine + tangent
+        exponential = cmath.exp(complex(sine, cosine))
+        self.check('angle[4] a = 3 * pi / 8; '
+                   'float out = sin(a) + cos(a) + tan(a); '
+                   'float nested = sin(cos(a)); complex z = exp(sin(a) + cos(a) * 1im);',
+                   (('out', False), ('nested', False), ('z', True), ('a', False)),
+                   (total, math.sin(cosine), exponential.real, exponential.imag, 3))
+        self.check('angle[4] a = 3 * pi / 8; int i = 1; array[float, 2] values = {7, 0}; '
+                   'values[i] = sin(a) + cos(a); values[i] += tan(a); '
+                   'float out = values[i]; float saved = values[0];',
+                   (('out', False), ('saved', False), ('i', False), ('a', False)), (total, 7, 1, 3))
+        # Resizing and angle-valued functions must keep their width metadata;
+        # float-valued trigonometric results must select the float overload.
+        self.check('angle[8] a = 3 * pi / 8; '
+                   'float resized = sin(angle[4](a)); '
+                   'float rotated = cos(rotr(angle[4](a), 1)); '
+                   'float shifted = tan(angle[4](a) << 1);',
+                   (('resized', False), ('rotated', False), ('shifted', False), ('a', False)),
+                   (sine, reference('cos', 9, 4), reference('tan', 6, 4), 48))
+
+    def test_conditions_runtime_loops_and_iterator_shadowing(self):
+        self.check('angle[4] a = 0.0; int count = 0; '
+                   'while (cos(a) > 0) { a += angle[4](pi / 4); count += 1; } '
+                   'if (sin(a) == 1) { count += 10; } else { count = -1; }',
+                   (('count', False), ('a', False)), (12, 4))
+        self.check('angle[4] a = 0.0; int total = 0; '
+                   'for int i in [int(sin(a)):int(cos(a)):3] { '
+                   'if (i == 1) { continue; } total += i; if (i == 2) { break; } } '
+                   'for int j in {int(tan(a)), int(cos(a))} { total += j; }',
+                   (('total', False),), (3,))
+        self.check('angle[4] a = pi / 2; array[float, 2] values = {0.5, 1}; float total = 0; '
+                   'for float a in values { total += sin(a); } total += sin(a);',
+                   (('total', False), ('a', False)), (math.sin(0.5) + math.sin(1.0) + 1, 4))
+
+    def test_skipped_branch_and_loop_bodies_do_not_evaluate_domains(self):
+        for call in ('out = tan(a);', 'out = sin(a / zero);', 'out = cos(angle[4](1e309));'):
+            for wrapper in ('if (flag) {{ {} }}', 'while (flag) {{ {} }}',
+                            'for int i in [first:last] {{ {} }}', 'for int i in [1:0] {{ {} }}'):
+                self.check('angle[4] a = pi / 2; uint[4] zero = 0; bool flag = false; '
+                           'int first = 2; int last = 1; float out = 7; ' + wrapper.format(call),
+                           (('out', False),), (7,))
+        for condition, expected in (('false && bool(sin(a / zero))', 0),
+                                    ('true || bool(cos(angle[4](1e309)))', 1)):
+            self.check('angle[4] a = pi / 2; uint[4] zero = 0; bool out = ' + condition + ';',
+                       (('out', False),), (expected,))
+
+    def test_gate_parameters_with_and_without_fusion(self):
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        for name in ('sin', 'cos', 'tan'):
+            theta, phi = reference(name, 3, 4), reference(name, 15, 4)
+            expected = (cmath.exp(-0.5j * phi) * math.cos(theta / 2),
+                        -1j * cmath.exp(0.5j * phi) * math.sin(theta / 2))
+            for fused in (False, True):
+                lines = self.program('include "stdgates.inc"; qubit q; angle[4] a = 3 * pi / 8; '
+                                     f'rx({name}(a)) q; rz({name}(angle[4](-pi / 8))) q;', fused=fused)
+                BackendAuditTests.check(self, lines, expected)
 
 
 if __name__ == '__main__':
