@@ -5616,7 +5616,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     ])
             self.__qcx_lines.extend([
                 f'LET {reduced} := :REAL:{residual}',
-                f'LET {reduced} *= {math.ldexp(math.tau, -angle_type.width)!r}',
+                # The power-of-two scale is exact in every REAL precision;
+                # native PI avoids limiting wider backends to host binary64.
+                f'LET {reduced} *= {math.ldexp(1.0, 1 - angle_type.width)!r}',
+                f'LET {reduced} *= :PI',
             ])
             name = expression.name.name
             if name == 'tan':

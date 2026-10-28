@@ -113,6 +113,7 @@ The converter currently covers:
   and producing zero for counts at least the angle width;
 - scalar angle `rotl`, `rotr`, and `popcount`, preserving rotation widths and
   returning native UINT population counts;
+- scalar angle `sin`, `cos`, and `tan`, returning floating-point values;
 - scalar angle parameters for `p`, `phase`, `u1`, `cp`, `cphase`, and `gphase`, including
   inverse/control modifiers and constant/runtime integer powers;
 - scalar built-in `exp`, `sqrt`, `log`, `sin`, `cos`, `tan`, `arcsin`, `arccos`,
@@ -226,8 +227,7 @@ names, widths, types, and read-only targets.
 This is not full angle support. Mixed angle/non-angle comparisons and bitwise
 operations, indexing, compound assignments other than `+=`, `-=`, `*=`,
 `/=`, `&=`, `|=`, `^=`, `<<=`, and `>>=`, angle arrays/iteration, numeric or bit casts from
-angles, and angle-typed trigonometric
-calls remain unsupported.
+angles remain unsupported.
 Use an angle comparison or `bool(a)` explicitly in a condition; a bare angle
 is not a Boolean condition.
 Angle-valued gate parameters are limited to the phase gates described below.
@@ -963,6 +963,7 @@ from the input types, never from the assignment destination:
 | `sin(x)` | `float` | `float` | `APPLY result <- SIN operand` |
 | `cos(x)` | `float` | `float` | `APPLY result <- COS operand` |
 | `tan(x)` | `float` | `float` | `APPLY result <- TAN operand` |
+| `sin(a)` / `cos(a)` / `tan(a)` | `angle[n]` or `angle` | `float` | Integer quadrant reduction, exact-axis handling, then existing `SIN`/`COS`/`TAN` calls |
 | `arcsin(x)` | `float` | `float` | `APPLY result <- ARCSIN operand` |
 | `arccos(x)` | `float` | `float` | `APPLY result <- ARCCOS operand` |
 | `arctan(x)` | `float` | `float` | `APPLY result <- ARCTAN operand` |
@@ -1051,16 +1052,16 @@ Other `REAL` representations reject subnormal inputs explicitly; normal
 positive inputs remain supported. Arithmetic that has already flushed an
 argument to zero is not repaired by `log`.
 
-`sin`, `cos`, and `tan` currently accept only real-valued arguments, interpreted
-in radians. Complex arguments are rejected, even with a zero imaginary part
-or a complex assignment destination. `angle`-typed arguments remain
-unsupported. Constant expressions use Python's `math.sin`, `math.cos`, and
+`sin`, `cos`, and `tan` accept both real-valued arguments in radians and
+scalar angle arguments, returning `float` in either case. Complex arguments
+are rejected, even with a zero imaginary part or a complex assignment destination.
+For real-valued arguments, constant expressions use Python's `math.sin`, `math.cos`, and
 `math.tan`; executable calls, including literal arguments, use native bra
 `SIN`, `COS`, and `TAN`. Both paths reject nonfinite inputs and nonfinite
 results. Invalid evaluated constants fail conversion; executable failures
 occur only when reached, including in conditions and loop expressions.
 
-For exact zero, `sin` and `tan` preserve its sign and `cos` returns positive
+For exact real zero, `sin` and `tan` preserve its sign and `cos` returns positive
 one. Subnormal arithmetic follows the host or backend floating-point
 environment and may flush to zero. Native calls use the C library at the
 configured precision, without preliminary angle reduction or changes to
@@ -1069,6 +1070,29 @@ valid, subject to library accuracy. Values near zeros and tangent poles are
 not snapped: an approximation of π/2 is not an exact pole, so its large
 finite tangent is accepted. Constant and runtime results can differ because
 their precisions and floating-point environments can differ.
+
+For an `angle[n]` argument with stored pattern `bits`, these functions evaluate
+the quantized angle `2*pi*bits/2^n`. Unsized `angle` uses native UINT width.
+The original float used to initialize an angle is not recovered. Both constant
+and runtime paths first reduce the pattern to a quadrant and a small signed
+residual using exact integer arithmetic. Only that residual is converted to
+radians, avoiding cancellation near axes and tangent poles. Runtime arguments
+are captured once, and their source storage is preserved. Existing QCX math
+functions evaluate the reduced argument using bra's configured REAL precision;
+the radians conversion uses native `:PI` and an exact power-of-two scale.
+Constant evaluation uses Python's floating-point precision.
+
+At exact quadrantal angles, sine and cosine return exact `0`, `1`, or `-1`.
+All exact-axis zero results, including tangent at zero and π, are positive zero.
+Tangent at exactly π/2 or 3π/2 is an error, determined from the stored bits.
+For example, `tan(angle[4](pi/2 + 1e-12))` fails when evaluated because the
+conversion rounds onto a pole. Adjacent representable angles remain valid;
+there is no tolerance-based pole snapping. These exact-axis and pole rules
+are converter numerical policies. A failed constant call is a conversion error;
+an executable call, even with a constant angle argument, checks poles only
+when reached using QCX `ASSERT`. Skipped branches, short-circuit operands,
+and empty loops suppress evaluation while still validating names, arity,
+types, and widths. General angle-to-float casts remain unsupported.
 
 `arcsin`, `arccos`, and `arctan` accept real-valued arguments and return
 principal `float` values in radians, not `angle` values. Complex arguments
@@ -1348,6 +1372,21 @@ const float SHIFT = cos(0.5);
 float x = 0.5;
 rx(sin(x)) q;
 rz(SHIFT + tan(x)) q;
+```
+
+Angle arguments also work in gate parameters. Here `a` stores exactly `3*pi/8`;
+the constant cosine returns zero, and both executable calls return floats:
+
+<!-- angle-trigonometric-function-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit q;
+const angle[4] QUARTER = pi / 2;
+const float SHIFT = cos(QUARTER);  // Exactly zero.
+angle[4] a = 3 * pi / 8;
+rx(sin(a)) q;
+rz(SHIFT + tan(-a)) q;
 ```
 
 This example combines a constant inverse cosine with runtime inverse sine
@@ -4577,7 +4616,7 @@ The current prototype does not reliably support:
   `uint / angle`, `angle /= angle`, mixed angle/non-angle comparisons and bitwise
   operations, compound operators other than `+=`/`-=`/`*=`/`/=`/`&=`/`|=`/`^=`/`<<=`/`>>=`,
   indexing, arrays/iteration,
-  numeric or bit casts from angles, angle-typed trigonometric arguments, angle-valued gates outside
+  numeric or bit casts from angles, angle-valued gates outside
   `p`/`phase`/`u1`/`cp`/`cphase`/`gphase`; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
 
@@ -4757,6 +4796,18 @@ preservation, fusion, and the trigonometric example above. Without `--bra`,
 its two reference tests require only the standard library. Native tests also
 check all three precisions against a separately compiled non-fast-math
 library oracle and verify destination preservation and unchanged control modes.
+
+`bra/test/qasm2qcx_angle_trigonometric_numerical.py` checks constant evaluation
+against independent high-precision Decimal series over the full represented
+angle, using Machin-formula π without the converter's quadrant reduction.
+With `--bra`, it audits exact storage patterns at every angle width, exhaustive
+small widths, axes and adjacent patterns, octants, deterministic random patterns,
+and source preservation. Integration checks cover executable constants, nested
+calls, resizing, rotations, arrays, conditions, loops, iterator shadowing,
+reached/skipped errors, gate parameters, fusion, and the angle example above.
+Without `--bra`, it runs the converter constant-reference checks. Unit tests
+also cover overload selection, skipped validation, temporary ownership, and
+the continued rejection of general angle-to-float casts.
 
 `bra/test/qasm2qcx_inverse_trigonometric_numerical.py` checks constant,
 executable literal, and variable calls against independent Decimal square-root
@@ -5266,6 +5317,7 @@ python3 bra/test/qasm2qcx_angle_global_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_sqrt_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_log_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_trigonometric_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_angle_trigonometric_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_inverse_trigonometric_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_rounding_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_mod_numerical.py --bra bra/bin/bra
