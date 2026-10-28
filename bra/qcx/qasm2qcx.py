@@ -370,11 +370,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         'mod': (_BuiltinFunctionSignature((ValueType.INT, ValueType.INT), ValueType.INT, integer_remainder=True),
                 _BuiltinFunctionSignature((ValueType.FLOAT, ValueType.FLOAT), ValueType.FLOAT, qcx_function='MOD')),
         'popcount': (_BuiltinFunctionSignature((ValueType.BIT_REGISTER,), ValueType.UINT, population_count=True),
-                     _BuiltinFunctionSignature((ValueType.UINT,), ValueType.UINT, population_count=True)),
+                     _BuiltinFunctionSignature((ValueType.UINT,), ValueType.UINT, population_count=True),
+                     _BuiltinFunctionSignature((ValueType.ANGLE,), ValueType.UINT, population_count=True)),
         'rotl': (_BuiltinFunctionSignature((ValueType.BIT_REGISTER, ValueType.INT), ValueType.BIT_REGISTER, rotation=True),
-                 _BuiltinFunctionSignature((ValueType.UINT, ValueType.INT), ValueType.UINT, rotation=True)),
+                 _BuiltinFunctionSignature((ValueType.UINT, ValueType.INT), ValueType.UINT, rotation=True),
+                 _BuiltinFunctionSignature((ValueType.ANGLE, ValueType.INT), ValueType.ANGLE, rotation=True)),
         'rotr': (_BuiltinFunctionSignature((ValueType.BIT_REGISTER, ValueType.INT), ValueType.BIT_REGISTER, rotation=True),
-                 _BuiltinFunctionSignature((ValueType.UINT, ValueType.INT), ValueType.UINT, rotation=True)),
+                 _BuiltinFunctionSignature((ValueType.UINT, ValueType.INT), ValueType.UINT, rotation=True),
+                 _BuiltinFunctionSignature((ValueType.ANGLE, ValueType.INT), ValueType.ANGLE, rotation=True)),
         'real': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='REAL'),),
         'imag': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='IMAG'),),
     }
@@ -4163,8 +4166,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 source_runtime = self.__register_expression_runtime(argument, iterators)
             else:
                 source_type, uint_type, source_runtime = self.__integer_operand_info(argument, iterators)
-                if source_type != ValueType.UINT or uint_type is None or not uint_type.is_sized:
-                    raise InvalidFunctionCallException(f'Function {name} requires bit[n] or sized uint[n]')
+                if source_type == ValueType.ANGLE:
+                    self.__angle_operand_info(argument, iterators)
+                elif source_type != ValueType.UINT or uint_type is None or not uint_type.is_sized:
+                    raise InvalidFunctionCallException(f'Function {name} requires bit[n], sized uint[n], or angle')
             distance_type, distance_runtime = self.__loop_expression_info(distance, iterators)
             signature = self.__resolve_builtin_function(name, (source_type, distance_type))
             self.__validate_bitwise_indices(distance, iterators)
@@ -4174,9 +4179,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             width = self.__bit_register_expression_width(argument, iterators)
             if width is None:
                 source_type, uint_type, runtime = self.__integer_operand_info(argument, iterators)
+                if source_type == ValueType.ANGLE:
+                    self.__angle_operand_info(argument, iterators)
+                    return self.__resolve_builtin_function(name, (ValueType.ANGLE,)), runtime
                 if source_type != ValueType.UINT or uint_type is None or not uint_type.is_sized:
                     raise InvalidFunctionCallException(
-                        'Function popcount requires a bit-register operand or sized uint[n]')
+                        'Function popcount requires a bit-register operand, sized uint[n], or angle')
                 return self.__resolve_builtin_function(name, (ValueType.UINT,)), runtime
             if width > self.QCX_UINT_MAX:
                 raise InvalidFunctionCallException('Function popcount operand width exceeds QCX UINT range')
@@ -5456,6 +5464,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def visit_FunctionCall(self, expression: ast.FunctionCall) -> None:
         signature, runtime = self.__function_call_info(expression)
+        if (signature.rotation or signature.population_count) and signature.operand_types[0] == ValueType.ANGLE:
+            self.__visit_angle_bit_function(expression, signature, runtime)
+            return
         if signature.rotation:
             self.__visit_rotation(expression, signature, runtime)
             return
@@ -5499,6 +5510,40 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if self.__evaluate_constant:
                 result = self.__fold_builtin_function(expression.name.name, signature, tuple(operands))
             self.__value, self.__value_type, self.__value_kind = result, signature.result_type, ValueKind.LITERAL
+        except Exception:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            raise
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
+    def __visit_angle_bit_function(
+            self, expression: ast.FunctionCall, signature: _BuiltinFunctionSignature, runtime: bool) -> None:
+        if self.__expression_kind != ExpressionKind.CONST_ARITHMETIC:
+            raise UnsupportedOpenQASMError('runtime angle bit functions')
+        if runtime:
+            raise NoConstantExpressionException
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        try:
+            argument = expression.arguments[0]
+            _, angle_type, _ = self.__angle_operand_info(argument)
+            self.visit(argument)
+            if self.__value_kind != ValueKind.LITERAL:
+                raise NoConstantExpressionException
+            bits = int(self.__value) & angle_type.mask if self.__evaluate_constant else 0
+            if signature.rotation:
+                distance = self.__constant_rotation_distance(expression.arguments[1])
+                value = (self.__fold_rotation(bits, angle_type.width, distance, expression.name.name)
+                         if self.__evaluate_constant else 0)
+                self.__angle_expression_types[id(expression)] = (expression, angle_type)
+            else:
+                value = bits.bit_count() if self.__evaluate_constant else 0
+                self.__uint_expression_types[id(expression)] = (
+                    expression, _UnsignedIntegerType(self.QCX_UINT_WIDTH, False))
+            self.__value, self.__value_type, self.__value_kind = value, signature.result_type, ValueKind.LITERAL
         except Exception:
             (self.__expression_kind, self.__value, self.__value_type,
              self.__value_kind, self.__evaluate_constant) = previous
@@ -6237,6 +6282,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # Shared, non-evaluating inference for arithmetic and skipped bodies.
         # Recurse through arithmetic and bitwise nodes, rather than re-analyzing both
         # subtrees separately for value types, widths, and runtime dependence.
+        if isinstance(expression, ast.FunctionCall) and expression.name.name in ('rotl', 'rotr'):
+            signature, runtime = self.__function_call_info(expression, iterators)
+            angle_type = (self.__angle_operand_info(expression.arguments[0], iterators)[1]
+                          if signature.result_type == ValueType.ANGLE else None)
+            return signature.result_type, angle_type, runtime
         if (isinstance(expression, ast.BinaryExpression) and expression.op.name in ('<<', '>>')
                 and self.__expression_mentions_angle(expression)):
             info = self.__angle_shift_info(expression, iterators)
@@ -6570,7 +6620,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __angle_expression_type(self, expression: ast.Expression) -> _AngleType | None:
         if isinstance(expression, ast.Identifier):
             return self.__identifier_angle_type(expression.name)
-        if isinstance(expression, (ast.BinaryExpression, ast.UnaryExpression)):
+        if (isinstance(expression, (ast.BinaryExpression, ast.UnaryExpression))
+                or isinstance(expression, ast.FunctionCall) and expression.name.name in ('rotl', 'rotr')):
             # A loop iterator can shadow an angle name between uses of the
             # same AST. Never reuse compound metadata from a previous binding.
             return (self.__angle_operand_info(expression)[1]
