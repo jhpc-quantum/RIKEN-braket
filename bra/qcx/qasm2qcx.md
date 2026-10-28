@@ -114,6 +114,8 @@ The converter currently covers:
 - scalar angle `rotl`, `rotr`, and `popcount`, preserving rotation widths and
   returning native UINT population counts;
 - scalar angle `sin`, `cos`, and `tan`, returning floating-point values;
+- explicit same-width casts between scalar angles and bit-register expressions,
+  preserving their exact stored bit patterns;
 - scalar angle parameters for `p`, `phase`, `u1`, `cp`, `cphase`, and `gphase`, including
   inverse/control modifiers and constant/runtime integer powers;
 - scalar built-in `exp`, `sqrt`, `log`, `sin`, `cos`, `tan`, `arcsin`, `arccos`,
@@ -170,7 +172,8 @@ angle as an initializer. Mutable scalar angles support `=` assignment and
 `/=` require a UINT RHS with matching effective width.
 Shift assignments `<<=` and `>>=` accept INT or UINT counts without promoting
 the destination angle's width.
-Explicit casts use `angle[n](value)` or `angle(value)`. Integer, Boolean, bit,
+Explicit casts use `angle[n](value)` or `angle(value)`. Matching-width bit-register
+casts are also supported as described below. Integer, Boolean, scalar-bit,
 and complex inputs are not accepted directly; use `float(...)` first when an
 existing numeric conversion is appropriate. Constants require constant inputs,
 are read-only, and allocate no runtime storage. Mutable angles use QCX `UINT`
@@ -183,6 +186,7 @@ implicitly usable as integers.
 | `angle[n]` to `angle[m]`, `m > n` | Left-shift the stored bits by `m - n`, preserving the represented angle |
 | `angle[n]` to `angle[m]`, `m < n` | Right-shift by `n - m`, truncating the discarded low bits rather than rounding |
 | `bool(value)` for an angle | False exactly when all stored angle bits are zero |
+| Explicit `bit[n]` to `angle[n]`, or `angle[n]` to `bit[n]` | Copy the stored pattern exactly, without quantization or rescaling |
 
 Float conversion uses the exact ratio of the stored input and stored full-turn
 value, scales it by `2^n`, and rounds once. Negative inputs wrap naturally;
@@ -226,11 +230,61 @@ names, widths, types, and read-only targets.
 
 This is not full angle support. Mixed angle/non-angle comparisons and bitwise
 operations, indexing, compound assignments other than `+=`, `-=`, `*=`,
-`/=`, `&=`, `|=`, `^=`, `<<=`, and `>>=`, angle arrays/iteration, numeric or bit casts from
+`/=`, `&=`, `|=`, `^=`, `<<=`, and `>>=`, angle arrays/iteration, and numeric casts from
 angles remain unsupported.
 Use an angle comparison or `bool(a)` explicitly in a condition; a bare angle
 is not a Boolean condition.
 Angle-valued gate parameters are limited to the phase gates described below.
+
+#### Casts between angles and bit registers
+
+`angle[n](bits)` and `bit[n](a)` copy the stored pattern between a bit-register
+expression and a scalar angle. The effective widths must be equal. Unsized
+`angle(bits)` uses native UINT width, so its source register must have that width.
+Cast widths must be positive compile-time integers; the angle width limit
+`[1, W]` applies in both directions. A mismatched width is an error rather than
+an implicit resize. To resize an angle before extracting its bits, write an
+explicit angle conversion, for example `bit[8](angle[8](a))`.
+
+These casts follow the OpenQASM rules for
+[casting from angle](https://openqasm.com/language/types.html#casting-from-angle)
+and [casting from bit](https://openqasm.com/language/types.html#casting-from-bit).
+Bit index zero is the least significant bit. At width `n`, the high bit has
+weight π and bit zero has weight `2*pi/2^n`. For example, `"1000"` becomes
+an `angle[4]` representing π, while `"0110"` becomes `3*pi/4`. No floating-point
+conversion occurs, and round trips preserve every bit, including at native width.
+
+Both constant and executable expressions are supported. Register sources can
+be bit strings, named registers, supported static selections, or supported
+register bitwise, shift, and rotation expressions. Angle sources can use
+supported angle expressions. Register results work in register initializers,
+assignments, static selection destinations, bitwise operations, equality
+comparisons, and register functions. A register cast does not enable scalar
+arithmetic or general numeric casts. Indexing a cast result directly remains
+unsupported; assign it to a named register first. Scalar `bit` and `bit[1]`
+remain distinct; these casts require the register form.
+
+Sources are evaluated once and preserved. Runtime lowering packs or extracts
+bits using existing QCX UINT operations and private temporaries. It computes
+the full result before writing a destination, including overlapping selections.
+Operand domain errors occur only when evaluated, so skipped branches,
+short-circuit operands, and empty loops suppress them while still validating
+names, types, widths, and selection bounds. Constants require constant sources;
+there are no implicit conversions between angles and registers.
+
+<!-- angle-bit-cast-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit q;
+const angle[4] HALF_TURN = pi;
+const bit[4] HALF_BITS = bit[4](HALF_TURN);  // "1000".
+bit[4] bits = "0110";
+angle[4] a = angle[4](bits);               // Exactly 3*pi/4.
+bit[4] copied = bit[4](a);                 // "0110"; bits is unchanged.
+h q;
+p(angle[4](copied)) q;
+```
 
 #### Scalar angle arithmetic
 
@@ -2581,8 +2635,11 @@ expressions, preserving short-circuit evaluation. These rules follow the
 supported subset of the
 [OpenQASM casting rules](https://openqasm.com/language/types.html#casting-specifics).
 
-Whole-register casts, including `bool(register)` when `register` is a `bit[1]`
-register, and `bit[n](...)` casts are not yet supported. Complex-to-Boolean casts,
+Whole-register Boolean casts, including `bool(register)` when `register` is a
+`bit[1]` register, remain unsupported. The supported `bit[n](angle)` and
+`angle[n](register)` casts are described under
+[casts between angles and bit registers](#casts-between-angles-and-bit-registers).
+Complex-to-Boolean casts,
 Boolean arithmetic, and mixed Boolean/numeric comparisons remain unsupported;
 explicitly cast Boolean values
 to a numeric type before using them in these operations. Boolean array elements
@@ -4036,7 +4093,7 @@ depend on a runtime variable or an enclosing runtime iterator. Elements must
 have integer type: scalar `int`, `uint`, supported integer arithmetic,
 and supported explicit integer casts are accepted. Floating-point, Boolean,
 and scalar bit values require integer casts; statically or runtime-indexed
-bit-register elements may also be cast. Whole-register casts and runtime complex-to-`int`
+bit-register elements may also be cast. Whole-register numeric casts and runtime complex-to-`int`
 casts remain unsupported here; explicit complex-to-`uint` casts use the real
 component with native range checks. Existing constant numeric casts retain
 their behavior. Captured UINT elements use checked conversion to QCX `INT`;
@@ -4604,7 +4661,8 @@ The current prototype does not reliably support:
 - runtime qubit indices, dynamic register ranges or discrete sets, ranges with
   omitted bounds, or multidimensional indexing;
 - classical arrays beyond the one-dimensional `int`, `uint`, `float`, `bool`, and
-  `complex` subsets above, whole-register casts, complex-to-Boolean casts,
+  `complex` subsets above, whole-register casts other than the same-width
+  angle/bit-register conversions above, complex-to-Boolean casts,
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
 - scalar-bit shifts and runtime-dependent register selections,
@@ -4616,7 +4674,7 @@ The current prototype does not reliably support:
   `uint / angle`, `angle /= angle`, mixed angle/non-angle comparisons and bitwise
   operations, compound operators other than `+=`/`-=`/`*=`/`/=`/`&=`/`|=`/`^=`/`<<=`/`>>=`,
   indexing, arrays/iteration,
-  numeric or bit casts from angles, angle-valued gates outside
+  numeric casts from angles, angle-valued gates outside
   `p`/`phase`/`u1`/`cp`/`cphase`/`gphase`; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
 
@@ -4719,6 +4777,18 @@ runtime popcount exponents, negative controls, global phase, zero qubits, and
 fusion. Both angle bit-function examples above are executed. Unit tests also
 check once-only capture, temporary cleanup, invalid signatures on skipped paths,
 and metadata when a reused expression changes between angle and UINT bindings.
+Run with `--bra /path/to/bra`, including a UBSan build.
+
+`bra/test/qasm2qcx_angle_bit_cast_numerical.py` verifies exact patterns and
+individual little-endian bits, without floating-point reference conversions.
+It covers all angle widths, exhaustive small widths, native-width boundaries,
+deterministic random patterns, nested round trips, source preservation,
+overlapping destinations, register expressions, static selections, loops,
+iterator shadowing, measurement sources, and reached/skipped operand errors.
+Phase-gate and trigonometric parameters are checked with and without fusion,
+including the documented example above. Unit tests additionally check constant
+evaluation, width/type rejection, empty-body validation, once-only capture,
+temporary ownership and cleanup, and CLI errors without partial output.
 Run with `--bra /path/to/bra`, including a UBSan build.
 
 `bra/test/qasm2qcx_angle_phase_numerical.py` compares whole diagonal phase
@@ -5312,6 +5382,7 @@ python3 bra/test/integer_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_math_function_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_angle_bit_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_global_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_sqrt_numerical.py --bra bra/bin/bra

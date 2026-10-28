@@ -908,7 +908,7 @@ class ScalarAngleConversionTests(unittest.TestCase):
         converter = self.converter('''const bool A = false && bool(angle[4](1e309));
             const bool B = true || bool(angle[4](1.0 / 0.0));''')
         self.assertEqual(converter._QASM2QCXConverter__const_bool_variable_values_map, {'A': 0, 'B': 1})
-        for expression in ('angle[4](true)', 'angle[4]("0101")', 'angle[4](MISSING)'):
+        for expression in ('angle[4](true)', 'angle[4]("010")', 'angle[4](MISSING)'):
             with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter('const bool A = false && bool(' + expression + ');')
 
@@ -17025,6 +17025,230 @@ class AngleMultiplicativeFoundationTests(unittest.TestCase):
         converter.visit(self.expression('angle[4](0.1) * uint[4](2)'))
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables,
                          {caller, converter._QASM2QCXConverter__value})
+
+
+class AngleBitCastFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    seed_angle = ScalarAngleFoundationTests.seed_constant
+    expression = ScalarAngleArithmeticFoundationTests.expression
+
+    def test_exact_round_trips_at_every_width(self):
+        for width in range(1, qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH + 1):
+            modulus = 1 << width
+            patterns = (range(modulus) if width <= 6 else
+                        sorted({0, 1, modulus - 1, modulus // 2, modulus // 2 - 1,
+                                int('10' * ((width + 1) // 2), 2) & (modulus - 1)}))
+            source = []
+            for index, bits in enumerate(patterns):
+                source.append(f'const bit[{width}] B{index} = "{bits:0{width}b}"; '
+                              f'const angle[{width}] A{index} = angle[{width}](B{index}); '
+                              f'const bit[{width}] C{index} = bit[{width}](A{index}); '
+                              f'const angle[{width}] D{index} = angle[{width}](C{index});')
+            converter = self.converter(' '.join(source))
+            for index, bits in enumerate(patterns):
+                for name in (f'A{index}', f'D{index}'):
+                    self.assertEqual(converter._QASM2QCXConverter__const_angle_values[name].value, bits)
+                for name in (f'B{index}', f'C{index}'):
+                    self.assertEqual(converter._QASM2QCXConverter__const_bit_register_values[name],
+                                     qasm2qcx._ConstantBitRegister(width, bits))
+            self.assertEqual(list(converter), ['QUBITS 0'])
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_composition_uses_angle_and_register_semantics_on_each_side(self):
+        converter = self.converter('''const angle[4] A = angle[4]("0011");
+            const bit[4] B = bit[4](A + angle[4](pi / 8));
+            const angle[4] C = angle[4](rotr(B, 1));
+            const angle[4] D = angle[4](~bit[4](A));
+            const angle[4] E = angle[4]((bit[4](A) << 1) ^ "0101");
+            const angle[4] F = angle[4](bit[4](~A));
+            const bit[4] G = ~bit[4](A) | "0001";
+            const uint COUNT = popcount(bit[4](A));
+            const bool SAME = bit[4](A) == "0011";
+            const float SINE = sin(angle[4]("0100"));''')
+        for name, expected in (('A', 3), ('C', 2), ('D', 12), ('E', 3), ('F', 12)):
+            self.assertEqual(converter._QASM2QCXConverter__const_angle_values[name].value, expected)
+        self.assertEqual(converter._QASM2QCXConverter__const_bit_register_values['B'].value, 4)
+        self.assertEqual(converter._QASM2QCXConverter__const_bit_register_values['G'].value, 13)
+        self.assertEqual(converter._QASM2QCXConverter__const_uint_variable_name_values_map['COUNT'], [2])
+        self.assertEqual(converter._QASM2QCXConverter__const_bool_variable_values_map['SAME'], 1)
+        self.assertEqual(converter._QASM2QCXConverter__const_float_variable_name_values_map['SINE'], [1.0])
+
+    def test_static_selections_preserve_selected_bit_order(self):
+        converter = self.converter('''const bit[8] B = "11010110";
+            const angle[4] A = angle[4](B[{7, 0, 5, 1}]);
+            const bit[4] BACK = bit[4](A);
+            const angle[4] REPEATED = angle[4](B[{0, 0, 1, 1}]);
+            const angle[1] SINGLE = angle[1](B[7:7]);''')
+        self.assertEqual(converter._QASM2QCXConverter__const_angle_values['A'].value, 9)
+        self.assertEqual(converter._QASM2QCXConverter__const_bit_register_values['BACK'].value, 9)
+        self.assertEqual(converter._QASM2QCXConverter__const_angle_values['REPEATED'].value, 12)
+        self.assertEqual(converter._QASM2QCXConverter__const_angle_values['SINGLE'].value, 1)
+
+    def test_unsized_angle_uses_native_width_without_resizing_bit_patterns(self):
+        width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        converter = self.converter(f'''const bit[{width}] B = "{'1' * width}";
+            const angle A = angle(B); const bit[{width}] C = bit[{width}](A);
+            const angle[{width}] D = angle[{width}](C);''')
+        a = converter._QASM2QCXConverter__const_angle_values['A']
+        self.assertEqual(a.angle_type, qasm2qcx._AngleType(width, False))
+        self.assertEqual(a.value, (1 << width) - 1)
+        self.assertEqual(converter._QASM2QCXConverter__const_bit_register_values['C'].value, a.value)
+        self.assertEqual(converter._QASM2QCXConverter__const_angle_values['D'].angle_type,
+                         qasm2qcx._AngleType(width, True))
+
+    def test_mismatched_widths_and_scalar_bits_are_rejected(self):
+        for declaration in ('const angle[3] A = angle[3]("1000");',
+                            'const angle[5] A = angle[5]("1000");',
+                            'const angle A = angle("1000");',
+                            'const angle[4] A = pi; const bit[3] B = bit[3](A);',
+                            'const angle[4] A = pi; const bit[5] B = bit[5](A);',
+                            'const bit B = 1; const angle[1] A = angle[1](B);',
+                            'const angle[1] A = pi; const bit B = bit(A);'):
+            with self.subTest(declaration=declaration), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(declaration)
+
+    def test_cast_widths_are_constant_positive_and_not_iterator_dependent(self):
+        for expression in ('bit[1 - 1](A)', 'bit[-1](A)', 'bit[width](A)', 'bit[true](A)',
+                           'angle[width]("1000")', 'angle[1 - 1]("1000")'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('int width = 4; const angle[4] A = pi; '
+                               f'const bool C = false && ({expression} == {expression});')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.converter('angle[4] a; for int n in [4:4] { '
+                           'if (bit[n](a) == "1000") { } }')
+
+    def test_mutable_sources_do_not_become_constant_through_casts(self):
+        for source in ('angle[4] a; const bit[4] B = bit[4](a);',
+                       'bit[4] b; const angle[4] A = angle[4](b);',
+                       'bit[8] b; const angle[4] A = angle[4](b[0:3]);'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.NoConstantExpressionException):
+                self.converter(source)
+
+    def test_no_implicit_numeric_casts_or_implicit_angle_register_conversions(self):
+        for source in ('const angle[4] A = pi; const int I = bit[4](A);',
+                       'const angle[4] A = pi; const float F = bit[4](A);',
+                       'const angle[4] A = pi; const uint U = uint(bit[4](A));',
+                       'const angle[4] A = "1000";',
+                       'const angle[4] A = pi; const bit[4] B = A;',
+                       'const angle[4] A = angle[4](8);'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(source)
+
+    def test_skipped_constant_casts_validate_without_evaluating_domains(self):
+        converter = self.converter('''const angle[4] A = pi; const uint[4] ZERO = 0;
+            const bool C = false && bool(angle[4](bit[4](A / ZERO)));
+            const bool D = true || (bit[4](angle[4](1e309)) == "0000");
+            const bool E = false && bool(angle[4]("1000" << -1));''')
+        self.assertEqual(converter._QASM2QCXConverter__const_bool_variable_values_map,
+                         {'C': 0, 'D': 1, 'E': 0})
+        for expression in ('bit[3](A) == "000"', 'angle[4]("000") == A',
+                           'bit[4](MISSING) == "0000"', 'angle[4]("1000"[0:2]) == A'):
+            # Indexing an expression rather than a named register is outside
+            # the existing selection subset and must still fail when skipped.
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('const angle[4] A = pi; const bool C = false && (' + expression + ');')
+
+    def test_inference_does_not_evaluate_or_emit_and_respects_shadowing(self):
+        converter = self.converter('angle[4] a; bit[4] b;')
+        fields = ('__value', '__value_type', '__value_kind', '__expression_kind', '__evaluate_constant')
+        previous = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        lines = list(converter._QASM2QCXConverter__qcx_lines)
+        for source, expected in (('bit[4](a)', qasm2qcx.ValueType.BIT_REGISTER),
+                                 ('angle[4](b)', qasm2qcx.ValueType.ANGLE)):
+            self.assertEqual(converter._QASM2QCXConverter__loop_expression_info(self.expression(source)),
+                             (expected, True))
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            converter._QASM2QCXConverter__loop_expression_info(self.expression('bit[4](a)'),
+                                                              {'a': qasm2qcx.ValueType.INT})
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], previous)
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
+
+    def test_failed_constant_cast_restores_state(self):
+        converter = self.converter('')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONST_ARITHMETIC
+        fields = ('__value', '__value_type', '__value_kind', '__expression_kind', '__evaluate_constant')
+        previous = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            converter.visit(self.expression('angle[4]("1000" << -1)'))
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], previous)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+
+
+
+
+class AngleBitCastRuntimeTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    expression = ScalarAngleArithmeticFoundationTests.expression
+
+    def test_nested_cast_captures_source_once_and_retains_result_storage(self):
+        converter = self.converter('angle[4] a = pi / 4;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONDITIONAL
+        expression = self.expression('angle[4](bit[4](a))')
+        source = expression.argument.argument
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            converter.visit(expression)
+        self.assertEqual(sum(call.args[0] is source for call in visit.call_args_list), 1)
+        result = converter._QASM2QCXConverter__value
+        self.assertNotEqual(result, caller)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller, result})
+        self.assertEqual(converter._QASM2QCXConverter__expression_kind, qasm2qcx.ExpressionKind.CONDITIONAL)
+        self.assertEqual(converter._QASM2QCXConverter__value_type, qasm2qcx.ValueType.ANGLE)
+        self.assertEqual(converter._QASM2QCXConverter__value_kind, qasm2qcx.ValueKind.TEMPORARY)
+        self.assertEqual(converter._QASM2QCXConverter__angle_expression_type(expression), qasm2qcx._AngleType(4, True))
+
+    def test_bit_result_context_releases_its_storage_after_consumer_failure(self):
+        converter = self.converter('angle[4] a = pi / 4;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        fields = ('__value', '__value_type', '__value_kind', '__expression_kind', '__evaluate_constant')
+        previous = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        with self.assertRaisesRegex(RuntimeError, 'consumer failed'):
+            with converter._QASM2QCXConverter__bit_register_expression_value(self.expression('bit[4](a)')) as bits:
+                self.assertEqual(len(bits), 4)
+                consumer = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+                raise RuntimeError('consumer failed')
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller, consumer})
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], previous)
+
+    def test_runtime_register_assignments_use_cast_expressions_and_release_scratch(self):
+        converter = self.converter('bit[4] bits = "1001"; angle[4] a = angle[4](bits); '
+                                   'bits = bit[4](a); bits ^= bit[4](a); '
+                                   'bits[{3, 2, 1, 0}] = bit[4](a); '
+                                   'a = angle[4](bits | bit[4](a));')
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        # Exact bit copying never invokes float-to-angle quantization.
+        self.assertFalse(any(' <- ANGLEBITS ' in line for line in converter))
+
+    def test_empty_loops_validate_register_cast_sources_as_registers(self):
+        converter = self.converter('bit[4] bits; angle[4] a; int count = -1; '
+                                   'for int i in [1:0] { a = angle[4](bits << count); '
+                                   'a = angle[4](~bits ^ "0011"); '
+                                   'bits = bit[4](a / uint[4](0)); }')
+        lines = list(converter)
+        self.assertFalse(any('ASSERT ' in line or ' <<= ' in line or ' /= ' in line for line in lines))
+        for expression in ('angle[3](bits)', 'angle[4](bits << true)',
+                           'angle[4](bits ^ "001")', 'angle[4](bits << missing)',
+                           'angle[4](bits[{0, 1, 2, 5}])', 'angle[4](bits << values[true])'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('bit[4] bits; angle[4] a; array[int, 1] values = {0}; '
+                               f'for int i in [1:0] {{ a = {expression}; }}')
+
+    def test_scalar_iterator_shadowing_cannot_use_outer_angle_or_register_metadata(self):
+        for source in ('angle[4] a; for int a in [1:0] { if (bit[4](a) == "0000") { } }',
+                       'bit[4] b; angle[4] a; for int b in [1:0] { a = angle[4](b); }'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(source)
+
+    def test_cli_invalid_constant_cast_emits_no_partial_qcx(self):
+        source = 'OPENQASM 3; qubit q; const angle[4] A = pi; const bit[3] B = bit[3](A);'
+        with patch('builtins.open', mock_open(read_data=source)):
+            with patch('sys.stdout') as stdout:
+                with self.assertRaisesRegex(SystemExit, 'equal widths'):
+                    qasm2qcx.main(['invalid.qasm'])
+        self.assertFalse(stdout.write.called)
 
 
 class AngleTrigonometricFoundationTests(unittest.TestCase):
