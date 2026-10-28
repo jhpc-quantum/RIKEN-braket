@@ -9711,6 +9711,60 @@ class AngleArrayAccessTests(unittest.TestCase):
                 self.converter('qubit q; array[angle[4], 2] a; ' + statement)
 
 
+class AngleArrayIntegrationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    expression = staticmethod(AngleArrayAccessTests.expression)
+
+    def test_inference_preserves_state_and_respects_iterator_types(self):
+        converter = self.converter('const int W = 4; array[angle[W], 2] a; int i;')
+        fields = ('__value', '__value_type', '__value_kind', '__expression_kind', '__evaluate_constant')
+        before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        lines = list(converter._QASM2QCXConverter__qcx_lines)
+        for source, expected in (('a[i]', qasm2qcx.ValueType.ANGLE), ('sin(a[i])', qasm2qcx.ValueType.FLOAT),
+                                 ('a[i] / a[0]', qasm2qcx.ValueType.UINT), ('popcount(a[i])', qasm2qcx.ValueType.UINT),
+                                 ('bit[4](a[i])', qasm2qcx.ValueType.BIT_REGISTER)):
+            with self.subTest(source=source):
+                self.assertEqual(converter._QASM2QCXConverter__loop_expression_info(self.expression(source)), (expected, True))
+        for bindings in ({'a': qasm2qcx.ValueType.INT}, {'i': qasm2qcx.ValueType.BOOL}):
+            with self.assertRaises(qasm2qcx.QASM2QCXError):
+                converter._QASM2QCXConverter__angle_operand_info(self.expression('a[i]'), bindings)
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
+        self.assertEqual(converter._QASM2QCXConverter__captured_angle_array_values, {})
+
+    def test_empty_bodies_validate_types_but_do_not_evaluate_domains(self):
+        converter = self.converter('array[angle[4], 1] a = {angle[4]("0100")}; int i = 2; uint[4] zero = 0; '
+                                   'float out; for int j in [1:0] { '
+                                   'a[i] /= zero; a[i] <<= -1; out = tan(a[i]); }')
+        lines = list(converter)
+        self.assertFalse(any(line.startswith('ASSERT ') or ' /= ' in line or ' <- TAN ' in line for line in lines))
+        for statement in ('a[true] += angle[4](pi);', 'a[0] *= uint[8](1);',
+                           'a[0] ^= uint[4](1);', 'a[0] = sin(missing);',
+                           'a[0] %= uint[4](2);', 'a[0] /= a[0];',
+                           'if (bit[3](a[0]) == "000") {}'):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('array[angle[4], 1] a; for int i in [1:0] { ' + statement + ' }')
+
+    def test_short_circuiting_does_not_suppress_invalid_types_or_names(self):
+        for expression in ('bool(a[true])', 'sin(a[missing]) > 0',
+                           'bit[3](a[0]) == "000"', 'bool(a[0] * uint[8](1))'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('array[angle[4], 1] a; bool out = false && (' + expression + ');')
+
+    def test_angle_array_elements_do_not_become_constants_when_skipped(self):
+        for declaration in ('const angle[4] C = a[0];', 'const uint C = popcount(a[0]);',
+                            'const bool C = false && bool(a[0]);'):
+            with self.subTest(declaration=declaration), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('array[angle[4], 1] a = {pi}; ' + declaration)
+
+    def test_slices_whole_array_operations_and_bit_indexing_remain_unsupported(self):
+        for statement in ('a = a;', 'a[0:1] = a[0:1];', 'bit b = a[0][0];',
+                           'a[0][0] = true;', 'for angle[4] x in a {}'):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('array[angle[4], 2] a = {pi, pi}; ' + statement)
+
+
 class UnsignedArrayDeclarationTests(unittest.TestCase):
     @staticmethod
     def converter(source: str):

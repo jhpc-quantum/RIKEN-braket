@@ -6,6 +6,7 @@ Inspect exact UINT storage without requiring source-level element access.
 """
 
 import argparse
+import cmath
 from fractions import Fraction
 import math
 import pathlib
@@ -21,6 +22,7 @@ class BackendTests(unittest.TestCase):
     setUp = functions.BackendTests.setUp
     execute = functions.BackendTests.execute
     program = functions.BackendTests.program
+    check = functions.BackendTests.check
 
     def check_initializers(self, source, arrays, expected, scalars=(), scalar_expected=()):
         program = self.module.openqasm3.parser.parse('OPENQASM 3; ' + source)
@@ -135,6 +137,87 @@ class BackendTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0, (index, statement))
                 self.assertNotIn('runtime error:', result.stderr)
                 type(self).checked += 1
+
+    def test_bit_register_casts_rotations_and_population_counts(self):
+        self.check_initializers('array[angle[4], 2] a = {angle[4]("0011"), angle[4]("1001")}; int i = -1; '
+                                'bit[4] bits = bit[4](a[i]); '
+                                'array[angle[8], 2] wide = {angle[8](angle[4](bits)), -a[0]}; '
+                                'a[0] = angle[4](bits); uint count = popcount(a[i]); '
+                                'a[i] = rotl(a[i], -1); a[0] = rotr(a[0], 1);',
+                                (('a', 2), ('wide', 2), ('bits', 4)), (12, 12, 144, 208, 1, 0, 0, 1), ('count',), (2,))
+        self.check_initializers('array[angle[4], 2] a = {angle[4]("0011"), angle[4]("1100")}; '
+                                'a[popcount(a[0]) - uint(1)] ^= a[0]; '
+                                'uint ratio = a[1] / a[0]; bool ordered = a[1] > a[0];',
+                                (('a', 2),), (3, 15), ('ratio', 'ordered'), (5, 1))
+
+    def test_trigonometric_calls_nested_functions_and_float_destinations(self):
+        from qasm2qcx_angle_trigonometric_numerical import reference
+        sine, cosine, tangent = (reference(name, 3, 4) for name in ('sin', 'cos', 'tan'))
+        self.check('array[angle[4], 1] a = {angle[4]("0011")}; int i = -1; '
+                   'array[float, 3] out = {sin(a[i]), cos(a[0]), tan(a[i])}; '
+                   'out[0] += cos(sin(a[i])); '
+                   'float x = out[0]; float y = out[1]; float z = out[2]; '
+                   'a[0] = arccos(0.0); float exact = sin(a[i]);',
+                   (('x', False), ('y', False), ('z', False), ('exact', False)),
+                   (sine + math.cos(sine), cosine, tangent, 1))
+
+    def test_conditions_loops_and_dimension_constant_shadowing(self):
+        self.check_initializers('const int W = 4; const int N = 2; '
+                                'array[angle[W], N] a = {angle[4]("0000"), pi}; int count = 0; '
+                                'while (a[0] < a[1]) { a[0] += angle[4]("0001"); '
+                                'if (a[0] == angle[4]("0011")) { continue; } count += 1; } '
+                                'for int W in [0:1] { a[W] ^= angle[4]("0001"); } '
+                                'for int N in [0:1] { a[N] <<= 1; }',
+                                (('a', 2),), (2, 2), ('count',), (7,))
+        self.check_initializers('array[angle[4], 2] a = {angle[4]("0011"), angle[4]("0101")}; '
+                                'int start = 0; int stop = 1; uint total = 0; '
+                                'for int i in [start:stop] { total += popcount(a[i]); '
+                                'for int j in {i, 1 - i} { a[j] += angle[4]("0001"); } }',
+                                (('a', 2),), (5, 7), ('total',), (4,))
+
+    def test_array_names_shadowed_by_scalar_iterators(self):
+        self.check_initializers('array[angle[4], 1] a = {pi}; array[float, 2] values = {0.0, pi / 2}; '
+                                'angle[4] out; uint total = 0; '
+                                'for float a in values { out = angle[4](a); total += popcount(out); } '
+                                'out = a[0];', (('a', 1),), (8,), ('out', 'total'), (8, 1))
+
+    def test_skipped_body_domains_and_reached_operand_errors(self):
+        for statement in ('a[i] /= zero;', 'a[i] <<= negative;',
+                          'a[i] = angle[4](1e309);', 'a[i] = tan(a[i]);'):
+            for wrapper in ('if (flag) {{ {} }}', 'while (flag) {{ {} }}',
+                            'for int j in [first:last] {{ {} }}', 'for int j in [1:0] {{ {} }}'):
+                self.check_initializers('array[angle[4], 1] a = {pi / 2}; int i = 0; uint[4] zero = 0; '
+                                        'int negative = -1; bool flag = false; int first = 2; int last = 1; '
+                                        + wrapper.format(statement), (('a', 1),), (4,))
+            result = self.execute(self.program('array[angle[4], 1] a = {pi / 2}; int i = 0; '
+                                               'uint[4] zero = 0; int negative = -1; ' + statement))
+            self.assertNotEqual(result.returncode, 0, statement)
+            self.assertNotIn('runtime error:', result.stderr)
+            type(self).checked += 1
+        self.check_initializers('array[angle[4], 1] a = {pi / 2}; int bad = 2; uint[4] zero = 0; '
+                                'bool x = false && bool(a[bad]); bool y = true || bool(a[0] / zero);',
+                                (('a', 1),), (4,), ('x', 'y'), (0, 1))
+
+    def test_phase_gates_modifiers_and_fusion(self):
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        phase = 3 * math.pi / 4
+        source = ('include "stdgates.inc"; qubit[2] q; array[angle[4], 2] phases = '
+                  '{angle[4]("0110"), angle[4]("1000")}; int i = 0; h q; ')
+        for operation, expected in (
+                ('p(phases[i]) q[0];', tuple(cmath.exp(1j * phase) / 2 if index & 1 else 0.5 for index in range(4))),
+                ('pow(0.5) @ p(phases[i]) q[0];', tuple(cmath.exp(0.5j * phase) / 2 if index & 1 else 0.5 for index in range(4))),
+                ('pow(popcount(phases[i])) @ p(phases[i]) q[0];', tuple(cmath.exp(2j * phase) / 2 if index & 1 else 0.5 for index in range(4))),
+                ('ctrl @ p(phases[i]) q[0], q[1];', (0.5, 0.5, 0.5, cmath.exp(1j * phase) / 2)),
+                ('negctrl @ gphase(phases[i]) q[0];', tuple(0.5 if index & 1 else cmath.exp(1j * phase) / 2 for index in range(4)))):
+            for fused in (False, True):
+                # Later mutation must not alter parameters captured by gates
+                # queued in a fusion block.
+                lines = self.program(source + operation + 'phases[i] = phases[1];', fused=fused)
+                BackendAuditTests.check(self, lines, expected)
+        for fused in (False, True):
+            lines = self.program('include "stdgates.inc"; qubit q; array[angle[4], 1] phases = {pi / 2}; '
+                                 'int i = 0; rx(sin(phases[i])) q;', fused=fused)
+            BackendAuditTests.check(self, lines, (math.cos(0.5), -1j * math.sin(0.5)))
 
 
 if __name__ == '__main__':
