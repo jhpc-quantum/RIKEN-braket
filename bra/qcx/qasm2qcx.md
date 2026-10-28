@@ -111,6 +111,8 @@ The converter currently covers:
   assignments, with width promotion and angle result types;
 - scalar angle shifts (`<<`, `>>`, `<<=`, `>>=`), rejecting negative counts
   and producing zero for counts at least the angle width;
+- scalar angle `rotl`, `rotr`, and `popcount`, preserving rotation widths and
+  returning native UINT population counts;
 - scalar angle parameters for `p`, `phase`, `u1`, `cp`, `cphase`, and `gphase`, including
   inverse/control modifiers and constant/runtime integer powers;
 - scalar built-in `exp`, `sqrt`, `log`, `sin`, `cos`, `tan`, `arcsin`, `arccos`,
@@ -505,7 +507,8 @@ An all-zero operand does not suppress evaluation of the other operand. Reached
 conversion, access, and division errors still fail; skipped branches,
 short-circuited expressions, and empty loops do not execute those checks.
 Names, types, widths, operators, and read-only targets are validated even on
-skipped paths. Angle rotations and `popcount` remain separate work.
+skipped paths. [Angle rotations and population counts](#scalar-angle-rotations-and-population-counts)
+are described below.
 
 <!-- angle-bitwise-example -->
 ```qasm
@@ -577,7 +580,8 @@ are documented converter choices. The specification describes unsigned counts
 and discarding shifted-out bits but does not explicitly settle the boundary
 cases in that section. Our policy matches bit-register shifts; scalar INT/UINT
 shifts retain their existing requirement that the count be below the operand's
-width. Rotations have separate count semantics and are not added for angles here.
+width. [Angle rotations](#scalar-angle-rotations-and-population-counts) have
+separate signed-distance semantics.
 
 Constant folding checks for oversized counts before shifting, avoiding enormous
 intermediate integers. Runtime lowering captures the angle before the count,
@@ -627,6 +631,92 @@ h q;
 p(a) q[0];
 if ((a >> 1) < a) {
   negctrl @ pow(0.5) @ gphase(a) q[2]; // Principal phase -7*pi/16 when q[2] is zero.
+}
+pragma riken_braket.amplitudes
+```
+
+#### Scalar angle rotations and population counts
+
+`rotl`, `rotr`, and `popcount` accept constant and runtime scalar angle
+expressions, operating on their stored bits. Both `angle[n]` and unsized `angle`
+are supported; unsized angles use their resolved native UINT width.
+
+| Function | Result |
+| --- | --- |
+| `rotl(a, distance)` | Angle with `a`'s width and sizedness; rotate toward higher bit indices |
+| `rotr(a, distance)` | Angle with `a`'s width and sizedness; rotate toward lower bit indices |
+| `popcount(a)` | Unsized native UINT containing the number of set bits within `a`'s width |
+
+The [OpenQASM classical-instructions section](https://openqasm.com/language/classical.html#classical-bits-and-registers)
+includes angles among the operands for these operations, but the
+[built-in function table](https://openqasm.com/language/types.html#built-in-constant-expression-functions)
+omits angle overloads. The signatures above document this converter's
+interpretation. Existing UINT and bit-register overloads retain their rules,
+including the explicit-width requirement for UINT inputs.
+
+Rotation distances use the existing INT overload and input promotions from
+BOOL and UINT. Conversion to native INT is checked before normalization:
+UINT values above `INT_MAX` fail even if their remainder would be small or the
+angle has no set bits. Distances are reduced modulo the angle width; negative
+distances reverse direction, and zero or a multiple of the width preserves the
+value. Unlike shifts, a distance at least the width does not produce zero.
+`INT_MIN` is valid: normalization does not negate or take the absolute value of
+the signed input. Scalar-bit, floating-point, complex, and angle distances need
+an appropriate explicit conversion where supported.
+
+For four-bit angle bits `1001`, `rotl(a, 1)` produces `0011`, `rotr(a, 1)`
+produces `1100`, and `popcount(a)` produces ordinary integer `2`. Counting does
+not return an angle or narrow the count to the input width. Its UINT result
+works with existing arithmetic, comparisons, powers, casts, assignments,
+and loop expressions. Cast it explicitly when a sized UINT input is needed by
+another bit function, for example `rotl(uint[4](popcount(a)), 1)`.
+
+Runtime lowering reuses existing UINT operations on private copies. Operands
+are evaluated once in source order, with sources preserved until the complete
+result is ready. A zero-distance guard avoids shifting by the width. Nested
+calls, self-assignment, repeated execution, iterator shadowing, and supported
+angle arithmetic, comparisons, shifts, bitwise operations, and phase gates are
+supported. No new bra instruction is required.
+
+Zero bits or an identity rotation do not suppress operand errors. Reached
+runtime conversions, accesses, and arithmetic stay on their execution paths;
+short-circuit operands and empty loops can skip them. Names, arity, types, and
+widths are validated even on skipped paths. Evaluated invalid constant calls
+fail conversion.
+
+<!-- angle-bit-function-example -->
+```qasm
+OPENQASM 3.0;
+const angle[4] A = 9 * pi / 8;        // Bits: 1001.
+const angle[4] LEFT = rotl(A, 1);     // Bits: 0011.
+const angle[4] RIGHT = rotr(A, 1);    // Bits: 1100.
+const uint ONES = popcount(A);       // Integer 2.
+const angle NATIVE = pi;
+const uint NATIVE_COUNT = popcount(NATIVE); // Integer 1.
+angle[4] a = A;
+int distance = -1;
+angle[4] left = rotl(a, distance);    // Bits: 1100; negative reverses direction.
+angle[4] right = rotr(a, distance);   // Bits: 0011.
+uint count = popcount(a);            // Integer 2; a remains 1001.
+a = rotl(a, int(count));             // Bits: 0110.
+bool same = popcount(a) == count;    // true.
+uint[4] turned_count = rotl(uint[4](popcount(a)), 1); // Integer 4.
+bool skipped = false && bool(rotl(a, uint(-1))); // No UINT-to-INT error.
+```
+
+<!-- angle-bit-function-phase-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit[3] q;
+angle[4] a = 9 * pi / 8;
+uint count = popcount(a);
+a = rotl(a, int(count));             // a represents 3*pi/4.
+h q;
+p(a) q[0];
+pow(popcount(a)) @ p(a) q[1];        // Integer power 2 gives phase 3*pi/2.
+if (popcount(a) == count) {
+  negctrl @ inv @ pow(0.5) @ gphase(a) q[2]; // Phase -3*pi/8 when q[2] is zero.
 }
 pragma riken_braket.amplitudes
 ```
@@ -882,8 +972,10 @@ from the input types, never from the assignment destination:
 | `mod(x, y)` | `float`, `float` | `float` | `APPLY result <- MOD dividend divisor` |
 | `popcount(bits)` | `bit[n]` | `uint` | Unsigned accumulation over register bits |
 | `popcount(value)` | `uint[n]` | `uint` | Low-bit accumulation and right shifts of a private UINT copy |
+| `popcount(value)` | `angle[n]` or `angle` | `uint` | Count the stored bits within the effective angle width |
 | `rotl(value, distance)` / `rotr(value, distance)` | `bit[n]`, `int` | `bit[n]` | Snapshot and circular indexed copy |
 | `rotl(value, distance)` / `rotr(value, distance)` | `uint[n]`, `int` | `uint[n]` | Guarded native shifts, bitwise OR, and width masking |
+| `rotl(value, distance)` / `rotr(value, distance)` | `angle[n]` or `angle`, `int` | Input angle type | Reuse unsigned rotation lowering while preserving angle width and sizedness |
 | `real(z)` | `complex` | `float` | `LET result := :REAL:operand` |
 | `imag(z)` | `complex` | `float` | `LET result := :IMAG:operand` |
 
@@ -1059,7 +1151,7 @@ arithmetic that has already flushed an operand cannot be repaired. Declared
 floating-point widths, compiler options, and floating-point control modes remain
 unchanged. Floating-point `%` and `%=` remain unsupported.
 
-`popcount(value)` counts the set (`1`) bits of a bit register or an explicitly
+`popcount(value)` counts the set (`1`) bits of an angle, bit register, or an explicitly
 sized `uint[n]` without modifying it. It returns native, unspecified-width
 `uint`, independently of the input width and destination type.
 
@@ -1071,7 +1163,7 @@ Booleans, and whole classical arrays are not accepted; use a one-position range
 such as `bits[0:0]` when a one-bit register selection is intended.
 
 Constant calls accept literal or named constant-register expressions and constant
-sized-UINT expressions, using exact bit counting. Mutable named bit registers are
+sized-UINT or angle expressions, using exact bit counting. Mutable named bit registers are
 runtime values even if their initializers are literals. Runtime register calls use a `UINT`
 temporary initialized to the literal-bit subtotal, then add each live bit with
 an explicit unsigned cast. Registers wider than native `UINT` are supported
@@ -1092,6 +1184,10 @@ the desired input width. Likewise, mixing a sized UINT with a native integer
 literal can produce an unspecified-width result: `popcount(u + 0)` is rejected,
 while `popcount(uint[6](u + 0))` and `popcount(u + uint[6](0))` accept a six-bit
 input when `u` is `uint[6]`.
+
+Angle inputs may be explicitly sized or unsized and use the same private-copy
+counting algorithm. Their results are unsized native UINT. See
+[scalar angle rotations and population counts](#scalar-angle-rotations-and-population-counts).
 
 Runtime unsigned counting evaluates the input once, snapshots it into private
 UINT storage, and repeatedly adds its low bit to a native UINT accumulator before
@@ -1130,9 +1226,10 @@ indices, wrapping displaced bits around to the other end. Both preserve the
 input type and width, independently of the destination. Supported inputs are
 bit-string literals, whole `bit[n]` registers (including `bit[1]`), static
 range/set selections, nested register bitwise/shift/rotation expressions, and
-explicitly sized `uint[n]` expressions within the supported native width.
-Scalar `bit`, signed integers, unspecified-width `uint`, whole classical arrays,
-and `angle` inputs are not supported. An indexed UINT array element is a scalar
+explicitly sized `uint[n]` expressions within the supported native width, and
+scalar `angle[n]` or `angle` expressions.
+Scalar `bit`, signed integers, unspecified-width `uint`, and whole classical arrays
+are not supported. An indexed UINT array element is a scalar
 input; a one-position bit range is a register input, unlike a scalar bit element.
 
 The distance parameter is `int`, with the usual built-in input promotions from
@@ -1152,7 +1249,7 @@ self-assignment and partially overlapping or reordered destinations. Selection
 order defines bit significance, and repeated source positions remain distinct
 positions in the selected value.
 
-Unsigned rotations use existing QCX shifts and bitwise OR, masking narrow
+Unsigned and angle rotations use existing QCX shifts and bitwise OR, masking narrow
 results before subsequent operations. A zero-distance guard avoids shifting by
 the width. Register rotations do not pack into integers, so registers wider
 than native UINT are supported. Runtime register distances require a register
@@ -4479,7 +4576,7 @@ The current prototype does not reliably support:
 - angle-by-angle multiplication, scaling by types other than same-width UINT,
   `uint / angle`, `angle /= angle`, mixed angle/non-angle comparisons and bitwise
   operations, compound operators other than `+=`/`-=`/`*=`/`/=`/`&=`/`|=`/`^=`/`<<=`/`>>=`,
-  angle rotations and `popcount`, indexing, arrays/iteration,
+  indexing, arrays/iteration,
   numeric or bit casts from angles, angle-typed trigonometric arguments, angle-valued gates outside
   `p`/`phase`/`u1`/`cp`/`cphase`/`gphase`; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
@@ -4570,6 +4667,19 @@ matrices check modifiers, negative controls, global phase, zero qubits, and
 fusion. Both shift examples above are executed. Unit tests additionally cover
 constant evaluation, invalid types and widths on skipped paths, once-only
 capture, declaration hoisting, and cleanup with caller-owned temporaries.
+Run with `--bra /path/to/bra`, including a UBSan build.
+
+`bra/test/qasm2qcx_angle_bit_function_numerical.py` checks angle rotations and
+population counts at every supported width with an independent bit-string
+oracle, including exhaustive four-bit runtime rotations. It covers signed
+distance boundaries, checked UINT-to-INT conversions before normalization,
+sizedness, nested functions, self-assignment, arithmetic, casts, comparisons,
+and repeated execution. Iterator shadowing, measurement-controlled updates,
+reached/skipped operand errors, and full phase matrices are checked, including
+runtime popcount exponents, negative controls, global phase, zero qubits, and
+fusion. Both angle bit-function examples above are executed. Unit tests also
+check once-only capture, temporary cleanup, invalid signatures on skipped paths,
+and metadata when a reused expression changes between angle and UINT bindings.
 Run with `--bra /path/to/bra`, including a UBSan build.
 
 `bra/test/qasm2qcx_angle_phase_numerical.py` compares whole diagonal phase

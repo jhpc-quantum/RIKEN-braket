@@ -151,7 +151,7 @@ class ScalarAngleFoundationTests(unittest.TestCase):
     def test_angle_storage_does_not_enable_implicit_numeric_or_gate_uses(self):
         for expression in ('a + a', '-a', '~a', 'a << 1', 'a == uint[4](0)', 'a && a',
                            'int(a)', 'uint(a)', 'float(a)', 'complex(a)',
-                           'exp(a)', 'sin(a)', 'popcount(a)'):
+                           'exp(a)', 'sin(a)', 'popcount(a, 1)'):
             with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter('angle[4] a; float out = ' + expression + ';')
         for target in ('int', 'uint', 'float', 'complex', 'bool', 'bit'):
@@ -17027,6 +17027,332 @@ class AngleMultiplicativeFoundationTests(unittest.TestCase):
                          {caller, converter._QASM2QCXConverter__value})
 
 
+class AngleBitFunctionFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    seed_angle = ScalarAngleFoundationTests.seed_constant
+    expression = ScalarAngleArithmeticFoundationTests.expression
+
+    def fold(self, converter, expression, result_type=qasm2qcx.ValueType.ANGLE):
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONST_ARITHMETIC
+        converter.visit(expression)
+        self.assertEqual((converter._QASM2QCXConverter__value_type, converter._QASM2QCXConverter__value_kind),
+                         (result_type, qasm2qcx.ValueKind.LITERAL))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        return converter._QASM2QCXConverter__value
+
+    @staticmethod
+    def reference(bits, width, distance, name):
+        pattern = f'{bits:0{width}b}'
+        count = (distance if name == 'rotl' else -distance) % width
+        return int(pattern[count:] + pattern[:count], 2)
+
+    def test_public_constants_and_composition_preserve_angle_and_uint_results(self):
+        converter = self.converter('''const angle[4] A = 9 * pi / 8; const angle[8] B = pi / 128;
+            const angle[4] LEFT = rotl(A, 1); const angle[4] RIGHT = rotr(A, 1);
+            const angle[4] BACK = rotr(rotl(A, 100), 100);
+            const angle[8] BEFORE = rotl(A, 1) | B; const angle[8] AFTER = rotl(A | B, 1);
+            const angle[4] NESTED = ~rotl(A, 1) >> 1;
+            const uint COUNT = popcount(A); const uint NESTED_COUNT = popcount(rotl(A, 1));
+            const uint[8] RATIO = rotl(A, 1) / B;
+            const bool GREATER = rotr(A, 1) > A;
+            const uint[4] SMALL_COUNT = uint[4](popcount(A));
+            const uint[4] INTEGER_ROTATION = rotl(uint[4](popcount(A)), 1);''')
+        values = converter._QASM2QCXConverter__const_angle_values
+        for name, bits in (('LEFT', 3), ('RIGHT', 12), ('BACK', 9), ('BEFORE', 49), ('AFTER', 35), ('NESTED', 6)):
+            self.assertEqual(values[name].value, bits, name)
+        integers = converter._QASM2QCXConverter__const_uint_variable_name_values_map
+        for name, value in (('COUNT', 2), ('NESTED_COUNT', 2), ('RATIO', 48), ('SMALL_COUNT', 2), ('INTEGER_ROTATION', 4)):
+            self.assertEqual(integers[name], [value], name)
+        self.assertEqual(converter._QASM2QCXConverter__const_bool_variable_values_map['GREATER'], 1)
+        self.assertEqual(list(converter), ['QUBITS 0'])
+
+    def test_all_widths_patterns_and_native_distance_boundaries(self):
+        converter = self.converter('')
+        native = qasm2qcx.QASM2QCXConverter
+        for width in range(1, native.QCX_UINT_WIDTH + 1):
+            mask = (1 << width) - 1
+            for bits in sorted({0, 1, 1 << (width - 1), mask, mask // 3}):
+                self.seed_angle(converter, 'A', width, bits)
+                count_expression = self.expression('popcount(A)')
+                self.assertEqual(self.fold(converter, count_expression, qasm2qcx.ValueType.UINT), bin(bits).count('1'))
+                self.assertEqual(converter._QASM2QCXConverter__integer_operand_info(count_expression, None),
+                                 (qasm2qcx.ValueType.UINT, qasm2qcx._UnsignedIntegerType(native.QCX_UINT_WIDTH, False), False))
+                for distance in sorted({0, 1, -1, width, -width, 3 * width + 1, native.QCX_INT_MIN, native.QCX_INT_MAX}):
+                    for name in ('rotl', 'rotr'):
+                        expression = self.expression(f'{name}(A, {distance})')
+                        self.assertEqual(self.fold(converter, expression), self.reference(bits, width, distance, name))
+                        self.assertEqual(converter._QASM2QCXConverter__angle_expression_type(expression), qasm2qcx._AngleType(width, True))
+
+    def test_exhaustive_four_bit_rotations_and_population_counts(self):
+        converter = self.converter('')
+        for bits in range(16):
+            self.seed_angle(converter, 'A', 4, bits)
+            self.assertEqual(self.fold(converter, self.expression('popcount(A)'), qasm2qcx.ValueType.UINT), bin(bits).count('1'))
+            for distance in range(-8, 9):
+                for name in ('rotl', 'rotr'):
+                    self.assertEqual(self.fold(converter, self.expression(f'{name}(A, {distance})')),
+                                     self.reference(bits, 4, distance, name))
+
+    def test_unsized_angles_remain_unsized_and_popcount_returns_native_uint(self):
+        converter = self.converter('const angle A = pi; const angle[4] B = pi;')
+        width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        for source, metadata in (('rotl(A, 1)', qasm2qcx._AngleType(width, False)),
+                                 ('rotr(A, uint[4](15))', qasm2qcx._AngleType(width, False)),
+                                 ('rotl(B, 31)', qasm2qcx._AngleType(4, True))):
+            expression = self.expression(source)
+            self.fold(converter, expression)
+            self.assertEqual(converter._QASM2QCXConverter__angle_expression_type(expression), metadata)
+        self.assertEqual(self.fold(converter, self.expression('popcount(~A)'), qasm2qcx.ValueType.UINT), width - 1)
+
+    def test_distance_promotions_and_checked_conversion_before_normalization(self):
+        converter = self.converter('const angle[4] A = 9 * pi / 8; const uint[4] U = 0; const int NEG = -1;')
+        for source, expected in (('rotl(A, true)', 3), ('rotr(A, false)', 9),
+                                 ('rotl(A, uint[4](-1))', 12), ('rotl(A, U + NEG)', 12)):
+            self.assertEqual(self.fold(converter, self.expression(source)), expected)
+        for bits in (0, 1):
+            self.seed_angle(converter, 'ONE', 1, bits)
+            for name in ('rotl', 'rotr'):
+                for distance in ('uint(-1)', str(qasm2qcx.QASM2QCXConverter.QCX_INT_MAX + 1)):
+                    with self.assertRaises(qasm2qcx.InvalidConstantFunctionException):
+                        self.fold(converter, self.expression(f'{name}(ONE, {distance})'))
+
+    def test_invalid_types_arities_names_and_widths_are_checked_when_skipped(self):
+        expressions = ('rotl(A)', 'rotr(A, 1, 2)', 'popcount()', 'popcount(A, 1)',
+                       'rotl(A, 0.5)', 'rotr(A, bit(0))', 'rotl(A, A)', 'rotl(A, 1im)',
+                       'rotl(A, MISSING)', 'popcount(MISSING)', 'popcount(angle[1 - 1](0.0))',
+                       'popcount(angle[width](0.0))', 'rotl(pi, 1)', 'popcount(1.0)',
+                       'rotl(popcount(A), 1)', 'popcount(popcount(A))')
+        for source in expressions:
+            for body in (f'const bool RESULT = bool({source});',
+                         f'const bool RESULT = false && bool({source});',
+                         f'for int i in [1:0] {{ if (bool({source})) {{ }} }}'):
+                with self.subTest(source=source, body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    self.converter('const angle[4] A = pi; int width = 4; ' + body)
+
+    def test_skipped_constant_calls_suppress_domains_but_reached_calls_fail(self):
+        converter = self.converter('''const angle[4] A = pi; const uint[4] ZERO = 0;
+            const bool LEFT = false && bool(rotl(A / ZERO, 1));
+            const bool RIGHT = true || bool(rotr(A, uint(-1)));
+            const bool INFINITE = false && bool(popcount(angle[4](1e309)));''')
+        self.assertEqual(converter._QASM2QCXConverter__const_bool_variable_values_map,
+                         {'LEFT': 0, 'RIGHT': 1, 'INFINITE': 0})
+        for source in ('rotl(A / ZERO, 1)', 'rotl(A, 1 / ZERO)', 'rotr(A, uint(-1))', 'popcount(angle[4](1e309))'):
+            with self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('const angle[4] A = pi; const uint[4] ZERO = 0; const bool RESULT = bool(' + source + ');')
+
+    def test_type_inference_is_non_evaluating_and_tracks_shadowed_bindings(self):
+        converter = self.converter('const angle[4] A = pi; angle[8] a; int distance = 1;')
+        fields = ('__value', '__value_type', '__value_kind', '__expression_kind', '__evaluate_constant')
+        before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        lines = list(converter._QASM2QCXConverter__qcx_lines)
+        for source, result in (('rotl(a, distance)', qasm2qcx.ValueType.ANGLE), ('popcount(a)', qasm2qcx.ValueType.UINT)):
+            signature, runtime = converter._QASM2QCXConverter__function_call_info(self.expression(source))
+            self.assertEqual((signature.result_type, runtime), (result, True))
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            converter._QASM2QCXConverter__function_call_info(self.expression('rotl(A, 1)'), {'A': qasm2qcx.ValueType.INT})
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
+        expression = self.expression('rotl(A, 1)')
+        self.fold(converter, expression)
+        self.assertEqual(converter._QASM2QCXConverter__angle_expression_type(expression), qasm2qcx._AngleType(4, True))
+        converter._QASM2QCXConverter__loop_bindings.append({'A': qasm2qcx._RuntimeIteratorBinding(
+            'ITERATOR', qasm2qcx.ValueType.UINT, qasm2qcx._UnsignedIntegerType(8, True))})
+        try:
+            self.assertIsNone(converter._QASM2QCXConverter__angle_expression_type(expression))
+        finally:
+            converter._QASM2QCXConverter__loop_bindings.pop()
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
+
+    def test_failed_constant_call_restores_state_and_preserves_callers(self):
+        converter = self.converter('const angle[4] A = pi;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONST_ARITHMETIC
+        fields = ('__value', '__value_type', '__value_kind', '__expression_kind', '__evaluate_constant')
+        before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        with self.assertRaises(qasm2qcx.InvalidConstantFunctionException):
+            converter.visit(self.expression('rotl(A, uint(-1))'))
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+
+    def test_executable_angle_bit_functions_have_distinct_result_types(self):
+        for source in ('angle[4] a; angle[4] b = rotl(a, 1);', 'angle[4] a; uint count = popcount(a);',
+                       'const angle[4] A = pi; angle[4] b = rotr(A, 1);'):
+            converter = self.converter(source)
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+
+class RuntimeAngleBitFunctionTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    expression = ScalarAngleArithmeticFoundationTests.expression
+    clean = RuntimeAngleArithmeticTests.clean
+
+    def test_rotation_metadata_is_angle_and_population_count_is_unsized_uint(self):
+        for declaration, metadata in (('angle[4] a;', qasm2qcx._AngleType(4, True)),
+                                      ('angle a;', qasm2qcx._AngleType(qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH, False))):
+            converter = self.converter(declaration)
+            for source in ('rotl(a, 1)', 'rotr(a, -1)', 'popcount(a)'):
+                expression = self.expression(source)
+                converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+                converter.visit(expression)
+                result = converter._QASM2QCXConverter__value
+                self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {result})
+                if source.startswith('popcount'):
+                    self.assertEqual(converter._QASM2QCXConverter__value_type, qasm2qcx.ValueType.UINT)
+                    self.assertEqual(converter._QASM2QCXConverter__uint_expression_type(expression),
+                                     qasm2qcx._UnsignedIntegerType(qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH, False))
+                else:
+                    self.assertEqual(converter._QASM2QCXConverter__value_type, qasm2qcx.ValueType.ANGLE)
+                    self.assertEqual(converter._QASM2QCXConverter__angle_expression_type(expression), metadata)
+                    self.assertIsNone(converter._QASM2QCXConverter__uint_expression_type(expression))
+                converter._QASM2QCXConverter__release_temporary_variable(result)
+
+    def test_unsigned_distance_conversion_precedes_normalization_and_zero_guard(self):
+        lines = list(self.clean('angle[4] a; uint distance = 1; angle[4] result = rotl(a, distance);'))
+        conversion = next(index for index, line in enumerate(lines) if ':INT:DISTANCE' in line)
+        normalization = next(index for index, line in enumerate(lines) if ' %= 4' in line)
+        guard = next(index for index, line in enumerate(lines) if line.endswith(' == 0'))
+        shift = next(index for index, line in enumerate(lines) if ' <<= ' in line)
+        self.assertLess(conversion, normalization)
+        self.assertLess(normalization, guard)
+        self.assertLess(guard, shift)
+        self.assertFalse(any(' *= -1' in line for line in lines))
+
+    def test_operands_are_captured_once_in_order_and_sources_preserved(self):
+        for source in ('rotl(a, distance)', 'popcount(a)'):
+            converter = self.converter('angle[4] a; int distance = 1;')
+            expression = self.expression(source)
+            converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+            start = len(converter._QASM2QCXConverter__qcx_lines)
+            with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+                converter.visit(expression)
+            visited = [call.args[0] for call in visit.call_args_list
+                       if any(call.args[0] is argument for argument in expression.arguments)]
+            self.assertEqual([id(node) for node in visited], [id(argument) for argument in expression.arguments])
+            lines = converter._QASM2QCXConverter__qcx_lines[start:]
+            name = converter._QASM2QCXConverter__capitalize_variable_name
+            self.assertEqual(sum(line.endswith(' := ' + name('a')) for line in lines), 1)
+            for source_name in ('a', 'distance'):
+                self.assertFalse(any(line.startswith(f'LET {name(source_name)} ') for line in lines))
+
+    def test_nested_calls_arithmetic_comparisons_arrays_and_reentry(self):
+        self.clean('''angle[4] a = pi; array[int, 2] distances = {1, -1}; int index = 1;
+            angle[8] result = rotr(rotl(a, distances[index]), int(popcount(a))) | a;
+            result = ~(rotl(a, 1) >> 1); bool order = rotl(a, 1) < a;
+            uint count = popcount(rotl(a, distances[index]));
+            float real_count = popcount(a);
+            angle[4] scaled = a * uint[4](popcount(a));
+            while (index < 2) { count = popcount(a); result = rotl(a, index); index += 1; }''')
+
+    def test_failed_emission_restores_context_and_preserves_callers_and_target(self):
+        converter = self.converter('angle[4] a; int distance = 1; angle[4] result; uint count;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        for statement_source, target in (('result = rotl(a, distance);', 'result'), ('count = popcount(a);', 'count')):
+            start = len(converter._QASM2QCXConverter__qcx_lines)
+            with patch.object(converter, '_QASM2QCXConverter__normalize_uint_storage', side_effect=RuntimeError('injected')):
+                with self.assertRaisesRegex(RuntimeError, 'injected'):
+                    converter.visit(self.program(statement_source).statements[0])
+            name = converter._QASM2QCXConverter__capitalize_variable_name(target)
+            self.assertFalse(any(line.startswith(f'LET {name} ') for line in converter._QASM2QCXConverter__qcx_lines[start:]))
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
+
+    def test_population_count_uint_result_does_not_enable_implicit_angle_conversion(self):
+        for source in ('uint[4] count = rotl(a, 1);', 'angle[4] result = popcount(a);',
+                       'angle[4] result = rotl(popcount(a), 1);', 'uint count = popcount(popcount(a));'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.clean('angle[4] a; ' + source)
+
+
+class AngleBitFunctionIntegrationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    expression = ScalarAngleArithmeticFoundationTests.expression
+    clean = RuntimeAngleArithmeticTests.clean
+
+    def test_documented_angle_bit_function_examples(self):
+        document = (CONVERTER_PATH.parent / 'qasm2qcx.md').read_text()
+        for marker in ('angle-bit-function-example', 'angle-bit-function-phase-example'):
+            examples = re.findall(r'<!-- ' + marker + r' -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+            self.assertEqual(len(examples), 1)
+            converter = self.clean(examples[0].removeprefix('OPENQASM 3.0;'))
+            if marker == 'angle-bit-function-example':
+                values = converter._QASM2QCXConverter__const_angle_values
+                self.assertEqual((values['LEFT'].value, values['RIGHT'].value), (3, 12))
+                integers = converter._QASM2QCXConverter__const_uint_variable_name_values_map
+                self.assertEqual((integers['ONES'], integers['NATIVE_COUNT']), ([2], [1]))
+            else:
+                self.assertEqual(list(converter)[-1], 'DO AMPLITUDES')
+
+    def test_self_assignment_and_population_count_numeric_contexts(self):
+        self.clean('''angle[4] a = 9 * pi / 8; uint count = popcount(a);
+            a = rotl(a, int(popcount(a))); a = rotr(a, int(popcount(a)));
+            count += popcount(~a); a ^= rotl(a, 1); a >>= popcount(a);
+            bool any = bool(popcount(a)); bit flag = popcount(a) != 0;
+            float real = popcount(a); array[uint, 2] counts = {0, 0}; int index = 1;
+            counts[index] = popcount(rotl(a, 1));''')
+
+    def test_reused_rotation_ast_tracks_angle_and_uint_iterator_bindings(self):
+        converter = self.converter('const angle[4] A = pi;')
+        expression = self.expression('rotl(A, 1)')
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        for shadowed in (False, True, False):
+            if shadowed:
+                converter._QASM2QCXConverter__loop_bindings.append({'A': qasm2qcx._RuntimeIteratorBinding(
+                    'ITERATOR', qasm2qcx.ValueType.UINT, qasm2qcx._UnsignedIntegerType(8, True))})
+            try:
+                converter.visit(expression)
+                if shadowed:
+                    self.assertEqual(converter._QASM2QCXConverter__value_type, qasm2qcx.ValueType.UINT)
+                    self.assertIsNone(converter._QASM2QCXConverter__angle_expression_type(expression))
+                    self.assertEqual(converter._QASM2QCXConverter__uint_expression_type(expression), qasm2qcx._UnsignedIntegerType(8, True))
+                else:
+                    self.assertEqual(converter._QASM2QCXConverter__value_type, qasm2qcx.ValueType.ANGLE)
+                    self.assertEqual(converter._QASM2QCXConverter__angle_expression_type(expression), qasm2qcx._AngleType(4, True))
+                    self.assertIsNone(converter._QASM2QCXConverter__uint_expression_type(expression))
+                converter._QASM2QCXConverter__release_temporary_variable(converter._QASM2QCXConverter__value)
+            finally:
+                if shadowed:
+                    converter._QASM2QCXConverter__loop_bindings.pop()
+
+    def test_reentry_hoisting_and_iterator_shadowing(self):
+        converter = self.clean('''angle[4] a = pi; int distance = 0; uint count = 0;
+            while (distance < 3) { a = rotl(a, distance); count += popcount(a); distance += 1; }''')
+        lines = list(converter)
+        first_jump = next(index for index, line in enumerate(lines) if line.startswith('JUMP'))
+        self.assertFalse(any(line.startswith('VAR ') for line in lines[first_jump:]))
+        self.clean('''const angle[4] A = pi; angle[4] a; uint count; uint[8] value;
+            array[float, 2] radians = {0.1, 0.2}; for float A in radians { a = rotl(angle[4](A), 1); }
+            array[uint[8], 2] integers = {1, 2}; for uint[8] A in integers { value = rotl(A, 1); count = popcount(A); }
+            a = rotl(A, 1); count = popcount(A);''')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.clean('const angle[4] A = pi; uint count; for int A in [1:0] { count = popcount(A); }')
+
+    def test_distance_failure_restores_value_state_and_keeps_caller_storage(self):
+        converter = self.converter('angle[4] a; uint distance = 1;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        fields = ('__value', '__value_type', '__value_kind', '__expression_kind', '__evaluate_constant')
+        previous = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        with patch.object(converter, '_QASM2QCXConverter__converted_operand', side_effect=RuntimeError('distance failure')):
+            with self.assertRaisesRegex(RuntimeError, 'distance failure'):
+                converter.visit(self.expression('rotl(a, distance)'))
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], previous)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+
+    def test_skipped_calls_validate_all_operands_and_constant_targets_stay_read_only(self):
+        for expression in ('rotl(a, MISSING)', 'popcount(angle[1 - 1](0.0))', 'rotr(a, 1.0)',
+                           'popcount(a, 1)', 'rotl(a)'):
+            for wrapper in ('bool result = false && bool({});', 'bool result = true || bool({});',
+                            'for int i in [1:0] {{ if (bool({})) {{ }} }}'):
+                with self.subTest(expression=expression, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    self.clean('angle[4] a; ' + wrapper.format(expression))
+        for wrapper in ('{}', 'if (false) {{ {} }}', 'for int i in [1:0] {{ {} }}'):
+            with self.assertRaisesRegex(qasm2qcx.InvalidDeclarationException, 'read-only'):
+                self.clean('const angle[4] A = pi; ' + wrapper.format('A = rotl(A, 1);'))
+
+
 class AngleShiftFoundationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)
@@ -17554,8 +17880,8 @@ class RuntimeAngleBitwiseTests(unittest.TestCase):
 
     def test_implicit_numeric_uses_and_deferred_features_stay_unsupported(self):
         for source in ('uint[4] out = a | a;', 'float out = ~a;', 'bool out = a & a;',
-                       'uint out = popcount(~a);', 'angle[4] out = ~a << true;',
-                       'angle[4] out = rotl(~a, 1);', 'angle[4] out = a | uint[4](0);'):
+                       'uint out = popcount(~a, 1);', 'angle[4] out = ~a << true;',
+                       'angle[4] out = rotl(~a, 1im);', 'angle[4] out = a | uint[4](0);'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.clean('angle[4] a; ' + source)
 
