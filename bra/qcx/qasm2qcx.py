@@ -498,6 +498,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__branch_index: int = 0
         self.__array_index: int = 0
         self.__register_shift_index: int = 0
+        self.__angle_shift_index: int = 0
         self.__rotation_index: int = 0
         self.__population_count_index: int = 0
         self.__power_index: int = 0
@@ -6297,37 +6298,71 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __visit_angle_shift(
             self, expression: ast.BinaryExpression, info: tuple[_AngleType, ValueType, bool]) -> None:
-        angle_type, _, runtime = info
-        if runtime:
-            if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
-                raise NoConstantExpressionException
-            raise UnsupportedOpenQASMError('runtime angle shifts')
+        angle_type, count_type, runtime = info
+        if runtime and self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+            raise NoConstantExpressionException
         previous_used = self.__used_temporary_variables.copy()
+        result = None
+        keep = False
         try:
             value = self.__angle_arithmetic_operand(expression.lhs, angle_type)
             self.visit(expression.rhs)
-            if not isinstance(value, int) or self.__value_kind != ValueKind.LITERAL:
-                raise UnsupportedOpenQASMError('runtime angle shifts')
-            count = int(self.__value)
-            if not self.__evaluate_constant:
-                result = 0
-            elif count < 0:
-                if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
-                    raise InvalidShiftException('Angle shift count must not be negative')
-                # Executable literal failures must stay skippable. Runtime
-                # lowering, including this case, is added in the next stage.
-                raise UnsupportedOpenQASMError('runtime angle shift with negative count')
-            elif count >= angle_type.width:
-                # Check before shifting: even an enormous count is bounded
-                # work and never creates a huge intermediate Python integer.
-                result = 0
+            if self.__value_kind == ValueKind.LITERAL:
+                count = int(self.__value)
+            elif self.__value_kind in (ValueKind.LVALUE, ValueKind.TEMPORARY):
+                count = self.__add_new_temporary_variable(
+                    count_type, self.__uint_expression_type(expression.rhs) if count_type == ValueType.UINT else None)
+                self.__qcx_lines.append(f'LET {count} := {self.__value}')
             else:
-                result = value << count if expression.op.name == '<<' else value >> count
-            self.__value, self.__value_type, self.__value_kind = result & angle_type.mask, ValueType.ANGLE, ValueKind.LITERAL
+                raise UninitializedValueException
+            if isinstance(count, int) and (not self.__evaluate_constant or count >= angle_type.width):
+                # Evaluate both operands first. An oversized count is bounded
+                # work, including huge literals that do not fit native storage.
+                self.__value, self.__value_kind = 0, ValueKind.LITERAL
+            elif isinstance(value, int) and isinstance(count, int) and count >= 0:
+                bits = value << count if expression.op.name == '<<' else value >> count
+                self.__value, self.__value_kind = bits & angle_type.mask, ValueKind.LITERAL
+            else:
+                if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                    if isinstance(count, int) and count < 0:
+                        raise InvalidShiftException('Angle shift count must not be negative')
+                    raise NoConstantExpressionException
+                result = self.__emit_angle_shift(value, count, count_type, angle_type, expression.op.name)
+                self.__value, self.__value_kind = result, ValueKind.TEMPORARY
+            self.__value_type = ValueType.ANGLE
             self.__angle_expression_types[id(expression)] = (expression, angle_type)
+            keep = result is not None
         finally:
             for temporary in self.__used_temporary_variables - previous_used:
-                self.__release_temporary_variable(temporary)
+                if not keep or temporary != result:
+                    self.__release_temporary_variable(temporary)
+
+    def __emit_angle_shift(
+            self, value: int | str, count: int | str, count_type: ValueType,
+            angle_type: _AngleType, operator: str) -> str:
+        storage = _UnsignedIntegerType(angle_type.width, True)
+        result = self.__add_new_temporary_variable(ValueType.UINT, storage)
+        if isinstance(count, int) and count >= 0:
+            self.__qcx_lines.extend([f'LET {result} := {value}', f'LET {result} {operator}= {count}'])
+        else:
+            if isinstance(count, int):
+                temporary = self.__add_new_temporary_variable(count_type)
+                self.__qcx_lines.append(f'LET {temporary} := {count}')
+                count = temporary
+            if count_type == ValueType.INT:
+                self.__qcx_lines.append(f'ASSERT {count} >= 0')
+            end = f'QASM2QCX_ANGLE_SHIFT_END_{self.__angle_shift_index}'
+            self.__angle_shift_index += 1
+            self.__qcx_lines.extend([
+                f'LET {result} := 0', f'JUMPIF {end} {count} >= {angle_type.width}',
+                f'LET {result} := {value}', f'LET {result} {operator}= {count}'])
+            # Guard before the native shift, including UINT_MAX counts. No
+            # signed conversion or narrowing of the count is required.
+            self.__normalize_uint_storage(result, storage)
+            self.__qcx_lines.append(f'@{end}')
+            return result
+        self.__normalize_uint_storage(result, storage)
+        return result
 
     def __visit_angle_bitwise(self, expression: ast.UnaryExpression | ast.BinaryExpression) -> None:
         _, angle_type, runtime = self.__angle_operand_info(expression)
