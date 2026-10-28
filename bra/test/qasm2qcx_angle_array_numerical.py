@@ -20,6 +20,7 @@ class BackendTests(unittest.TestCase):
     checked = 0
     setUp = functions.BackendTests.setUp
     execute = functions.BackendTests.execute
+    program = functions.BackendTests.program
 
     def check_initializers(self, source, arrays, expected, scalars=(), scalar_expected=()):
         program = self.module.openqasm3.parser.parse('OPENQASM 3; ' + source)
@@ -77,6 +78,63 @@ class BackendTests(unittest.TestCase):
         self.check_initializers('array[float, 2] radians = {0.0, pi}; int i = 1; '
                                 'array[angle[4], 2] a = {radians[i], radians[0]};',
                                 (('a', 2),), (8, 0), ('i',), (1,))
+
+    def test_reads_and_writes_at_every_width(self):
+        for width in range(1, self.module.QASM2QCXConverter.QCX_UINT_WIDTH + 1):
+            modulus = 1 << width
+            for bits in sorted({0, 1, modulus // 2, modulus - 1}):
+                negative = -bits % modulus
+                self.check_initializers(f'const angle[{width}] A = angle[{width}]("{bits:0{width}b}"); '
+                                        f'array[angle[{width}], 2] a = {{A, -A}}; int i = -1; '
+                                        f'angle[{width}] copied = a[i]; a[0] = copied; a[i] = A;',
+                                        (('a', 2),), (negative, bits), ('copied', 'i'), (negative, -1))
+
+    def test_compound_assignments_preserve_promoted_width_until_final_write(self):
+        native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
+        for width in range(1, native + 1):
+            mask = (1 << width) - 1
+            bits = ((1 << (width - 1)) | 1) & mask
+            wider = min(width + 1, native)
+            difference = wider - width
+            common_mask = (1 << wider) - 1
+            lhs, rhs = bits << difference, 1
+            for operator in ('+=', '-=', '&=', '|=', '^=', '*=', '/=', '<<=', '>>='):
+                if operator in ('*=', '/='):
+                    factor = (3 if operator == '*=' else 2) if width >= 2 else 1
+                    operand = f'uint[{width}]({factor})'
+                    expected = (bits * factor if operator == '*=' else bits // factor) & mask
+                elif operator in ('<<=', '>>='):
+                    count = width + 1 if operator == '<<=' else 1
+                    operand = str(count)
+                    expected = (bits << count if operator == '<<=' else bits >> count) & mask
+                else:
+                    operand = f'angle[{wider}]("{rhs:0{wider}b}")'
+                    result = {'+=': lhs + rhs, '-=': lhs - rhs, '&=': lhs & rhs,
+                              '|=': lhs | rhs, '^=': lhs ^ rhs}[operator]
+                    expected = (result & common_mask) >> difference
+                self.check_initializers(f'array[angle[{width}], 2] a = {{angle[{width}]("{bits:0{width}b}"), '
+                                        f'angle[{width}]("{bits:0{width}b}")}}; int i = -1; '
+                                        f'a[i] {operator} {operand};', (('a', 2),), (bits, expected))
+
+    def test_singleton_arrays_self_references_and_element_conversions(self):
+        self.check_initializers('array[angle[4], 1] a = {angle[4]("0011")}; int i = -1; '
+                                'a[i] += a[0]; angle[8] wide = a[i]; '
+                                'array[angle[8], 1] b = {wide}; b[0] -= angle[8]("00000001"); '
+                                'a[0] = b[0];', (('a', 1), ('b', 1)), (5, 95), ('wide',), (96,))
+        self.check_initializers('array[angle[4], 2] a = {angle[4]("0111"), angle[4]("1001")}; '
+                                'int i = 0; int j = 1; a[i] = a[j]; '
+                                'a[j] = a[i] + angle[4]("0001");', (('a', 2),), (9, 10))
+
+    def test_runtime_bounds_checks_and_skipped_access(self):
+        for index in (-3, 2, 2147483647):
+            self.check_initializers(f'array[angle[4], 2] a = {{pi, pi / 2}}; int i = {index}; '
+                                    'if (false) { a[i] += angle[4](pi / 8); }',
+                                    (('a', 2),), (8, 4))
+            for statement in ('angle[4] out = a[i];', 'a[i] = pi;', 'a[i] += angle[4](pi / 8);'):
+                result = self.execute(self.program(f'array[angle[4], 2] a = {{pi, pi}}; int i = {index}; ' + statement))
+                self.assertNotEqual(result.returncode, 0, (index, statement))
+                self.assertNotIn('runtime error:', result.stderr)
+                type(self).checked += 1
 
 
 if __name__ == '__main__':
