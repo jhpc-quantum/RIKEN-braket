@@ -2,7 +2,7 @@
 """Audit one-dimensional angle-array storage (#418).
 
 Pass --bra /path/to/bra for the default-double non-MPI backend audit.
-Inspect exact UINT storage without requiring source-level element access.
+Inspect exact UINT storage independently of source-level element reads.
 """
 
 import argparse
@@ -10,6 +10,7 @@ import cmath
 from fractions import Fraction
 import math
 import pathlib
+import re
 import resource
 import unittest
 
@@ -218,6 +219,17 @@ class BackendTests(unittest.TestCase):
             lines = self.program('include "stdgates.inc"; qubit q; array[angle[4], 1] phases = {pi / 2}; '
                                  'int i = 0; rx(sin(phases[i])) q;', fused=fused)
             BackendAuditTests.check(self, lines, (math.cos(0.5), -1j * math.sin(0.5)))
+
+    def test_documented_angle_array_example(self):
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- angle-array-example -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        source = examples[0].removeprefix('OPENQASM 3.0;')
+        self.check_initializers(source, (('phases', 3), ('bits', 4)), (0, 6, 6, 0, 1, 1, 0))
+        expected = (1 / math.sqrt(2), cmath.exp(3j * math.pi / 4) / math.sqrt(2))
+        for fused in (False, True):
+            BackendAuditTests.check(self, self.program(examples[0], fused=fused), expected)
 
 
 if __name__ == '__main__':
