@@ -5521,7 +5521,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __visit_angle_bit_function(
             self, expression: ast.FunctionCall, signature: _BuiltinFunctionSignature, runtime: bool) -> None:
         if self.__expression_kind != ExpressionKind.CONST_ARITHMETIC:
-            raise UnsupportedOpenQASMError('runtime angle bit functions')
+            if self.__expression_kind not in (ExpressionKind.ARITHMETIC, ExpressionKind.CONDITIONAL):
+                raise UnsupportedOpenQASMError('function call outside a value expression')
+            if signature.rotation:
+                _, angle_type, _ = self.__angle_operand_info(expression.arguments[0])
+                self.__visit_runtime_uint_rotation(expression, angle_type)
+            else:
+                self.__visit_population_count(expression, signature, runtime)
+            return
         if runtime:
             raise NoConstantExpressionException
         previous = (self.__expression_kind, self.__value, self.__value_type,
@@ -5594,7 +5601,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__expression_kind, self.__value, self.__value_type, self.__value_kind = previous
             raise
 
-    def __visit_runtime_uint_rotation(self, expression: ast.FunctionCall) -> None:
+    def __visit_runtime_uint_rotation(
+            self, expression: ast.FunctionCall, angle_type: _AngleType | None = None) -> None:
         previous = (self.__expression_kind, self.__value, self.__value_type, self.__value_kind)
         previous_used = self.__used_temporary_variables.copy()
         keep = None
@@ -5603,12 +5611,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         try:
             self.__expression_kind = ExpressionKind.ARITHMETIC
             argument, distance_expression = expression.arguments
-            _, uint_type, _ = self.__integer_operand_info(argument, None)
+            if angle_type is None:
+                _, uint_type, _ = self.__integer_operand_info(argument, None)
+            else:
+                uint_type = _UnsignedIntegerType(angle_type.width, angle_type.is_sized)
             value, value_type, value_kind = self.__condition_operand(argument)
             # Snapshot the value before evaluating the distance, and keep all
             # nested operand/index storage reserved until the result is ready.
             result = self.__add_new_temporary_variable(ValueType.UINT, uint_type)
-            operand, _ = self.__converted_operand(value, value_type, value_kind, ValueType.UINT)
+            # Angle storage already contains the UINT bit pattern; this is
+            # internal reuse, not a source-language angle-to-UINT conversion.
+            operand = str(value) if angle_type is not None else self.__converted_operand(
+                value, value_type, value_kind, ValueType.UINT)[0]
             self.__qcx_lines.append(f'LET {result} := {operand}')
             value, value_type, value_kind = self.__condition_operand(distance_expression)
             operand, _ = self.__converted_operand(value, value_type, value_kind, ValueType.INT)
@@ -5634,9 +5648,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             ])
             self.__normalize_uint_storage(result, uint_type)
             self.__qcx_lines.append(f'@{prefix}_DONE')
-            self.__uint_expression_types[id(expression)] = (expression, uint_type)
+            if angle_type is None:
+                self.__uint_expression_types[id(expression)] = (expression, uint_type)
+            else:
+                self.__angle_expression_types[id(expression)] = (expression, angle_type)
             self.__expression_kind = previous[0]
-            self.__value, self.__value_type, self.__value_kind = result, ValueType.UINT, ValueKind.TEMPORARY
+            result_type = ValueType.ANGLE if angle_type is not None else ValueType.UINT
+            self.__value, self.__value_type, self.__value_kind = result, result_type, ValueKind.TEMPORARY
             keep = result
         except Exception:
             self.__expression_kind, self.__value, self.__value_type, self.__value_kind = previous
@@ -5661,10 +5679,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         keep = False
         try:
             argument = expression.arguments[0]
-            unsigned_operand = signature.operand_types == (ValueType.UINT,)
+            angle_type = (self.__angle_operand_info(argument)[1]
+                          if signature.operand_types == (ValueType.ANGLE,) else None)
+            unsigned_operand = signature.operand_types[0] in (ValueType.UINT, ValueType.ANGLE)
             if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
                 if unsigned_operand:
-                    _, uint_type, _ = self.__integer_operand_info(argument, None)
+                    if angle_type is None:
+                        _, uint_type, _ = self.__integer_operand_info(argument, None)
+                    else:
+                        uint_type = _UnsignedIntegerType(angle_type.width, angle_type.is_sized)
                     self.visit(argument)
                     if self.__value_kind != ValueKind.LITERAL:
                         raise NoConstantExpressionException
@@ -5677,7 +5700,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 result = packed.bit_count() if self.__evaluate_constant else 0
             elif unsigned_operand:
                 self.__expression_kind = ExpressionKind.ARITHMETIC
-                result = self.__emit_uint_population_count(argument)
+                result = self.__emit_uint_population_count(argument, angle_type)
                 kind = ValueKind.TEMPORARY
             else:
                 self.__expression_kind = ExpressionKind.ARITHMETIC
@@ -5705,12 +5728,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if not keep or kind != ValueKind.TEMPORARY or temporary != result:
                     self.__release_temporary_variable(temporary)
 
-    def __emit_uint_population_count(self, argument: ast.Expression) -> str:
+    def __emit_uint_population_count(self, argument: ast.Expression, angle_type: _AngleType | None = None) -> str:
         # The enclosing visitor owns all scratch storage and preserves only
         # the returned native UINT accumulator, including on failure.
-        _, uint_type, _ = self.__integer_operand_info(argument, None)
+        if angle_type is None:
+            _, uint_type, _ = self.__integer_operand_info(argument, None)
+        else:
+            uint_type = _UnsignedIntegerType(angle_type.width, angle_type.is_sized)
         value, value_type, value_kind = self.__condition_operand(argument)
-        operand, _ = self.__converted_operand(value, value_type, value_kind, ValueType.UINT)
+        operand = str(value) if angle_type is not None else self.__converted_operand(
+            value, value_type, value_kind, ValueType.UINT)[0]
         remaining = self.__add_new_temporary_variable(ValueType.UINT, uint_type)
         self.__qcx_lines.append(f'LET {remaining} := {operand}')
         self.__normalize_uint_storage(remaining, uint_type)
