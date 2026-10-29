@@ -8567,11 +8567,6 @@ class RuntimeAngleBitSelectionFoundationTests(unittest.TestCase):
             with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter('const angle[4] C = pi; angle[4] a; int index; bit scalar; ' + body)
 
-    def test_runtime_writes_are_explicitly_deferred(self):
-        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError,
-                                    'runtime angle bit selection assignment'):
-            self.converter('angle[4] a; int index; a[index] = "1";')
-
 
 class RuntimeAngleBitSelectionReadTests(unittest.TestCase):
     program = staticmethod(ScalarAngleFoundationTests.program)
@@ -8653,6 +8648,94 @@ class RuntimeAngleBitSelectionReadTests(unittest.TestCase):
         for expression in ('a[index] < "1"', 'a[index] > a[index]', 'a[index]'):
             with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter('angle[4] a; int index; bool result = ' + expression + ';')
+
+
+class RuntimeAngleBitSelectionWriteTests(unittest.TestCase):
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    converter = ScalarAngleFoundationTests.converter
+
+    def test_destination_indices_are_captured_once_and_commit_once_for_all_operators(self):
+        for operator, rhs in (('=', '"1"'), ('&=', '"1"'), ('|=', '"1"'),
+                              ('^=', '"1"'), ('<<=', 'count'), ('>>=', 'count')):
+            c = self.converter('array[angle[4], 2] phases; int element; int index; uint count; '
+                               f'phases[element][index] {operator} {rhs};')
+            lines = c._QASM2QCXConverter__qcx_lines
+            names = {name: c._QASM2QCXConverter__capitalize_variable_name(name)
+                     for name in ('phases', 'element', 'index', 'count')}
+            reads = {name: [i for i, line in enumerate(lines) if line.endswith(' := ' + names[name])]
+                     for name in ('element', 'index')}
+            with self.subTest(operator=operator):
+                self.assertEqual(len(reads['element']), 1)
+                self.assertEqual(len(reads['index']), 1)
+                self.assertLess(reads['element'][0], reads['index'][0])
+                writes = [i for i, line in enumerate(lines) if line.startswith('LET ' + names['phases'] + ':')]
+                self.assertEqual(len(writes), 1)
+                self.assertEqual(writes[0], len(lines) - 1)
+                snapshot = next(i for i, line in enumerate(lines) if ' := ' + names['phases'] + ':' in line)
+                self.assertLess(reads['index'][0], snapshot)
+                if operator != '=':
+                    extract = next(i for i, line in enumerate(lines) if ' >>= ' in line)
+                    self.assertLess(snapshot, extract)
+                self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+                self.assertEqual(c._QASM2QCXConverter__captured_angle_bit_values, {})
+
+    def test_explicit_rhs_accesses_capture_their_own_indices_after_old_bit(self):
+        c = self.converter('array[angle[4], 2] phases; int element; int index; '
+                           'phases[element][index] ^= phases[element][index];')
+        lines = c._QASM2QCXConverter__qcx_lines
+        name = c._QASM2QCXConverter__capitalize_variable_name
+        element_reads = [i for i, line in enumerate(lines) if line.endswith(' := ' + name('element'))]
+        bit_reads = [i for i, line in enumerate(lines) if line.endswith(' := ' + name('index'))]
+        self.assertEqual(len(element_reads), 2)
+        self.assertEqual(len(bit_reads), 2)
+        extract = next(i for i, line in enumerate(lines) if ' >>= ' in line)
+        self.assertLess(bit_reads[0], extract)
+        self.assertLess(extract, element_reads[1])
+        self.assertLess(element_reads[1], bit_reads[1])
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_update_failures_do_not_emit_destination_commit_or_leak_captures(self):
+        for operator in ('=', '^=', '<<='):
+            c = self.converter('array[angle[4], 2] phases; int element; int index;')
+            statement = self.program(f'phases[element][index] {operator} '
+                                     + ('0;' if operator == '<<=' else '"1";')).statements[0]
+            caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+            fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+            before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+            def fail_update(*args):
+                raise RuntimeError('update failed')
+            with self.subTest(operator=operator), patch.object(
+                    c, '_QASM2QCXConverter__emit_runtime_angle_bit_update', fail_update):
+                with self.assertRaisesRegex(RuntimeError, 'update failed'):
+                    c.visit(statement)
+                self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+                self.assertEqual(c._QASM2QCXConverter__captured_angle_bit_values, {})
+                self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+                name = c._QASM2QCXConverter__capitalize_variable_name('phases')
+                self.assertFalse(any(line.startswith(f'LET {name}:') for line in c._QASM2QCXConverter__qcx_lines))
+
+    def test_rhs_conversion_errors_release_old_bit_and_destination_storage(self):
+        for operator, rhs in (('=', 'phases[99][index]'), ('^=', 'phases[99][index]'),
+                              ('>>=', 'counts[99]')):
+            c = self.converter('angle[4] a; array[angle[4], 2] phases; array[int, 2] counts; int index;')
+            statement = self.program(f'a[index] {operator} {rhs};').statements[0]
+            caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.INT)
+            with self.subTest(operator=operator), self.assertRaises(qasm2qcx.QASM2QCXError):
+                c.visit(statement)
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertEqual(c._QASM2QCXConverter__captured_angle_bit_values, {})
+            target = c._QASM2QCXConverter__capitalize_variable_name('a')
+            self.assertFalse(any(line.startswith(f'LET {target} :=') for line in c._QASM2QCXConverter__qcx_lines))
+
+    def test_source_width_and_readonly_checks_remain_enforced(self):
+        prefix = ('const angle[4] C = pi; angle[4] a; angle unsized; int index; '
+                  'array[angle[4], 2] phases; bit[1] one; bit scalar; ')
+        for body in ('C[index] = "1";', 'unsized[index] = "1";', 'a[index] += "1";',
+                     'a[index] = scalar;', 'a[index] = "11";', 'a[index] <<= true;',
+                     'for angle[4] value in phases { value[index] = one; }'):
+            for wrapper in ('{}', 'for int outer in [1:0] {{ {} }}'):
+                with self.subTest(body=body, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    self.converter(prefix + wrapper.format(body))
 
 
 class StaticAngleBitSelectionReadTests(unittest.TestCase):

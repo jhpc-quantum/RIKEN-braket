@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit runtime single-bit reads from sized angles (#426).
+"""Audit runtime single-bit selections on sized angles (#426).
 
 Pass --bra /path/to/bra for the default-double non-MPI backend audit.
 """
@@ -88,6 +88,109 @@ class BackendTests(unittest.TestCase):
             type(self).checked += 1
 
 
+    def test_writes_and_compounds_preserve_other_bits_at_every_width(self):
+        for width in range(1, self.module.QASM2QCXConverter.QCX_UINT_WIDTH + 1):
+            mask = (1 << width) - 1
+            for raw in sorted({0, mask, 0xAAAAAAAA & mask}):
+                source = (f'angle[{width}] value = angle[{width}]("{raw:0{width}b}"); '
+                          f'array[angle[{width}], 1] phases = {{value}}; int element = -1; '
+                          f'int last = -1; uint first = 0; uint huge = {2**self.module.QASM2QCXConverter.QCX_UINT_WIDTH - 1}; ')
+                snapshots, expected = [], []
+                for origin, operand in enumerate(('value', 'phases[element]')):
+                    current = raw
+                    step = 0
+                    for index_name, bit_index in (('last', width - 1), ('first', 0)):
+                        for operator, rhs, count in (('=', '"1"', 1), ('&=', '"0"', 0),
+                                ('|=', '"1"', 1), ('^=', '"1"', 1),
+                                ('=', f'{operand}[{index_name}] ^ "1"', None),
+                                ('<<=', '0', 0), ('>>=', 'huge', 1),
+                                ('|=', '"1"', 1), ('<<=', str(2**200), 1),
+                                ('|=', '"1"', 1), ('>>=', '1', 1)):
+                            old = (current >> bit_index) & 1
+                            if operator == '=':
+                                new = 1 - old if count is None else count
+                            elif operator == '&=':
+                                new = old & count
+                            elif operator == '|=':
+                                new = old | count
+                            elif operator == '^=':
+                                new = old ^ count
+                            else:
+                                new = old if count == 0 else 0
+                            current = (current & ~(1 << bit_index)) | (new << bit_index)
+                            name = f'snapshot{origin}_{step}'
+                            source += f'{operand}[{index_name}] {operator} {rhs}; angle[{width}] {name} = {operand}; '
+                            snapshots.append(name)
+                            expected.append(current)
+                            step += 1
+                self.check_initializers(source, (), (), tuple(snapshots), tuple(expected))
+
+    def test_writes_with_overlapping_sources_and_nested_index_reads(self):
+        self.check_initializers('angle[4] a = angle[4]("1010"); int index = -1; uint zero = 0; '
+            'array[angle[4], 2] phases = {a, angle[4]("0011")}; int element = -1; '
+            'a[index] ^= a[zero]; phases[element][index] = a[index]; '
+            'phases[element][zero] &= phases[element][index]; '
+            'a[popcount(phases[element][zero])] = ~a[index]; '
+            'phases[popcount(a[index])][zero] >>= popcount(a[index]); '
+            'a[0] |= a[index]; a[index] &= a[{0}];',
+            (('phases', 2),), (10, 10), ('a', 'index', 'element'), (9, -1, -1))
+
+    def test_write_reentry_and_iterator_indices(self):
+        self.check_initializers('angle[4] a; array[angle[4], 2] phases; int stop = 3; int visits = 0; '
+            'for int i in [0:3] { a[i] = "1"; } '
+            'for int i in [0:stop] { phases[-1][i] ^= a[i]; } '
+            'while (visits < 2) { visits += 1; for int i in {0, -1} { phases[0][i] ^= "1"; }} '
+            'for int i in [0:3] { if (i == 1) { continue; } a[i] ^= "1"; if (i == 2) { break; }}',
+            (('phases', 2),), (0, 15), ('a', 'visits'), (10, 2))
+
+    def test_write_failures_are_guarded_on_skipped_paths(self):
+        prefix = ('angle[4] a = pi; array[angle[4], 1] phases = {pi}; int high = 4; '
+                  'int low = -5; int zero = 0; int element = 1; int negative = -1; '
+                  f'int minimum = {self.module.QASM2QCXConverter.QCX_INT_MIN}; '
+                  f'uint huge = {2**self.module.QASM2QCXConverter.QCX_UINT_WIDTH - 1}; ')
+        for statement in ('a[high] = "1";', 'a[low] ^= "1";', 'a[huge] |= "1";',
+                          'a[1 / zero] = "1";', 'phases[element][zero] &= "1";',
+                          'phases[zero][high] >>= 0;', 'a[zero] ^= a[high];',
+                          'a[zero] = phases[element][zero];', 'a[zero] <<= negative;',
+                          'a[zero] >>= 1 / zero;', 'a[minimum] = "1";', 'a[zero] >>= minimum;'):
+            for wrapper in ('if (false) {{ {} }}', 'while (false) {{ {} }}',
+                            'for int outer in [1:0] {{ {} }}'):
+                self.check_initializers(prefix + wrapper.format(statement), (('phases', 1),), (8,), ('a',), (8,))
+            result = self.execute(self.program(prefix + statement))
+            self.assertNotEqual(result.returncode, 0, statement)
+            self.assertNotIn('runtime error:', result.stderr)
+            type(self).checked += 1
+
+    def test_gate_parameters_remain_captured_across_runtime_selection_writes(self):
+        import cmath
+        import math
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        gates = (
+            ('p(value) q[0];', 1, lambda i: bool(i & 1)),
+            ('inv @ p(value) q[0];', -1, lambda i: bool(i & 1)),
+            ('pow(exponent) @ p(value) q[0];', 2, lambda i: bool(i & 1)),
+            ('pow(0.5) @ p(value) q[0];', 0.5, lambda i: bool(i & 1)),
+            ('cp(value) q[0], q[1];', 1, lambda i: i == 3),
+            ('negctrl @ p(value) q[0], q[1];', 1, lambda i: i == 2),
+            ('gphase(value);', 1, lambda i: True),
+        )
+        for array in (False, True):
+            operand = 'phases[element]' if array else 'value'
+            declaration = ('array[angle[4], 1] phases = {angle[4]("0011")}; int element = -1; '
+                           if array else 'angle[4] value = angle[4]("0011"); ')
+            for gate, factor, active in gates:
+                gate = gate.replace('value', operand)
+                source = ('include "stdgates.inc"; qubit[2] q; h q; int index = -1; int exponent = 2; '
+                          + declaration + gate + f'{operand}[index] ^= "1"; ' + gate)
+                # Fractional powers use each gate's principal eigenphase;
+                # the second angle (11*pi/8) wraps to -5*pi/8.
+                phase = (-2 if factor == 0.5 else 14) * math.pi / 8
+                expected = tuple(cmath.exp(1j * factor * phase) / 2 if active(i) else 0.5
+                                 for i in range(4))
+                for fused in (False, True):
+                    BackendAuditTests.check(self, self.program(source, fused=fused), expected)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--bra', type=pathlib.Path)
@@ -95,5 +198,5 @@ if __name__ == '__main__':
     BackendTests.bra = arguments.bra.resolve() if arguments.bra else None
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     result = unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromTestCase(BackendTests))
-    print(f'runtime angle bit-read programs checked: {BackendTests.checked}')
+    print(f'runtime angle bit-selection programs checked: {BackendTests.checked}')
     raise SystemExit(not result.wasSuccessful())
