@@ -8,6 +8,7 @@ import argparse
 import cmath
 import math
 import pathlib
+import re
 import resource
 import unittest
 
@@ -209,6 +210,19 @@ class BackendTests(unittest.TestCase):
             for fused in (False, True):
                 with self.subTest(operation=operation, fused=fused):
                     BackendAuditTests.check(self, self.program(source, fused=fused), expected)
+
+    def test_documented_static_angle_bit_selection_example(self):
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- static-angle-bit-selection-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        source = examples[0].removeprefix('OPENQASM 3.0;')
+        self.check_initializers(source, (('phases', 2), ('low', 1), ('upper', 2)), (0, 12, 0, 1, 0),
+                                ('a', 'index'), (3, -1))
+        expected = (1 / math.sqrt(2), -1j / math.sqrt(2))
+        for fused in (False, True):
+            BackendAuditTests.check(self, self.program(examples[0], fused=fused), expected)
 
 
 if __name__ == '__main__':
