@@ -6,6 +6,7 @@ Pass --bra /path/to/bra for the default-double non-MPI backend audit.
 
 import argparse
 import pathlib
+import re
 import resource
 import unittest
 
@@ -189,6 +190,22 @@ class BackendTests(unittest.TestCase):
                                  for i in range(4))
                 for fused in (False, True):
                     BackendAuditTests.check(self, self.program(source, fused=fused), expected)
+
+
+    def test_documented_runtime_angle_bit_selection_example(self):
+        import cmath
+        import math
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- runtime-angle-bit-selection-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        self.check_initializers(examples[0].removeprefix('OPENQASM 3.0;'),
+                                (('old', 1), ('phases', 1)), (0, 2),
+                                ('a', 'bit_index', 'element_index'), (11, 0, -1))
+        expected = (1 / math.sqrt(2), cmath.exp(1j * math.pi / 4) / math.sqrt(2))
+        for fused in (False, True):
+            BackendAuditTests.check(self, self.program(examples[0], fused=fused), expected)
 
 
 if __name__ == '__main__':
