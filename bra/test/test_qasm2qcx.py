@@ -8741,8 +8741,8 @@ class AngleSelectionCompoundValidationTests(unittest.TestCase):
                 with self.subTest(body=body, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):
                     qasm2qcx.QASM2QCXConverter(self.program(self.prefix + wrapper.format(body)))
 
-    def test_runtime_lowering_is_explicitly_deferred_without_emission(self):
-        for operator, rhs in (('&=', '"1"'), ('|=', '"1"'), ('^=', '"1"'), ('<<=', 'index'), ('>>=', 'index')):
+    def test_shift_lowering_is_explicitly_deferred_without_emission(self):
+        for operator, rhs in (('<<=', 'index'), ('>>=', 'index')):
             with self.subTest(operator=operator):
                 before = self.converter._QASM2QCXConverter__qcx_lines.copy()
                 statement = self.program(f'phases[index][0] {operator} {rhs};').statements[0]
@@ -8750,6 +8750,86 @@ class AngleSelectionCompoundValidationTests(unittest.TestCase):
                     self.converter.visit(statement)
                 self.assertEqual(self.converter._QASM2QCXConverter__qcx_lines, before)
                 self.assertEqual(self.converter._QASM2QCXConverter__used_temporary_variables, set())
+
+
+class AngleSelectionBitwiseCompoundTests(unittest.TestCase):
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def converter(self, source):
+        converter = ScalarAngleFoundationTests.converter(self, source)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(converter._QASM2QCXConverter__captured_angle_bit_values, {})
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+        return converter
+
+    def test_synthetic_lhs_does_not_read_scalar_source_twice(self):
+        for operator in ('&=', '|=', '^='):
+            with self.subTest(operator=operator):
+                converter = self.converter('angle[4] a = pi; bit[2] pair = "10"; '
+                                           f'a[0:1] {operator} pair;')
+                lines = converter._QASM2QCXConverter__qcx_lines
+                self.assertEqual(sum(line.endswith(' := A1') for line in lines), 1)
+                self.assertEqual(sum(line.startswith('LET A1 := ') for line in lines), 2)
+
+    def test_array_index_is_evaluated_once_except_explicit_rhs_accesses(self):
+        for rhs, accesses in (('"11"', 1), ('phases[index][2:3]', 2)):
+            with self.subTest(rhs=rhs):
+                converter = self.converter('array[angle[4], 2] phases = {pi, pi / 2}; int index = -1; '
+                                           f'phases[index][0:1] ^= {rhs};')
+                lines = converter._QASM2QCXConverter__qcx_lines
+                guards = [line for line in lines if line.startswith('ASSERT ') and line.endswith(' < 2')]
+                self.assertEqual(len(guards), accesses)
+                reads = [line for line in lines if ' := PHASES63:QASM2QCX_INT_' in line]
+                self.assertEqual(len(reads), accesses)
+                writes = [line for line in lines if line.startswith('LET PHASES63:QASM2QCX_INT_')]
+                self.assertEqual(len(writes), 1)
+                self.assertTrue(writes[0].startswith('LET PHASES63:QASM2QCX_INT_0 := '))
+
+    def test_overlapping_sources_are_evaluated_before_one_commit(self):
+        converter = self.converter('angle[4] a = angle[4]("1010"); a[0:2] ^= ~a[1:3];')
+        lines = converter._QASM2QCXConverter__qcx_lines
+        reads = [index for index, line in enumerate(lines) if line.endswith(' := A1')]
+        writes = [index for index, line in enumerate(lines) if line.startswith('LET A1 := ')]
+        self.assertEqual(len(reads), 2)
+        self.assertEqual(len(writes), 2)
+        self.assertLess(max(reads), writes[-1])
+
+    def test_failed_rhs_preserves_destination_caller_storage_and_outer_capture(self):
+        for operator in ('&=', '|=', '^='):
+            with self.subTest(operator=operator):
+                converter = self.converter('array[angle[4], 2] phases = {pi, pi}; int index = 0;')
+                caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+                sentinel = self.program('bit[1] b = phases[0][0];').statements[0].init_expression
+                outer = {id(sentinel): (sentinel, (1,))}
+                converter._QASM2QCXConverter__captured_angle_bit_values.update(outer)
+                statement = self.program(f'phases[index][0:1] {operator} phases[2][2:3];').statements[0]
+                before = len(converter._QASM2QCXConverter__qcx_lines)
+                fields = ('expression_kind', 'value', 'value_type', 'value_kind')
+                state = [getattr(converter, '_QASM2QCXConverter__' + field) for field in fields]
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    converter.visit(statement)
+                emitted = converter._QASM2QCXConverter__qcx_lines[before:]
+                self.assertFalse(any(line.startswith('LET PHASES63:') for line in emitted))
+                self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+                self.assertEqual(converter._QASM2QCXConverter__captured_angle_bit_values, outer)
+                self.assertEqual([getattr(converter, '_QASM2QCXConverter__' + field) for field in fields], state)
+
+    def test_nested_reentry_shadowing_and_single_bit_targets(self):
+        self.converter('const angle[4] a = pi; array[angle[4], 2] phases = {0.0, pi}; '
+            'bit[1] one = "1"; int stop = 1; '
+            'for int outer in [0:stop] { for angle[4] a in phases { '
+            'phases[outer][0] ^= one; phases[outer][1:2] |= a[0:1]; '
+            'for int index in [0:1] { phases[index][2:3] &= phases[outer][0:1]; } }}')
+
+    def test_runtime_type_errors_still_fail_before_any_capture(self):
+        converter = self.converter('angle[4] a = pi; bit scalar; bit[2] pair;')
+        for source in ('a[0] ^= scalar;', 'a[0] |= pair;', 'a[0:1] &= "1";', 'a[0] += "1";'):
+            before = converter._QASM2QCXConverter__qcx_lines.copy()
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                converter.visit(self.program(source).statements[0])
+            self.assertEqual(converter._QASM2QCXConverter__qcx_lines, before)
+            self.assertEqual(converter._QASM2QCXConverter__captured_angle_bit_values, {})
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
 
 
 class StaticBitSelectionOperandTests(unittest.TestCase):
