@@ -148,6 +148,7 @@ The converter currently covers:
   `complex` arrays;
 - runtime iteration over mutable bit registers with scalar `bit` iterators;
 - unrolled iteration over named constant bit registers with scalar `bit` iterators;
+- iteration over supported sized-angle bit selections with scalar `bit` iterators;
 - runtime `while` loops, including nested loops, `break`, and `continue`;
 - scalar expressions used as gate parameters; and
 - final-state amplitude output through a namespaced pragma.
@@ -320,7 +321,9 @@ the [OpenQASM classical-value bit-slicing rules](https://openqasm.com/language/t
 and differs from indexing a bit register. Selections can initialize or assign
 matching-width registers and participate in supported register bitwise
 operations, shifts, equality comparisons, `popcount`, `rotl`, `rotr`, and
-same-width angle casts. They do not implicitly become scalar bits, Boolean
+same-width angle casts. They also support
+[iteration with scalar bit iterators](#angle-bit-selection-for-loops).
+They do not implicitly become scalar bits, Boolean
 conditions, integers, or angles. Selections of angle constants can initialize
 constant registers and participate in supported constant expressions; mutable
 sources and angle iterators remain runtime values. To use a selected bit as a
@@ -428,7 +431,8 @@ Runtime ranges and sets are not supported.
 
 The result is always `bit[1]`, including for an angle constant with a runtime
 index. It supports the register consumers and equal-width casts described
-above, but cannot initialize a constant register or implicitly become a scalar
+above, and [single-iteration bit loops](#angle-bit-selection-for-loops), but
+cannot initialize a constant register or implicitly become a scalar
 bit, Boolean condition, integer, or angle. Constant and iterator angle sources
 remain read-only; scalar angle variables and array elements support `=`, `&=`,
 `|=`, `^=`, `<<=`, and `>>=` with the same RHS rules as static selections.
@@ -4762,8 +4766,10 @@ index advancement. Loop-owned temporaries are released on success and failure
 while caller-owned storage is preserved. Runtime iteration counts do not consume
 expansion budgets; nested and enclosing expanded loops retain their accounting.
 No new bra instruction or build option is required. Angle ranges/sets, differing
-iterator widths, slices, aliases, arbitrary array expressions, multidimensional
+iterator widths, array slices, aliases, arbitrary array expressions, multidimensional
 or zero-length arrays, and block-local declarations remain unsupported.
+Iteration over an element's bits uses scalar `bit` iterators, as described under
+[angle bit-selection loops](#angle-bit-selection-for-loops).
 
 ## Bit-register for loops
 
@@ -4888,7 +4894,110 @@ An empty enclosing constant loop validates the nested loop without expanding
 its body. Large registers can therefore hit expansion limits even though their
 declarations and constant expressions are otherwise supported. No new bra/QCX
 instruction is required. Iterable register expressions, selections, aliases,
-scalar bits, and general block-local declarations remain unsupported.
+scalar bits, and general block-local declarations remain unsupported for
+bit-register sources. Angle bit-selection sources are described next.
+
+## Angle bit-selection for loops
+
+The converter supports `for bit name in selection` over the supported bit
+selections of explicitly sized angles. Sources can be named variables or
+constants, sized angle iterators, or angle-array elements. The iterator must be
+scalar `bit`; `bit[1]`, `int`, and other iterator types are rejected.
+
+Supported forms include:
+
+```qasm
+for bit b in a[0:3] { ... }
+for bit b in a[3:-1:0] { ... }
+for bit b in a[{3, 0, 3}] { ... }
+for bit b in a[index] { ... }
+for bit b in phases[element_index][0:3] { ... }
+for bit b in phases[element_index][bit_index] { ... }
+```
+
+Static indices, inclusive ranges, and discrete sets retain the existing
+selection rules, including negative indices and repeated source indices.
+Bits are visited in selection order, rather than sorted by their original
+indices. A runtime single INT/UINT index selects `bit[1]`, so its loop executes
+exactly once. This follows the combination of OpenQASM's
+[classical-value bit-slicing rules](https://openqasm.com/language/types.html#classical-value-bit-slicing)
+and [iteration over bit-register values](https://openqasm.com/language/classical.html#for-loops).
+
+The source is resolved before introducing the iterator binding. For an array
+element, its element index is evaluated and checked once at loop entry, followed
+by the runtime bit index if present. These captured indices remain fixed even
+if the body changes the variables used to compute them. Each reentry captures
+them afresh. Same-name shadowing, such as `for bit a in a[0:3]`, is supported;
+the outer binding is restored when the loop ends.
+
+The converter uses live reads, consistent with its mutable array/register
+loops: each iteration reads the current selected source bit and copies it into
+the iterator. Changes to future bits affect later visits, including repeated
+visits to the same bit. Changing the current source bit does not change the
+copied iterator. The specification establishes the result type and iteration
+order, but does not explicitly distinguish snapshot versus live reads for
+angle bit selections; live reads are the converter's documented interpretation.
+
+The iterator has the same scalar-bit behavior as other bit iterators: direct
+conditions, logical expressions, comparisons, scalar-bit copies, and supported
+explicit casts. Numeric uses require a cast such as `uint(b)`. It is scoped and
+read-only, including when the source is constant. OpenQASM permits assignments
+to loop variables; rejecting them remains a converter limitation. The source
+angle retains its own mutability rules, so constant angles and outer angle
+iterators cannot be modified.
+
+<!-- angle-bit-selection-loop-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit q;
+angle[4] a = angle[4]("0001");
+uint checksum = 0;
+int visits = 0;
+for bit b in a[{0, 1, 0, 3}] {
+    if (visits == 0) { a[1] = "1"; a[0] = "0"; }
+    if (visits == 1) { a[3] = "1"; }
+    checksum = checksum * 3 + uint(b);
+    visits += 1;
+}
+// Visits 1, 1, 0, 1: checksum is 37, visits is 4, a is "1010".
+array[angle[4], 1] phases = {a};
+int element_index = -1;
+int bit_index = -1;
+bit saved;
+for bit b in phases[element_index][bit_index] {
+    element_index = 0;
+    bit_index = 0;
+    phases[0][3] = "0";
+    saved = b; // Still 1: b is a copy of the bit read before the body.
+}
+// One iteration; phases[0] is "0010", or pi/4.
+h q;
+p(phases[0]) q;
+```
+
+Bodies support nesting with existing range, set, array/register, selection, and
+`while` loops. `break` exits the nearest loop; `continue` advances to its next
+selected bit, or exits a single-iteration selection loop. Skipped branches and
+empty enclosing loops do not execute runtime index checks or arithmetic, while
+name, type, static-bound, and read-only validation still applies without
+inventing iterator values. Invalid runtime indices fail before the body runs,
+even if the body is empty.
+
+The body is generated once, including for constant angle sources, using existing
+QCX instructions. A private INT position table preserves selection order and
+repeated indices; the source address, copied bit, and loop state remain reserved
+throughout the body. The number of selected bits must fit QCX INT indexing.
+An endpoint guard precedes advancement, and temporary storage is released on
+success and failed lowering without releasing caller-owned storage. Runtime
+iteration counts do not consume expansion budgets; enclosing and nested
+expanded loops retain their accounting. Gates preserve captured parameters
+across source writes, including under fusion. No new bra instruction or build
+option is required.
+
+Runtime-dependent ranges/sets, unsized angles, computed angle sources or cast
+results, general bit-register expressions and selections, aliases, multidimensional
+arrays, and block-local declarations remain outside this feature.
 
 ## Runtime while loops
 
@@ -5009,7 +5118,7 @@ The current prototype does not reliably support:
   operations, compound operators other than `+=`/`-=`/`*=`/`/=`/`&=`/`|=`/`^=`/`<<=`/`>>=`,
   runtime-dependent angle bit ranges/sets, bit selections on unsized angles, arithmetic compound
   assignments to angle bit selections, INT/UINT bit slicing, multidimensional angle arrays,
-  angle range/set iteration,
+  iteration over angle-valued ranges/sets,
   different-width angle-array iterators,
   numeric casts from angles, angle-valued gates outside
   `p`/`phase`/`u1`/`cp`/`cphase`/`gphase`; or
@@ -5188,6 +5297,18 @@ and final state. Unit tests additionally check index evaluation order and
 once-only destination capture, old-bit snapshots before RHS reads, visibility,
 read-only targets, temporary ownership, and capture-map cleanup on failures.
 Run with `--bra /path/to/bra`, including a UBSan build.
+
+`bra/test/qasm2qcx_angle_bit_selection_loop_numerical.py` checks selection order,
+repeated bits, copied iterator values, and live source mutation at every supported
+angle width. It covers constants, scalar variables, angle iterators, array
+elements, static selectors and runtime single indices, once-only index capture,
+shadowing, nested loops, reentry, nearest-loop transfers, reached/skipped errors,
+and INT/UINT boundaries. Full quantum states check phase gates, modifiers, and
+fusion, including the documented loop example above. Unit tests additionally
+check body-once lowering, expansion accounting, source-order visibility, typed
+validation in empty loops, read-only bindings, declaration hoisting, and storage
+cleanup after index-capture and body failures. Run with `--bra /path/to/bra`,
+including a UBSan build.
 
 `bra/test/qasm2qcx_angle_phase_numerical.py` compares whole diagonal phase
 matrices with the generated angle-phase circuits, without discarding global
@@ -5786,6 +5907,7 @@ python3 bra/test/qasm2qcx_angle_bit_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_angle_bit_selection_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_selection_compound_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_angle_bit_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_angle_bit_selection_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_global_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_sqrt_numerical.py --bra bra/bin/bra
