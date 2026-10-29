@@ -3,6 +3,7 @@
 
 import argparse
 import pathlib
+import re
 import resource
 import unittest
 
@@ -206,16 +207,33 @@ class BackendTests(unittest.TestCase):
             operand = 'phases[element]' if array else 'value'
             declaration = ('array[angle[4], 1] phases = {angle[4]("0011")}; int element = -1; '
                            if array else 'angle[4] value = angle[4]("0011"); ')
-            for selector in ('0', 'index'):
+            for selector, executions in (('0', 1), ('index', 1), ('0:1', 2), ('{3, 0, 3}', 2)):
                 for gate, factor, active in gates:
                     gate = gate.replace('value', operand)
                     source = ('include "stdgates.inc"; qubit[2] q; h q; int index = 0; int exponent = 2; '
                               + declaration + f'for bit b in {operand}[{selector}] {{ if (b) {{ '
                               + gate + f'{operand}[3] ^= "1"; ' + gate + '}}')
-                    phase = (-2 if factor == 0.5 else 14) * math.pi / 8
+                    phase = executions * (-2 if factor == 0.5 else 14) * math.pi / 8
                     expected = tuple(cmath.exp(1j * factor * phase) / 2 if active(i) else 0.5 for i in range(4))
                     for fused in (False, True):
                         BackendAuditTests.check(self, self.program(source, fused=fused), expected)
+
+
+    def test_documented_angle_bit_selection_loop_example(self):
+        import cmath
+        import math
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- angle-bit-selection-loop-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        self.check_initializers(examples[0].removeprefix('OPENQASM 3.0;'),
+                                (('phases', 1),), (2,),
+                                ('a', 'checksum', 'visits', 'element_index', 'bit_index', 'saved'),
+                                (10, 37, 4, 0, 0, 1))
+        expected = (1 / math.sqrt(2), cmath.exp(1j * math.pi / 4) / math.sqrt(2))
+        for fused in (False, True):
+            BackendAuditTests.check(self, self.program(examples[0], fused=fused), expected)
 
 
 if __name__ == '__main__':
