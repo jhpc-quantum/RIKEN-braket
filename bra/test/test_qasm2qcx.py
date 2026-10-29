@@ -8732,12 +8732,108 @@ class RuntimeAngleBitSetSelectionFoundationTests(unittest.TestCase):
         self.assertEqual(lines, c._QASM2QCXConverter__qcx_lines)
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
 
-    def test_lowering_is_explicitly_deferred_without_accidental_static_fallback(self):
-        for body, operation in (('bit[2] result = a[{index, 0}];', 'extraction'),
-                                ('a[{index}] = "1";', 'assignment'),
-                                ('for bit b in a[{index}] {}', 'iteration')):
-            with self.subTest(body=body), self.assertRaisesRegex(
-                    qasm2qcx.UnsupportedOpenQASMError, 'runtime angle bit-set ' + operation):
+    def test_writes_are_explicitly_deferred(self):
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'runtime angle bit-set assignment'):
+            self.converter(self.prefix + 'a[{index}] = "1";')
+
+
+class RuntimeAngleBitSetSelectionReadTests(unittest.TestCase):
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    converter = ScalarAngleFoundationTests.converter
+    prefix = ('const angle[4] C = pi; angle[4] a = C; array[angle[4], 2] phases = {a, C}; '
+              'int element; int index; uint count; bit[3] result; bit copy;')
+
+    def expression(self, source):
+        return self.program('bit[1] out = ' + source + ';').statements[0].init_expression
+
+    def test_each_entry_is_captured_once_in_order_after_array_element(self):
+        c = self.converter(self.prefix)
+        original = c._QASM2QCXConverter__capture_array_index
+        captured = []
+        def capture(expression, size):
+            captured.append((expression.name, size))
+            return original(expression, size)
+        with patch.object(c, '_QASM2QCXConverter__capture_array_index', side_effect=capture):
+            c.visit(self.program('result = phases[element][{index, count, index}];').statements[0])
+        self.assertEqual(captured, [('element', 2), ('index', 4), ('count', 4), ('index', 4)])
+        lines = c._QASM2QCXConverter__qcx_lines
+        last_check = max(i for i, line in enumerate(lines) if line.startswith('ASSERT '))
+        first_extract = next(i for i, line in enumerate(lines) if ' >>= ' in line)
+        self.assertLess(last_check, first_extract)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_reads_integrate_with_fixed_width_register_consumers(self):
+        c = self.converter(self.prefix + 'result = ~a[{index, count, -1}] ^ "011"; '
+            'result = rotl(C[{index, count, 0}], index); result <<= 1; '
+            'uint total = popcount(a[{index, count}]); bool same = a[{index, count}] == "01"; '
+            'angle[3] roundtrip = angle[3](a[{index, count, 0}]); '
+            'result = phases[element][{popcount(a[{index, 0}]), count, 0}];')
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_read_context_preserves_state_and_consumer_temporaries(self):
+        c = self.converter(self.prefix)
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+        with c._QASM2QCXConverter__bit_register_expression_value(self.expression('a[{index, count, index}]')) as values:
+            self.assertEqual(len(values), 3)
+            self.assertTrue(set(values) <= c._QASM2QCXConverter__used_temporary_variables)
+            consumer = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.INT)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller, consumer})
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+
+    def test_partial_index_capture_failure_cleans_reads_and_loops(self):
+        for statement in ('result = phases[element][{index, count, index}];',
+                          'for bit b in phases[element][{index, count, index}] { copy = b; }'):
+            c = self.converter(self.prefix)
+            caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+            fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+            before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+            original = c._QASM2QCXConverter__capture_array_index
+            captured = []
+            def capture(expression, size):
+                captured.append(expression.name)
+                if expression.name == 'count':
+                    c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.INT)
+                    raise RuntimeError('capture failed')
+                return original(expression, size)
+            with self.subTest(statement=statement), patch.object(
+                    c, '_QASM2QCXConverter__capture_array_index', side_effect=capture):
+                with self.assertRaisesRegex(RuntimeError, 'capture failed'):
+                    c.visit(self.program(statement).statements[0])
+            self.assertEqual(captured, ['element', 'index', 'count'])
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+            self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+            self.assertEqual(c._QASM2QCXConverter__loop_contexts, [])
+
+    def test_loops_capture_all_entries_before_same_name_iterator_is_bound(self):
+        program = self.program(self.prefix + 'for bit index in phases[element][{index, count, index}] { copy = index; }')
+        c = qasm2qcx.QASM2QCXConverter(program)
+        original = c._QASM2QCXConverter__capture_array_index
+        captured = []
+        def capture(expression, size):
+            captured.append(expression.name)
+            self.assertFalse(any('index' in scope for scope in c._QASM2QCXConverter__loop_bindings))
+            return original(expression, size)
+        with patch.object(c, '_QASM2QCXConverter__capture_array_index', side_effect=capture):
+            c.visit(program)
+        self.assertEqual(captured, ['element', 'index', 'count', 'index'])
+        ForLoopControlLoweringTests.assert_resolved_jumps(c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_oversized_literal_entry_does_not_enter_emitted_qcx(self):
+        huge = 2**200
+        c = self.converter(self.prefix + f'if (false) {{ result = a[{{index, {huge}, 0}}]; }}')
+        self.assertFalse(any(str(huge) in line for line in c._QASM2QCXConverter__qcx_lines))
+        self.assertTrue(any(line.startswith('ASSERT ') and line.endswith(' < 4')
+                            for line in c._QASM2QCXConverter__qcx_lines))
+
+    def test_scalar_constant_and_width_mismatch_contexts_still_reject_sets(self):
+        for body in ('copy = a[{index}];', 'if (a[{index}]) {}',
+                     'const bit[1] BAD = C[{index}];', 'bit[2] wrong = a[{index}];',
+                     'bool wrong = a[{index}] < "1";'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(self.prefix + body)
 
 

@@ -5207,8 +5207,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__validate_loop_syntax(statement)
         if self.__is_initialization_process:
             return
-        if isinstance(selection, _RuntimeAngleBitSetSelection):
-            raise UnsupportedOpenQASMError('runtime angle bit-set iteration')
         self.__emit_angle_selection_for(statement, selection)
 
     def __angle_selection_loop_source(self, source: ast.Identifier | ast.IndexExpression) -> str | int:
@@ -5223,7 +5221,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __emit_angle_selection_for(
             self, statement: ast.ForInLoop,
-            selection: _StaticAngleBitSelection | _RuntimeAngleBitSelection) -> None:
+            selection: _AngleBitSelection) -> None:
         previous = (self.__expression_kind, self.__value, self.__value_type, self.__value_kind)
         previous_used = self.__used_temporary_variables.copy()
         previous_temporaries = self.__declared_temporary_variables.copy()
@@ -5237,8 +5235,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             source = self.__angle_selection_loop_source(selection.source)
             # Capture and check the bit index after the element address and
             # before introducing the iterator, including same-name bindings.
-            indices = ((self.__capture_array_index(selection.index, selection.angle_type.width),)
-                       if isinstance(selection, _RuntimeAngleBitSelection) else selection.indices)
+            indices = self.__capture_angle_bit_indices(selection)
             positions = self.__add_temporary_int_array(selection.width, 'POSITIONS')
             iterator = self.__add_new_temporary_variable(ValueType.BIT)
             index = self.__add_new_temporary_variable(ValueType.INT)
@@ -6928,7 +6925,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     @contextlib.contextmanager
     def __runtime_angle_bit_value(
-            self, selection: _RuntimeAngleBitSelection, *,
+            self, selection: _RuntimeAngleBitSelection | _RuntimeAngleBitSetSelection, *,
             captured: tuple[str, str] | None = None) -> Iterator[tuple[str, ...]]:
         previous = (self.__expression_kind, self.__value, self.__value_type, self.__value_kind)
         previous_used = self.__used_temporary_variables.copy()
@@ -6939,22 +6936,33 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # index. Keep the complete source alive across index arithmetic.
             if captured is None:
                 bits = self.__angle_arithmetic_operand(selection.source, selection.angle_type)
-                index = self.__capture_array_index(selection.index, selection.angle_type.width)
+                indices = self.__capture_angle_bit_indices(selection)
             else:
                 bits, index = captured
+                indices = (index,)
             scratch = self.__add_new_temporary_variable(ValueType.UINT)
-            bit = self.__add_new_temporary_variable(ValueType.BIT)
-            self.__qcx_lines.extend([
-                f'LET {scratch} := {bits}', f'LET {scratch} >>= {index}',
-                f'LET {scratch} &= 1', f'LET {bit} := :INT:{scratch}',
-            ])
+            values = []
+            for index in indices:
+                bit = self.__add_new_temporary_variable(ValueType.BIT)
+                self.__qcx_lines.extend([
+                    f'LET {scratch} := {bits}', f'LET {scratch} >>= {index}',
+                    f'LET {scratch} &= 1', f'LET {bit} := :INT:{scratch}',
+                ])
+                values.append(bit)
             owned = self.__used_temporary_variables - previous_used
-            yield (bit,)
+            yield tuple(values)
         finally:
             self.__expression_kind, self.__value, self.__value_type, self.__value_kind = previous
             temporaries = owned if owned is not None else self.__used_temporary_variables - previous_used
             for temporary in temporaries:
                 self.__release_temporary_variable(temporary)
+
+    def __capture_angle_bit_indices(self, selection: _AngleBitSelection) -> tuple[int | str, ...]:
+        if isinstance(selection, _StaticAngleBitSelection):
+            return selection.indices
+        expressions = ((selection.index,) if isinstance(selection, _RuntimeAngleBitSelection)
+                       else selection.indices)
+        return tuple(self.__capture_array_index(index, selection.angle_type.width) for index in expressions)
 
     @contextlib.contextmanager
     def __angle_bits_value(
@@ -7713,9 +7721,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
         selection = self.__angle_bit_selection(expression)
         if selection is not None:
-            if isinstance(selection, _RuntimeAngleBitSetSelection):
-                raise UnsupportedOpenQASMError('runtime angle bit-set extraction')
-            if isinstance(selection, _RuntimeAngleBitSelection):
+            if isinstance(selection, (_RuntimeAngleBitSelection, _RuntimeAngleBitSetSelection)):
                 with self.__runtime_angle_bit_value(selection) as values:
                     yield values
                 return
@@ -8006,6 +8012,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         value, value_type, value_kind = self.__condition_operand(expression)
         index = self.__add_new_temporary_variable(ValueType.INT)
         try:
+            if value_kind == ValueKind.LITERAL and not -size <= int(value) < size:
+                # Preserve a reached bounds failure without emitting a huge
+                # literal that the QCX parser would reject on skipped paths.
+                value, value_type = size, ValueType.INT
             self.__emit_assignment(index, ':=', ValueType.INT, value, value_type, value_kind)
             label = f'QASM2QCX_ARRAY_INDEX_{self.__array_index}_NONNEGATIVE'
             self.__array_index += 1
