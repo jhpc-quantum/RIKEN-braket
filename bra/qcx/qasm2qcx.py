@@ -284,6 +284,17 @@ class _StaticAngleBitSelection:
 
 
 @dataclasses.dataclass(frozen=True)
+class _AngleBitAssignmentInfo:
+    selection: _StaticAngleBitSelection
+    operator: str
+    shift_count_type: ValueType | None = None
+
+    @property
+    def binary_operator(self) -> str | None:
+        return None if self.operator == '=' else self.operator[:-1]
+
+
+@dataclasses.dataclass(frozen=True)
 class _RuntimeIteratorBinding:
     # Unlike an unrolled iterator's integer value, this names live QCX storage.
     storage: str
@@ -4878,6 +4889,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __validate_register_operator_assignment(
             self, statement: ast.ClassicalAssignment,
             iterators: dict[str, ValueType] | None = None) -> bool:
+        if self.__validate_angle_bit_assignment(statement, iterators):
+            return True
         if statement.op.name not in ('=', '&=', '|=', '^=', '<<=', '>>='):
             return False
         selected_target = self.__is_register_bit_selection(statement.lvalue)
@@ -6409,15 +6422,29 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __validate_angle_bit_assignment(
             self, statement: ast.ClassicalAssignment,
             iterators: set[str] | dict[str, ValueType] | None = None) -> bool:
+        return self.__angle_bit_assignment_info(statement, iterators) is not None
+
+    def __angle_bit_assignment_info(
+            self, statement: ast.ClassicalAssignment,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _AngleBitAssignmentInfo | None:
         selection = self.__angle_bit_selection(statement.lvalue, iterators, destination=True)
         if selection is None:
-            return False
-        if statement.op.name != '=':
-            raise UnsupportedOpenQASMError('compound assignment to an angle bit selection')
+            return None
+        operator = statement.op.name
+        if operator not in ('=', '&=', '|=', '^=', '<<=', '>>='):
+            raise UnsupportedOpenQASMError(f'angle bit selection assignment operator {operator}')
+        if operator in ('<<=', '>>='):
+            # Validate count types and nested accesses without evaluating an
+            # index, count, arithmetic domain, or the destination's value.
+            count_type, _ = self.__loop_expression_info(statement.rvalue, iterators)
+            if count_type not in (ValueType.INT, ValueType.UINT):
+                raise InvalidBitOperandException('An angle selection shift count must be a scalar integer')
+            self.__validate_bitwise_indices(statement.rvalue, iterators)
+            return _AngleBitAssignmentInfo(selection, operator, count_type)
         width = self.__bit_register_expression_width(statement.rvalue, iterators)
         if width != selection.width:
             raise InvalidBitOperandException('An angle bit selection assignment requires a matching-width bit register')
-        return True
+        return _AngleBitAssignmentInfo(selection, operator)
 
     @staticmethod
     def __angle_assignment_expression(
@@ -7926,10 +7953,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__is_initialization_process:
             return
 
-        selection = self.__angle_bit_selection(statement.lvalue, destination=True)
-        if selection is not None:
-            self.__validate_angle_bit_assignment(statement)
-            self.__emit_angle_bit_assignment(selection, statement.rvalue)
+        angle_bits = self.__angle_bit_assignment_info(statement)
+        if angle_bits is not None:
+            if angle_bits.binary_operator is not None:
+                raise UnsupportedOpenQASMError('compound angle bit selection lowering')
+            self.__emit_angle_bit_assignment(angle_bits.selection, statement.rvalue)
             return
         source_name = self.__operand_name(statement.lvalue)
         self.__reject_constant_bit_target(statement.lvalue)
