@@ -7926,8 +7926,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__is_initialization_process:
             return
 
-        if self.__angle_bit_selection(statement.lvalue, destination=True) is not None:
-            raise UnsupportedOpenQASMError('angle bit selection assignment')
+        selection = self.__angle_bit_selection(statement.lvalue, destination=True)
+        if selection is not None:
+            self.__validate_angle_bit_assignment(statement)
+            self.__emit_angle_bit_assignment(selection, statement.rvalue)
+            return
         source_name = self.__operand_name(statement.lvalue)
         self.__reject_constant_bit_target(statement.lvalue)
         self.__reject_constant_angle_target(statement.lvalue)
@@ -7988,6 +7991,48 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError('indexed classical assignment')
 
         self.__emit_classical_value_assignment(statement, variable_name, variable_type)
+
+    def __emit_angle_bit_assignment(
+            self, selection: _StaticAngleBitSelection, expression: ast.Expression) -> None:
+        previous = (self.__expression_kind, self.__value, self.__value_type, self.__value_kind)
+        previous_used = self.__used_temporary_variables.copy()
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            if isinstance(selection.source, ast.IndexExpression):
+                # Capture and check the destination element once. Keep its
+                # index reserved while the RHS evaluates its own accesses.
+                target, _ = self.__array_access(selection.source)
+            else:
+                target = self.__capitalize_variable_name(selection.source.name)
+                if self.__type_of(target) != ValueType.ANGLE:
+                    raise InvalidBitOperandException('An angle bit selection target must have angle type')
+            result = self.__add_new_temporary_variable(
+                ValueType.UINT, _UnsignedIntegerType(selection.angle_type.width, True))
+            self.__qcx_lines.append(f'LET {result} := {target}')
+            with self.__bit_register_expression_value(expression) as bits:
+                selected_mask = sum(1 << index for index in selection.indices)
+                self.__qcx_lines.append(f'LET {result} &= {selection.angle_type.mask ^ selected_mask}')
+                literal = sum(value << index for index, value in zip(selection.indices, bits)
+                              if isinstance(value, int))
+                if literal:
+                    self.__qcx_lines.append(f'LET {result} |= {literal}')
+                scratch = None
+                for index, value in zip(selection.indices, bits):
+                    if isinstance(value, int):
+                        continue
+                    if scratch is None:
+                        scratch = self.__add_new_temporary_variable(ValueType.UINT)
+                    self.__qcx_lines.append(f'LET {scratch} := :UINT:{value}')
+                    if index:
+                        self.__qcx_lines.append(f'LET {scratch} <<= {index}')
+                    self.__qcx_lines.append(f'LET {result} |= {scratch}')
+            # Commit once, after every RHS bit has been captured and all
+            # calculations have succeeded, including overlapping self-copies.
+            self.__qcx_lines.append(f'LET {target} := {result}')
+        finally:
+            self.__expression_kind, self.__value, self.__value_type, self.__value_kind = previous
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
 
     @staticmethod
     def __validate_array_assignment_operator(element_type: ValueType, operator: str) -> None:
