@@ -119,6 +119,8 @@ The converter currently covers:
 - static bit indices, ranges, and sets on sized scalar angles and angle-array
   elements, with register-valued reads and overlap-safe plain, bitwise, and shift
   assignments;
+- runtime single-bit indices on sized angles and angle-array elements, with
+  checked INT/UINT indices, `bit[1]` reads, and plain/compound assignments;
 - scalar angle parameters for `p`, `phase`, `u1`, `cp`, `cphase`, and `gphase`, including
   inverse/control modifiers and constant/runtime integer powers;
 - scalar built-in `exp`, `sqrt`, `log`, `sin`, `cos`, `tan`, `arcsin`, `arccos`,
@@ -296,10 +298,13 @@ iterators, and elements of `array[angle[n], N]` support bit-level reads.
 Writable scalar variables and array elements also support selection assignment.
 The supported selectors are single integer indices, inclusive ranges
 `start:stop` or `start:step:stop`, and discrete sets `{i, j, ...}`. Bounds,
-steps, and set elements must be literals or supported expressions of previously
-declared constants. Active loop iterators cannot supply bit selectors, even
-when unrolled or shadowing a constant. A range's omitted step is `+1`; descending
-ranges require an explicit negative step.
+steps, and set elements on the static-selector path must be literals or
+supported expressions of previously declared constants. Active loop iterators
+cannot supply range bounds, steps, or set elements, even when unrolled or
+shadowing a constant. Single indices can also be runtime expressions, including
+iterator indices, as described
+[below](#runtime-single-bit-indexing-on-sized-angles). A range's omitted step is
+`+1`; descending ranges require an explicit negative step.
 
 Bit zero is the least significant stored bit, and bit `n - 1` has weight pi.
 Negative indices count from the high end, with `-1` selecting bit `n - 1`.
@@ -362,7 +367,7 @@ counts and zeroing oversized shifts are documented converter choices.
 
 The outer array-element index in `phases[index][selector]` retains the existing
 static/runtime integer-index rules, including negative indices and runtime
-bounds checks. This does not enable runtime-dependent bit selectors. Names,
+bounds checks. Runtime-dependent ranges and sets remain unsupported. Names,
 types, widths, static bounds, and read-only targets are validated in skipped
 bodies and empty loops without evaluating runtime array indices or arithmetic.
 Temporary storage is released on success and failure while caller-owned storage
@@ -404,12 +409,66 @@ p(phases[index]) q;
 ```
 
 Bit selections on unsized angles, computed angle expressions or cast results,
-further indexing of a selection result, runtime bit selectors, aliases,
-multidimensional arrays, and INT/UINT bit slicing remain unsupported.
+further indexing of a selection result, runtime-dependent bit ranges/sets,
+aliases, multidimensional arrays, and INT/UINT bit slicing remain unsupported.
 Arithmetic compound assignments to angle selections remain unsupported: a
 selection is a bit register, so it does not inherit angle addition or scaling.
 Use an explicitly sized temporary before selecting bits from an unsized angle.
 No new bra instruction or build option is required.
+
+#### Runtime single-bit indexing on sized angles
+
+The same named, explicitly sized angle sources also support a single runtime
+INT or UINT bit index: `a[index]` and `phases[element_index][bit_index]`.
+Supported integer expressions include arithmetic, enclosing loop iterators,
+integer-array elements, and integer-valued calls such as `popcount`.
+Index names follow declaration order and iterator shadowing. Floating-point,
+Boolean, and scalar bit indices require a supported explicit integer cast.
+Runtime ranges and sets are not supported.
+
+The result is always `bit[1]`, including for an angle constant with a runtime
+index. It supports the register consumers and equal-width casts described
+above, but cannot initialize a constant register or implicitly become a scalar
+bit, Boolean condition, integer, or angle. Constant and iterator angle sources
+remain read-only; scalar angle variables and array elements support `=`, `&=`,
+`|=`, `^=`, `<<=`, and `>>=` with the same RHS rules as static selections.
+
+For `angle[n]`, valid signed indices are in `[-n, n - 1]`; negative indices
+normalize by adding `n`. UINT indices must be less than `n`. Invalid indices
+fail on the executed path before bit extraction or modification, including
+UINT values too large to convert to QCX INT safely. Index expressions execute
+once per access. For an array element, its element index is evaluated and
+checked before the bit index. A destination retains both captured indices
+throughout RHS evaluation; compound assignments snapshot the selected bit
+before evaluating the RHS. Explicit RHS accesses evaluate their own indices.
+Only the selected bit is replaced, with one destination write after successful
+RHS evaluation. A positive shift count clears the selected bit; a zero count
+preserves it, and negative signed counts fail on the executed path.
+
+Skipped branches, short-circuited expressions, and empty loops do not execute
+runtime index arithmetic, bounds checks, or shift-count checks. They still
+validate names, types, widths, and read-only restrictions without inventing
+iterator values. Gates retain parameters captured before a selection write,
+including under fusion. This feature uses existing QCX instructions and requires
+no bra instruction or build change.
+
+<!-- runtime-angle-bit-selection-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit q;
+angle[4] a = angle[4]("0011");
+int bit_index = -1;
+bit[1] old = a[bit_index];             // "0", a one-bit register.
+a[bit_index] ^= "1";                  // a becomes "1011".
+array[angle[4], 1] phases = {a};
+int element_index = -1;
+phases[element_index][bit_index] >>= 1; // "0011": clear just the selected bit.
+bit_index = 0;
+phases[element_index][bit_index] = "0"; // "0010", or pi/4.
+h q;
+p(phases[element_index]) q;
+```
 
 #### Scalar angle arithmetic
 
@@ -2659,6 +2718,8 @@ p(phases[i]) q;
 
 Angle-array elements support [static bit selections](#static-bit-selections-on-sized-angles)
 using `phases[index][selector]`, including writes that preserve unselected bits.
+[Runtime single-bit indexing](#runtime-single-bit-indexing-on-sized-angles) also
+supports `phases[element_index][bit_index]` for reads and writes.
 Array slices, whole-array operations and copying, aliases, multidimensional
 arrays, and local array declarations remain unsupported.
 The positive-length restriction is an implementation limitation:
@@ -4938,7 +4999,7 @@ The current prototype does not reliably support:
   angle/bit-register conversions above, complex-to-Boolean casts,
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
-- scalar-bit shifts and runtime-dependent register selections,
+- scalar-bit shifts and runtime-dependent register ranges/sets,
   ordered bit-register comparisons, whole-array bitwise operations, direct
   Boolean bitwise operations, or classical functions other than the
   `exp`/`sqrt`/`log`/`sin`/`cos`/`tan`/`arcsin`/`arccos`/`arctan`/`ceiling`/`floor`/
@@ -4946,7 +5007,7 @@ The current prototype does not reliably support:
 - angle-by-angle multiplication, scaling by types other than same-width UINT,
   `uint / angle`, `angle /= angle`, mixed angle/non-angle comparisons and bitwise
   operations, compound operators other than `+=`/`-=`/`*=`/`/=`/`&=`/`|=`/`^=`/`<<=`/`>>=`,
-  runtime bit selectors, bit selections on unsized angles, arithmetic compound
+  runtime-dependent angle bit ranges/sets, bit selections on unsized angles, arithmetic compound
   assignments to angle bit selections, INT/UINT bit slicing, multidimensional angle arrays,
   angle range/set iteration,
   different-width angle-array iterators,
@@ -5114,6 +5175,19 @@ additionally verify operand typing, empty-loop validation, once-only destination
 and count capture, temporary ownership, capture-map cleanup, and failed
 lowering without destination writes. Run with `--bra /path/to/bra`, including
 a UBSan build.
+
+`bra/test/qasm2qcx_runtime_angle_bit_numerical.py` checks runtime single-bit
+reads and all six assignment operators against independent integer references
+at every supported angle width. Cases cover constants, variables, array
+elements, INT/UINT and negative indices, nested accesses, register consumers,
+loop reentry and shadowing, overlapping operands, unchanged unselected bits,
+reached/skipped bounds and arithmetic errors, and negative/oversized shift
+counts. Phase gates, modifiers, and fusion are checked against full quantum
+states. The runtime-selection example above is checked for its stored patterns
+and final state. Unit tests additionally check index evaluation order and
+once-only destination capture, old-bit snapshots before RHS reads, visibility,
+read-only targets, temporary ownership, and capture-map cleanup on failures.
+Run with `--bra /path/to/bra`, including a UBSan build.
 
 `bra/test/qasm2qcx_angle_phase_numerical.py` compares whole diagonal phase
 matrices with the generated angle-phase circuits, without discarding global
@@ -5711,6 +5785,7 @@ python3 bra/test/qasm2qcx_angle_array_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_bit_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_angle_bit_selection_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_selection_compound_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_angle_bit_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_global_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_sqrt_numerical.py --bra bra/bin/bra
