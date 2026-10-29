@@ -4437,7 +4437,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             ) -> tuple[ValueType, bool]:
         if expression.op.name == '-':
             return self.__negation_expression_info(expression, iterators)
-        if expression.op.name == '~' and self.__expression_mentions_angle(expression):
+        if expression.op.name == '~' and self.__expression_mentions_angle(expression, iterators):
             value_type, _, runtime = self.__angle_operand_info(expression, iterators)
             return value_type, runtime
         value_type, runtime = self.__loop_expression_info(expression.expression, iterators)
@@ -4452,11 +4452,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __loop_binary_info(
             self, expression: ast.BinaryExpression, iterators: set[str] | dict[str, ValueType] | None
             ) -> tuple[ValueType, bool]:
-        if expression.op.name in ('<<', '>>') and self.__expression_mentions_angle(expression):
+        if expression.op.name in ('<<', '>>') and self.__expression_mentions_angle(expression, iterators):
             info = self.__angle_shift_info(expression, iterators)
             if info is not None:
                 return ValueType.ANGLE, info[2]
-        if expression.op.name in ('&', '|', '^') and self.__expression_mentions_angle(expression):
+        if expression.op.name in ('&', '|', '^') and self.__expression_mentions_angle(expression, iterators):
             value_type, _, runtime = self.__angle_operand_info(expression, iterators)
             return value_type, runtime
         if (expression.op.name in ('==', '!=', '<', '<=', '>', '>=')
@@ -4465,15 +4465,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             rhs_runtime = self.__register_expression_runtime(expression.rhs, iterators)
             return ValueType.BOOL, lhs_runtime or rhs_runtime
         if (expression.op.name in ('==', '!=', '<', '<=', '>', '>=')
-                and self.__expression_mentions_angle(expression)):
+                and self.__expression_mentions_angle(expression, iterators)):
             info = self.__angle_comparison_info(expression, iterators)
             if info is not None:
                 return ValueType.BOOL, info[2]
-        if expression.op.name in ('*', '/') and self.__expression_mentions_angle(expression):
+        if expression.op.name in ('*', '/') and self.__expression_mentions_angle(expression, iterators):
             info = self.__angle_multiplicative_info(expression, iterators)
             if info is not None:
                 return info.result_type, info.runtime
-        if expression.op.name in ('+', '-') and self.__expression_mentions_angle(expression):
+        if expression.op.name in ('+', '-') and self.__expression_mentions_angle(expression, iterators):
             value_type, _, runtime = self.__angle_operand_info(expression, iterators)
             return value_type, runtime
         if expression.op.name == '**':
@@ -5031,10 +5031,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 or (isinstance(node, ast.UnaryExpression) and node.op.name in ('~', '-', '!'))
                 or (isinstance(node, ast.Cast)
                     and (isinstance(node.type, (ast.BoolType, ast.BitType, ast.AngleType))
-                         or self.__expression_mentions_angle(node)))
+                         or self.__expression_mentions_angle(node, iterators)))
                 or (isinstance(node, ast.BinaryExpression) and node.op.name in (
                     '&', '|', '^', '<<', '>>', '**', '%', '&&', '||', '==', '!=', '<', '<=', '>', '>='))
-                or (isinstance(node, ast.BinaryExpression) and self.__expression_mentions_angle(node))):
+                or (isinstance(node, ast.BinaryExpression) and self.__expression_mentions_angle(node, iterators))):
             self.__loop_expression_info(node, iterators)
             self.__validate_bitwise_indices(node, iterators)
         for field in dataclasses.fields(node):
@@ -6402,8 +6402,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__constant_bit_register(name)
             raise InvalidBitOperandException('A constant bit register is read-only')
 
-    def __expression_mentions_angle(self, expression: ast.Expression) -> bool:
-        if self.__angle_bit_selection(expression) is not None:
+    def __expression_mentions_angle(
+            self, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> bool:
+        if self.__angle_bit_selection(expression, iterators) is not None:
             return False  # Operations outside the selection use register semantics.
         if isinstance(expression, ast.Cast) and isinstance(expression.type, ast.AngleType):
             return True
@@ -6414,6 +6416,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if isinstance(source_type, ast.ArrayType) and isinstance(source_type.base_type, ast.AngleType):
                 return True
         if isinstance(expression, ast.Identifier):
+            if iterators is not None and expression.name in iterators:
+                return isinstance(iterators, dict) and iterators[expression.name] == ValueType.ANGLE
             for scope in reversed(self.__loop_bindings):
                 if expression.name in scope:
                     binding = scope[expression.name]
@@ -6423,7 +6427,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         for field in dataclasses.fields(expression):
             value = getattr(expression, field.name)
             children = value if isinstance(value, list) else [value]
-            if any(isinstance(child, ast.Expression) and self.__expression_mentions_angle(child)
+            if any(isinstance(child, ast.Expression) and self.__expression_mentions_angle(child, iterators)
                    for child in children):
                 return True
         return False
@@ -6453,7 +6457,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             source_type, _ = self.__loop_expression_info(expression, iterators)
             if source_type not in (ValueType.FLOAT, ValueType.ANGLE):
                 raise UnsupportedOpenQASMError('angle conversion requires float or angle input')
-        elif self.__expression_mentions_angle(statement.rvalue):
+        elif self.__expression_mentions_angle(statement.rvalue, iterators):
             if self.__loop_expression_info(statement.rvalue, iterators)[0] == ValueType.ANGLE:
                 raise NoImplicitCastException
 
@@ -6782,6 +6786,32 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             yield values
 
     @contextlib.contextmanager
+    def __runtime_angle_bit_value(
+            self, selection: _RuntimeAngleBitSelection) -> Iterator[tuple[str, ...]]:
+        previous = (self.__expression_kind, self.__value, self.__value_type, self.__value_kind)
+        previous_used = self.__used_temporary_variables.copy()
+        owned = None
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            # Capture the array element (if any) before evaluating its bit
+            # index. Keep the complete source alive across index arithmetic.
+            bits = self.__angle_arithmetic_operand(selection.source, selection.angle_type)
+            index = self.__capture_array_index(selection.index, selection.angle_type.width)
+            scratch = self.__add_new_temporary_variable(ValueType.UINT)
+            bit = self.__add_new_temporary_variable(ValueType.BIT)
+            self.__qcx_lines.extend([
+                f'LET {scratch} := {bits}', f'LET {scratch} >>= {index}',
+                f'LET {scratch} &= 1', f'LET {bit} := :INT:{scratch}',
+            ])
+            owned = self.__used_temporary_variables - previous_used
+            yield (bit,)
+        finally:
+            self.__expression_kind, self.__value, self.__value_type, self.__value_kind = previous
+            temporaries = owned if owned is not None else self.__used_temporary_variables - previous_used
+            for temporary in temporaries:
+                self.__release_temporary_variable(temporary)
+
+    @contextlib.contextmanager
     def __angle_bits_value(
             self, source: ast.Expression, angle_type: _AngleType,
             indices: Iterable[int], *, captured: str | None = None) -> Iterator[tuple[str | int, ...]]:
@@ -6867,12 +6897,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                           if signature.result_type == ValueType.ANGLE else None)
             return signature.result_type, angle_type, runtime
         if (isinstance(expression, ast.BinaryExpression) and expression.op.name in ('<<', '>>')
-                and self.__expression_mentions_angle(expression)):
+                and self.__expression_mentions_angle(expression, iterators)):
             info = self.__angle_shift_info(expression, iterators)
             if info is not None:
                 return ValueType.ANGLE, info[0], info[2]
         if (isinstance(expression, ast.BinaryExpression) and expression.op.name in ('*', '/')
-                and self.__expression_mentions_angle(expression)):
+                and self.__expression_mentions_angle(expression, iterators)):
             info = self.__angle_multiplicative_info(expression, iterators)
             if info is not None:
                 return info.result_type, info.result if info.result_type == ValueType.ANGLE else None, info.runtime
@@ -7536,7 +7566,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         selection = self.__angle_bit_selection(expression)
         if selection is not None:
             if isinstance(selection, _RuntimeAngleBitSelection):
-                raise UnsupportedOpenQASMError('runtime angle bit selection extraction')
+                with self.__runtime_angle_bit_value(selection) as values:
+                    yield values
+                return
             with self.__angle_bits_value(selection.source, selection.angle_type, selection.indices) as values:
                 yield values
             return
