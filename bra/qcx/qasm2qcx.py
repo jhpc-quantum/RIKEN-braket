@@ -284,8 +284,26 @@ class _StaticAngleBitSelection:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeAngleBitSelection:
+    # Retain both indices unevaluated; array-element selection precedes bit
+    # selection when this descriptor is eventually lowered.
+    source: ast.Identifier | ast.IndexExpression
+    angle_type: _AngleType
+    index: ast.Expression
+    index_type: ValueType
+
+    @property
+    def width(self) -> int:
+        return 1
+
+    @property
+    def runtime(self) -> bool:
+        return True
+
+
+@dataclasses.dataclass(frozen=True)
 class _AngleBitAssignmentInfo:
-    selection: _StaticAngleBitSelection
+    selection: _StaticAngleBitSelection | _RuntimeAngleBitSelection
     operator: str
     shift_count_type: ValueType | None = None
 
@@ -2095,7 +2113,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __angle_bit_selection(
             self, operand: ast.QASMNode,
             iterators: set[str] | dict[str, ValueType] | None = None, *,
-            destination: bool = False) -> _StaticAngleBitSelection | None:
+            destination: bool = False) -> _StaticAngleBitSelection | _RuntimeAngleBitSelection | None:
         if isinstance(operand, ast.IndexExpression):
             source, selector = operand.collection, operand.index
         elif isinstance(operand, ast.IndexedIdentifier):
@@ -2139,6 +2157,25 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise UnsupportedOpenQASMError('assignment to a for-loop iterator')
             if name in self.__const_angle_values:
                 self.__reject_constant_angle_target(ast.Identifier(name), iterators)
+        if (isinstance(selector, list) and len(selector) == 1
+                and isinstance(selector[0], ast.Expression)
+                and not isinstance(selector[0], (ast.RangeDefinition, ast.DiscreteSet))):
+            index = selector[0]
+            index_type, index_runtime = self.__loop_expression_info(index, iterators)
+            if index_type not in (ValueType.INT, ValueType.UINT):
+                raise UnsupportedOpenQASMError('angle bit index must be an integer')
+            names = self.__loop_bound_names(index)
+            active_names = set(iterators or ()) | set().union(*self.__loop_bindings)
+            if index_runtime or names & active_names:
+                self.__validate_bitwise_indices(index, iterators)
+                if not self.__is_initialization_process:
+                    for index_name in names - active_names:
+                        if index_name in self.__constant_source_types:
+                            if index_name not in self.__declared_constant_variables:
+                                raise NoVariableNameException(index_name)
+                        elif index_name in self.__classical_source_types:
+                            self.__type_of(self.__capitalize_variable_name(index_name))
+                return _RuntimeAngleBitSelection(source, angle_type, index, index_type)
         indices, _ = self.__static_bit_indices(selector, angle_type.width, name, iterators, destination=destination)
         # Unlike a bit-register index, even a single angle bit is bit[1].
         return _StaticAngleBitSelection(source, angle_type, tuple(indices), runtime)
@@ -7498,6 +7535,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
         selection = self.__angle_bit_selection(expression)
         if selection is not None:
+            if isinstance(selection, _RuntimeAngleBitSelection):
+                raise UnsupportedOpenQASMError('runtime angle bit selection extraction')
             with self.__angle_bits_value(selection.source, selection.angle_type, selection.indices) as values:
                 yield values
             return
@@ -7962,6 +8001,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         angle_bits = self.__angle_bit_assignment_info(statement)
         if angle_bits is not None:
+            if isinstance(angle_bits.selection, _RuntimeAngleBitSelection):
+                raise UnsupportedOpenQASMError('runtime angle bit selection assignment')
             self.__emit_angle_bit_assignment(angle_bits.selection, statement.rvalue, angle_bits.binary_operator)
             return
         source_name = self.__operand_name(statement.lvalue)

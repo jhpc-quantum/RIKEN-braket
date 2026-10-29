@@ -8340,13 +8340,13 @@ class StaticAngleBitSelectionFoundationTests(unittest.TestCase):
         with self.assertRaises(qasm2qcx.InvalidBitOperandException):
             self.converter._QASM2QCXConverter__angle_bit_selection(expression)
 
-    def test_only_compile_time_bit_selectors_are_accepted(self):
-        for selector in ('index', 'index:3', '{index, 0}', 'outer', '0:outer'):
+    def test_ranges_and_sets_still_require_compile_time_selectors(self):
+        for selector in ('index:3', '{index, 0}', '0:outer'):
             with self.subTest(selector=selector), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.selection(f'a[{selector}]', iterators={'outer': qasm2qcx.ValueType.INT})
         with self.converter._QASM2QCXConverter__iterator_binding('LOW', 1):
             with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'iterator-dependent'):
-                self.selection('a[LOW]')
+                self.selection('a[LOW:3]')
 
     def test_duplicate_source_indices_are_preserved_and_destinations_rejected(self):
         for source in ('a[{3, -1}]', 'phases[index][{1, 1}]', 'a[-4:3]'):
@@ -8438,7 +8438,7 @@ class StaticAngleBitSelectionFoundationTests(unittest.TestCase):
                 'count = popcount(a[0:1]); same = a[0:1] == "01";')
         converter = ScalarAngleFoundationTests.converter(self, prefix + 'for int outer in [1:0] {' + body + '}')
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
-        for body in ('single = a[4];', 'single = a[index];', 'a[0] = "11";', 'a[0] = 1;',
+        for body in ('single = a[4];', 'single = a[index:3];', 'a[0] = "11";', 'a[0] = 1;',
                      'same = a[0];', 'index = a[0];', 'pair = phases[true][0:1];',
                      'a[0] += "1";', 'pair = a[0:1] ^ "1";'):
             with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -8455,6 +8455,124 @@ class StaticAngleBitSelectionFoundationTests(unittest.TestCase):
 
     def test_assignment_accepts_matching_register(self):
         ScalarAngleFoundationTests.converter(self, 'angle[4] a = 0.0; a[0] = "1";')
+
+
+class RuntimeAngleBitSelectionFoundationTests(unittest.TestCase):
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    converter = ScalarAngleFoundationTests.converter
+
+    def expression(self, source):
+        return self.program('bit[1] result = ' + source + ';').statements[0].init_expression
+
+    def setUp(self):
+        self.c = self.converter('const angle[4] C = pi; angle[4] a; angle unsized; '
+            'array[angle[4], 2] phases; array[int, 2] indices; '
+            'int index; uint count; float real; bool flag; bit scalar; bit[2] bits;')
+
+    def selection(self, source, **kwargs):
+        return self.c._QASM2QCXConverter__angle_bit_selection(self.expression(source), **kwargs)
+
+    def test_retains_source_and_integer_index_without_evaluation(self):
+        for source, kind in (('a[index]', qasm2qcx.ValueType.INT),
+                             ('C[count]', qasm2qcx.ValueType.UINT),
+                             ('phases[index / 0][indices[index] + 100]', qasm2qcx.ValueType.INT)):
+            expression = self.expression(source)
+            selected = self.c._QASM2QCXConverter__angle_bit_selection(expression)
+            with self.subTest(source=source):
+                self.assertIsInstance(selected, qasm2qcx._RuntimeAngleBitSelection)
+                self.assertIs(selected.source, expression.collection)
+                self.assertIs(selected.index, expression.index[0])
+                self.assertEqual(selected.index_type, kind)
+                self.assertEqual(selected.width, 1)
+                self.assertTrue(selected.runtime)
+                with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                    selected.index_type = qasm2qcx.ValueType.FLOAT
+
+    def test_register_type_and_width_propagate(self):
+        self.assertEqual(self.c._QASM2QCXConverter__loop_expression_info(self.expression('C[count]')),
+                         (qasm2qcx.ValueType.BIT_REGISTER, True))
+        for source in ('a[index]', '~C[count]', 'a[index] ^ "1"',
+                       'rotl(phases[index][count], index)'):
+            expression = self.expression(source)
+            with self.subTest(source=source):
+                self.assertEqual(self.c._QASM2QCXConverter__bit_register_expression_width(expression), 1)
+                self.assertTrue(self.c._QASM2QCXConverter__register_expression_runtime(expression, None))
+                self.assertFalse(self.c._QASM2QCXConverter__expression_mentions_angle(expression))
+
+    def test_iterators_remain_unevaluated_and_shadow_scalar_types(self):
+        binding = self.c._QASM2QCXConverter__iterator_binding
+        with binding('real', 100):
+            self.assertIsInstance(self.selection('a[real]'), qasm2qcx._RuntimeAngleBitSelection)
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.selection('a[real]')
+        selected = self.selection('a[outer]', iterators={'outer': qasm2qcx.ValueType.INT})
+        self.assertEqual(selected.index_type, qasm2qcx.ValueType.INT)
+
+    def test_assignment_metadata_covers_all_operators_and_width_checks(self):
+        info = self.c._QASM2QCXConverter__angle_bit_assignment_info
+        for operator, rhs in (('=', '"1"'), ('&=', '"1"'), ('|=', 'a[index]'),
+                              ('^=', 'C[count]'), ('<<=', 'index'), ('>>=', 'count')):
+            selected = info(self.program(f'phases[index][count] {operator} {rhs};').statements[0])
+            self.assertIsInstance(selected.selection, qasm2qcx._RuntimeAngleBitSelection)
+            self.assertEqual(selected.operator, operator)
+        for statement in ('a[index] = scalar;', 'a[index] = bits;', 'a[index] += "1";',
+                          'a[index] <<= true;', 'C[index] = "1";'):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                info(self.program(statement).statements[0])
+
+    def test_invalid_index_types_shapes_and_sources(self):
+        for source in ('a[real]', 'a[flag]', 'a[scalar]', 'a[bits]', 'a[missing]',
+                       'a[index:3]', 'a[{index}]', 'a[index, count]', 'a[index][0]',
+                       'unsized[index]', 'phases[true][index]'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.selection(source)
+
+    def test_empty_loops_validate_without_index_values_or_runtime_domain_checks(self):
+        prefix = ('angle[4] a; array[angle[4], 2] phases; int index; uint count; '
+                  'bit[1] result; bool same; uint total; ')
+        body = ('result = a[outer]; result = phases[outer / 0][index / 0]; '
+                'a[outer] ^= result; phases[outer][count] >>= outer; '
+                'total = popcount(a[index]); same = a[index] == "1"; '
+                'for angle[4] value in phases { result = value[outer]; }')
+        c = self.converter(prefix + 'for int outer in [1:0] {' + body + '}')
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        for body in ('result = a[true];', 'a[index] = "11";',
+                     'for angle[4] value in phases { value[outer] = "1"; }'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(prefix + 'for int outer in [1:0] {' + body + '}')
+
+    def test_validation_preserves_state_and_caller_temporaries(self):
+        c = self.c
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+        lines = c._QASM2QCXConverter__qcx_lines.copy()
+        self.selection('phases[index / 0][count + 100]')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.selection('a[index + missing]')
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+        self.assertEqual(lines, c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+
+    def test_forward_index_names_are_rejected_without_evaluation(self):
+        for declaration in ('const int later = 1;', 'int later;', 'array[int, 2] later;'):
+            index = 'later[0]' if 'array' in declaration else 'later'
+            with self.subTest(declaration=declaration), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('angle[4] a; int index; bit[1] result; '
+                    f'for int outer in [1:0] {{ result = a[index + {index}]; }} ' + declaration)
+
+    def test_runtime_selection_is_not_constant_or_scalar(self):
+        for body in ('const bit[1] RESULT = C[index];', 'scalar = a[index];',
+                     'if (a[index]) {}', 'index = a[index];'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('const angle[4] C = pi; angle[4] a; int index; bit scalar; ' + body)
+
+    def test_runtime_lowering_is_explicitly_deferred(self):
+        for body, operation in (('bit[1] result = a[index];', 'extraction'),
+                                ('a[index] = "1";', 'assignment')):
+            with self.subTest(body=body), self.assertRaisesRegex(
+                    qasm2qcx.UnsupportedOpenQASMError, 'runtime angle bit selection ' + operation):
+                self.converter('angle[4] a; int index; ' + body)
 
 
 class StaticAngleBitSelectionReadTests(unittest.TestCase):
@@ -8586,7 +8704,7 @@ class StaticAngleBitSelectionWriteTests(unittest.TestCase):
         prefix = ('const angle[4] A = pi; angle[4] a = pi; array[angle[4], 2] phases; '
                   'bit scalar; bit[2] pair; int index = 0; ')
         for body in ('A[0] = "1";', 'a[0] = scalar;', 'a[0] = true;', 'a[0] = pair;',
-                     'a[0:1] = "1";', 'a[{0, 0}] = "11";', 'a[index] = "1";',
+                     'a[0:1] = "1";', 'a[{0, 0}] = "11";', 'a[index:3] = "1";',
                      'a[0] ^= true;', 'phases[index][0] <<= 0.5;'):
             for wrapper in ('{}', 'if (false) {{ {} }}', 'for int outer in [1:0] {{ {} }}'):
                 with self.subTest(body=body, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -8682,14 +8800,14 @@ class AngleSelectionCompoundValidationTests(unittest.TestCase):
                 self.info(f'a[0:1] {operator} pair;')
 
     def test_static_selectors_sizedness_duplicates_and_constants_stay_enforced(self):
-        for target, rhs in (('a[index]', '"1"'), ('a[0:4]', '"11111"'),
+        for target, rhs in (('a[index:3]', '"1"'), ('a[0:4]', '"11111"'),
                             ('a[{0, 0}]', '"11"'), ('a[1:0]', '"1"'),
                             ('a[0:0:3]', '"1"'), ('unsized[0]', '"1"'), ('A[0]', '"1"')):
             with self.subTest(target=target), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.info(f'{target} ^= {rhs};')
         with self.converter._QASM2QCXConverter__iterator_binding('LOW', 0):
             with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
-                self.info('a[LOW] ^= "1";')
+                self.info('a[LOW:3] ^= "1";')
 
     def test_angle_iterators_remain_readonly_and_restore_shadowed_types(self):
         bind = self.converter._QASM2QCXConverter__iterator_binding
