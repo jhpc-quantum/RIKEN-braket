@@ -4616,8 +4616,23 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return max(0, (distance + stride - 1) // stride)
         return len(values)
 
-    @staticmethod
-    def __validate_loop_header(statement: ast.ForInLoop) -> None:
+    def __angle_selection_loop_info(
+            self, source: ast.QASMNode, iteration_type: ast.QASMNode,
+            iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> _StaticAngleBitSelection | _RuntimeAngleBitSelection | None:
+        # Reuse selection metadata without reading the source or capturing
+        # either index. Resolve it before introducing the loop's own binding.
+        selection = self.__angle_bit_selection(source, iterators)
+        if selection is not None and (
+                not isinstance(iteration_type, ast.BitType) or iteration_type.size is not None):
+            raise UnsupportedOpenQASMError('angle bit-selection iteration requires a scalar bit iterator')
+        return selection
+
+    def __validate_loop_header(
+            self, statement: ast.ForInLoop,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> None:
+        if self.__angle_selection_loop_info(statement.set_declaration, statement.type, iterators) is not None:
+            return
         typed_collection_loop = (
             isinstance(statement.set_declaration, ast.Identifier)
             and (isinstance(statement.type, (ast.FloatType, ast.UintType, ast.BoolType, ast.ComplexType, ast.AngleType))
@@ -4692,6 +4707,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         iterator_names = set(iterators)
         if isinstance(bounds, ast.Identifier):
             return self.__collection_loop_info(bounds, statement.type, iterators)[3]
+        if self.__angle_selection_loop_info(bounds, statement.type, iterators) is not None:
+            return None  # BIT iterators do not carry UINT width metadata.
         is_set = isinstance(bounds, ast.DiscreteSet)
         expressions = ([(value, f'element {index}') for index, value in enumerate(bounds.values)]
                        if is_set else [(bounds.start, 'start'), (bounds.end, 'end'),
@@ -4859,7 +4876,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__validate_loop_body(child.if_block, iterators)
                 self.__validate_loop_body(child.else_block, iterators)
             if isinstance(child, ast.ForInLoop):
-                self.__validate_loop_header(child)
+                self.__validate_loop_header(child, iterators)
                 uint_type = self.__validate_nested_loop_bounds(child, iterators)
                 value_type = self.__source_value_type(child.type)
                 # Width metadata must follow the same nested shadowing as
@@ -4974,6 +4991,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
         if isinstance(node, ast.IndexExpression) and self.__angle_bit_selection(node, iterators) is not None:
             return  # The source/index and static bit bounds were validated together.
+        if (isinstance(node, ast.IndexExpression) and isinstance(node.collection, ast.Identifier)
+                and (node.collection.name in iterators
+                     or any(node.collection.name in scope for scope in self.__loop_bindings))):
+            # Scalar iterators cannot be indexed, even in a plain copy in a
+            # skipped body. Sized angle bit selections were handled above.
+            self.__loop_index_info(node, iterators)
         if isinstance(node, ast.ClassicalAssignment):
             if self.__validate_angle_bit_assignment(node, iterators):
                 return
@@ -5084,6 +5107,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def visit_ForInLoop(self, statement: ast.ForInLoop) -> None:
         self.__validate_loop_header(statement)
         source = statement.set_declaration
+        if isinstance(source, ast.IndexExpression):
+            self.__visit_angle_selection_for(statement)
+            return
         if isinstance(source, ast.Identifier):
             self.__visit_collection_for(statement)
             return
@@ -5126,6 +5152,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # declarations; calculations must stay behind their original jumps.
             self.__hoist_temporary_declarations(previous_temporaries)
             self.__check_loop_output_limit()
+
+    def __visit_angle_selection_for(self, statement: ast.ForInLoop) -> None:
+        # The header has validated the selection before this binding shadows
+        # source names. Body validation needs a BIT type, never a made-up bit.
+        binding = _RuntimeIteratorBinding('QASM2QCX_VALIDATION_ITERATOR', ValueType.BIT)
+        with self.__iterator_binding(statement.identifier.name, binding):
+            self.__validate_loop_body(statement.block, self.__loop_iterator_types())
+        self.__validate_loop_syntax(statement)
+        if not self.__is_initialization_process:
+            raise UnsupportedOpenQASMError('angle bit-selection loop lowering')
 
     def __collection_loop_info(
             self, source: ast.Identifier, iteration_type: ast.QASMNode,
