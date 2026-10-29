@@ -5165,9 +5165,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__validate_loop_syntax(statement)
         if self.__is_initialization_process:
             return
-        if isinstance(selection, _RuntimeAngleBitSelection):
-            raise UnsupportedOpenQASMError('runtime angle bit-selection loop lowering')
-        self.__emit_static_angle_selection_for(statement, selection)
+        self.__emit_angle_selection_for(statement, selection)
 
     def __angle_selection_loop_source(self, source: ast.Identifier | ast.IndexExpression) -> str | int:
         if isinstance(source, ast.IndexExpression):
@@ -5179,8 +5177,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise InvalidBitOperandException('An angle bit-selection loop requires an angle source')
         return self.__value
 
-    def __emit_static_angle_selection_for(
-            self, statement: ast.ForInLoop, selection: _StaticAngleBitSelection) -> None:
+    def __emit_angle_selection_for(
+            self, statement: ast.ForInLoop,
+            selection: _StaticAngleBitSelection | _RuntimeAngleBitSelection) -> None:
         previous = (self.__expression_kind, self.__value, self.__value_type, self.__value_kind)
         previous_used = self.__used_temporary_variables.copy()
         previous_temporaries = self.__declared_temporary_variables.copy()
@@ -5192,13 +5191,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         try:
             self.__expression_kind = ExpressionKind.ARITHMETIC
             source = self.__angle_selection_loop_source(selection.source)
+            # Capture and check the bit index after the element address and
+            # before introducing the iterator, including same-name bindings.
+            indices = ((self.__capture_array_index(selection.index, selection.angle_type.width),)
+                       if isinstance(selection, _RuntimeAngleBitSelection) else selection.indices)
             positions = self.__add_temporary_int_array(selection.width, 'POSITIONS')
             iterator = self.__add_new_temporary_variable(ValueType.BIT)
             index = self.__add_new_temporary_variable(ValueType.INT)
             scratch = self.__add_new_temporary_variable(ValueType.UINT)
             # The mapping retains selection order and repeated indices while
             # allowing the body to be generated just once.
-            for position, bit_index in enumerate(selection.indices):
+            for position, bit_index in enumerate(indices):
                 self.__qcx_lines.append(f'LET {positions}:{position} := {bit_index}')
             self.__qcx_lines.extend([
                 f'LET {index} := 0', f'@{body_label}', f'LET {scratch} := {source}',
