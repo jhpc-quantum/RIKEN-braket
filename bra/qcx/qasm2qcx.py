@@ -302,8 +302,27 @@ class _RuntimeAngleBitSelection:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeAngleBitSetSelection:
+    source: ast.Identifier | ast.IndexExpression
+    angle_type: _AngleType
+    indices: tuple[ast.Expression, ...]
+    index_types: tuple[ValueType, ...]
+
+    @property
+    def width(self) -> int:
+        return len(self.indices)
+
+    @property
+    def runtime(self) -> bool:
+        return True
+
+
+_AngleBitSelection = _StaticAngleBitSelection | _RuntimeAngleBitSelection | _RuntimeAngleBitSetSelection
+
+
+@dataclasses.dataclass(frozen=True)
 class _AngleBitAssignmentInfo:
-    selection: _StaticAngleBitSelection | _RuntimeAngleBitSelection
+    selection: _AngleBitSelection
     operator: str
     shift_count_type: ValueType | None = None
 
@@ -2110,10 +2129,49 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise InvalidBitOperandException('A bit selection destination must not repeat an index')
         return indices, is_register
 
+    def __angle_bit_index_info(
+            self, index: ast.Expression, iterators: set[str] | dict[str, ValueType] | None
+            ) -> tuple[ValueType, bool]:
+        value_type, runtime = self.__loop_expression_info(index, iterators)
+        if value_type not in (ValueType.INT, ValueType.UINT):
+            raise UnsupportedOpenQASMError('angle bit index must be an integer')
+        names = self.__loop_bound_names(index)
+        active_names = set(iterators or ()) | {name for scope in self.__loop_bindings for name in scope}
+        self.__validate_bitwise_indices(index, iterators)
+        if not self.__is_initialization_process:
+            for name in names - active_names:
+                if name in self.__constant_source_types:
+                    if name not in self.__declared_constant_variables:
+                        raise NoVariableNameException(name)
+                elif name in self.__classical_source_types:
+                    self.__type_of(self.__capitalize_variable_name(name))
+        return value_type, runtime or bool(names & active_names)
+
+    def __runtime_angle_bit_selector(
+            self, source: ast.Identifier | ast.IndexExpression, angle_type: _AngleType,
+            selector, iterators: set[str] | dict[str, ValueType] | None
+            ) -> _RuntimeAngleBitSelection | _RuntimeAngleBitSetSelection | None:
+        if isinstance(selector, ast.DiscreteSet):
+            # A mixed set retains every expression, including constants. Its
+            # bounds and domains are checked when the entries are captured;
+            # metadata must not evaluate values in an empty enclosing loop.
+            info = tuple(self.__angle_bit_index_info(index, iterators) for index in selector.values)
+            if any(runtime for _, runtime in info):
+                return _RuntimeAngleBitSetSelection(
+                    source, angle_type, tuple(selector.values), tuple(value_type for value_type, _ in info))
+        elif (isinstance(selector, list) and len(selector) == 1
+                and isinstance(selector[0], ast.Expression)
+                and not isinstance(selector[0], (ast.RangeDefinition, ast.DiscreteSet))):
+            index = selector[0]
+            value_type, runtime = self.__angle_bit_index_info(index, iterators)
+            if runtime:
+                return _RuntimeAngleBitSelection(source, angle_type, index, value_type)
+        return None
+
     def __angle_bit_selection(
             self, operand: ast.QASMNode,
             iterators: set[str] | dict[str, ValueType] | None = None, *,
-            destination: bool = False) -> _StaticAngleBitSelection | _RuntimeAngleBitSelection | None:
+            destination: bool = False) -> _AngleBitSelection | None:
         if isinstance(operand, ast.IndexExpression):
             source, selector = operand.collection, operand.index
         elif isinstance(operand, ast.IndexedIdentifier):
@@ -2157,25 +2215,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise UnsupportedOpenQASMError('assignment to a for-loop iterator')
             if name in self.__const_angle_values:
                 self.__reject_constant_angle_target(ast.Identifier(name), iterators)
-        if (isinstance(selector, list) and len(selector) == 1
-                and isinstance(selector[0], ast.Expression)
-                and not isinstance(selector[0], (ast.RangeDefinition, ast.DiscreteSet))):
-            index = selector[0]
-            index_type, index_runtime = self.__loop_expression_info(index, iterators)
-            if index_type not in (ValueType.INT, ValueType.UINT):
-                raise UnsupportedOpenQASMError('angle bit index must be an integer')
-            names = self.__loop_bound_names(index)
-            active_names = set(iterators or ()) | set().union(*self.__loop_bindings)
-            if index_runtime or names & active_names:
-                self.__validate_bitwise_indices(index, iterators)
-                if not self.__is_initialization_process:
-                    for index_name in names - active_names:
-                        if index_name in self.__constant_source_types:
-                            if index_name not in self.__declared_constant_variables:
-                                raise NoVariableNameException(index_name)
-                        elif index_name in self.__classical_source_types:
-                            self.__type_of(self.__capitalize_variable_name(index_name))
-                return _RuntimeAngleBitSelection(source, angle_type, index, index_type)
+        runtime_selection = self.__runtime_angle_bit_selector(source, angle_type, selector, iterators)
+        if runtime_selection is not None:
+            return runtime_selection
         indices, _ = self.__static_bit_indices(selector, angle_type.width, name, iterators, destination=destination)
         # Unlike a bit-register index, even a single angle bit is bit[1].
         return _StaticAngleBitSelection(source, angle_type, tuple(indices), runtime)
@@ -4619,7 +4661,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __angle_selection_loop_info(
             self, source: ast.QASMNode, iteration_type: ast.QASMNode,
             iterators: set[str] | dict[str, ValueType] | None = None
-            ) -> _StaticAngleBitSelection | _RuntimeAngleBitSelection | None:
+            ) -> _AngleBitSelection | None:
         # Reuse selection metadata without reading the source or capturing
         # either index. Resolve it before introducing the loop's own binding.
         selection = self.__angle_bit_selection(source, iterators)
@@ -5165,6 +5207,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__validate_loop_syntax(statement)
         if self.__is_initialization_process:
             return
+        if isinstance(selection, _RuntimeAngleBitSetSelection):
+            raise UnsupportedOpenQASMError('runtime angle bit-set iteration')
         self.__emit_angle_selection_for(statement, selection)
 
     def __angle_selection_loop_source(self, source: ast.Identifier | ast.IndexExpression) -> str | int:
@@ -7669,6 +7713,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
         selection = self.__angle_bit_selection(expression)
         if selection is not None:
+            if isinstance(selection, _RuntimeAngleBitSetSelection):
+                raise UnsupportedOpenQASMError('runtime angle bit-set extraction')
             if isinstance(selection, _RuntimeAngleBitSelection):
                 with self.__runtime_angle_bit_value(selection) as values:
                     yield values
@@ -8137,6 +8183,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         angle_bits = self.__angle_bit_assignment_info(statement)
         if angle_bits is not None:
+            if isinstance(angle_bits.selection, _RuntimeAngleBitSetSelection):
+                raise UnsupportedOpenQASMError('runtime angle bit-set assignment')
             self.__emit_angle_bit_assignment(angle_bits.selection, statement.rvalue, angle_bits.binary_operator)
             return
         source_name = self.__operand_name(statement.lvalue)
