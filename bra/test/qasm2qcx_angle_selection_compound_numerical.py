@@ -8,6 +8,7 @@ import argparse
 import cmath
 import math
 import pathlib
+import re
 import resource
 import unittest
 
@@ -184,7 +185,7 @@ class BackendTests(unittest.TestCase):
 
     def test_negative_counts_and_operand_failures_only_on_reached_paths(self):
         prefix = ('array[angle[4], 1] phases = {angle[4]("1001")}; '
-                  'int negative = -1; int minimum = -2147483648; int zero = 0; int bad = 1; '
+                  f'int negative = -1; int minimum = {self.module.QASM2QCXConverter.QCX_INT_MIN}; int zero = 0; int bad = 1; '
                   'array[int, 1] counts = {1}; ')
         for operator in ('<<=', '>>='):
             for count in ('-1', 'negative', 'minimum', '1 / zero', 'counts[bad]'):
@@ -224,6 +225,18 @@ class BackendTests(unittest.TestCase):
                     for fused in (False, True):
                         with self.subTest(operator=operator, gate=gate, array=array, fused=fused):
                             BackendAuditTests.check(self, self.program(source, fused=fused), expected)
+
+    def test_documented_angle_selection_compound_example(self):
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- angle-selection-compound-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        source = examples[0].removeprefix('OPENQASM 3.0;')
+        self.check_initializers(source, (('phases', 1),), (4,), ('a', 'index', 'count'), (4, -1, 1))
+        expected = (1 / math.sqrt(2), 1j / math.sqrt(2))
+        for fused in (False, True):
+            BackendAuditTests.check(self, self.program(examples[0], fused=fused), expected)
 
 
 if __name__ == '__main__':
