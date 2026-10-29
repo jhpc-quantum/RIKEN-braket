@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit runtime-valued angle bit-set reads and iteration (#430)."""
+"""Audit runtime-valued angle bit-set selections (#430)."""
 
 import argparse
 import pathlib
@@ -123,6 +123,157 @@ class BackendTests(unittest.TestCase):
             self.check_initializers(prefix + f'bool yes = true || {operand} == "00"; '
                                     f'bool no = false && {operand} == "00";',
                                     (('out', 2),), (1, 1), ('yes', 'no'), (1, 0))
+
+
+    @staticmethod
+    def replace_bits(raw, indices, bits):
+        for index, bit in zip(indices, bits):
+            raw = (raw & ~(1 << index)) | (bit << index)
+        return raw
+
+    def test_all_assignment_operators_at_every_width(self):
+        native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
+        for width in range(1, native + 1):
+            mask = (1 << width) - 1
+            indices = (width - 1, 0) if width > 1 else (0,)
+            selector = '{last, first}' if width > 1 else '{last}'
+            reverse = '{first, last}' if width > 1 else '{last}'
+            repeated = '{last, last}' if width > 1 else '{last}'
+            ones = '"' + '1' * len(indices) + '"'
+            alternate = '"10"' if width > 1 else '"0"'
+            for raw in sorted({0, mask, 0xAAAAAAAA & mask}):
+                source = (f'angle[{width}] a = angle[{width}]("{raw:0{width}b}"); '
+                          f'array[angle[{width}], 1] phases = {{a}}; int element = -1; '
+                          f'int last = -1; uint first = 0; uint one = 1; uint huge = {2**native - 1}; ')
+                snapshots, expected = [], []
+                for origin, operand in enumerate(('a', 'phases[element]')):
+                    current = raw
+                    operations = (
+                        ('=', ones, [1] * len(indices)),
+                        ('&=', alternate, [0, 1] if width > 1 else [0]),
+                        ('|=', ones, [1] * len(indices)),
+                        ('^=', ones, [1] * len(indices)),
+                        ('=', f'{operand}[{reverse}]', tuple(reversed(indices))),
+                        ('^=', f'{operand}[{repeated}]', (width - 1,) * len(indices)),
+                        ('=', f'~{operand}[{selector}]', 'inverse'),
+                        ('<<=', '0', 0), ('>>=', 'one', 1),
+                        ('|=', ones, [1] * len(indices)), ('<<=', 'huge', len(indices)),
+                        ('|=', ones, [1] * len(indices)), ('>>=', str(2**200), len(indices)),
+                    )
+                    for step, (operator, rhs, reference) in enumerate(operations):
+                        old = [(current >> index) & 1 for index in indices]
+                        if operator in ('<<=', '>>='):
+                            distance = reference
+                            if distance >= len(old):
+                                new = [0] * len(old)
+                            elif operator == '<<=':
+                                new = [0] * distance + old[:len(old) - distance]
+                            else:
+                                new = old[distance:] + [0] * distance
+                        else:
+                            if isinstance(reference, tuple):
+                                right = [(current >> index) & 1 for index in reference]
+                            elif reference == 'inverse':
+                                right = [1 - bit for bit in old]
+                            else:
+                                right = reference
+                            if operator == '=':
+                                new = right
+                            elif operator == '&=':
+                                new = [left & right for left, right in zip(old, right)]
+                            elif operator == '|=':
+                                new = [left | right for left, right in zip(old, right)]
+                            else:
+                                new = [left ^ right for left, right in zip(old, right)]
+                        current = self.replace_bits(current, indices, new)
+                        name = f'snapshot{origin}_{step}'
+                        source += f'{operand}[{selector}] {operator} {rhs}; angle[{width}] {name} = {operand}; '
+                        snapshots.append(name)
+                        expected.append(current)
+                self.check_initializers(source, (), (), tuple(snapshots), tuple(expected))
+
+    def test_full_width_destination_and_overlapping_rhs(self):
+        for width in (1, 4, self.module.QASM2QCXConverter.QCX_UINT_WIDTH):
+            mask = (1 << width) - 1
+            raw = 0xAAAAAAAA & mask
+            target = '{index' + ''.join(f', {i}' for i in range(width - 1)) + '}'
+            indices = (width - 1,) + tuple(range(width - 1))
+            source = '{' + ', '.join(str(i) for i in range(width)) + '}'
+            expected = self.replace_bits(raw, indices, [(raw >> i) & 1 for i in range(width)])
+            self.check_initializers(f'angle[{width}] a = angle[{width}]("{raw:0{width}b}"); int index = -1; '
+                f'a[{target}] = a[{source}];', (), (), ('a',), (expected,))
+        self.check_initializers('angle[4] a = angle[4]("0011"); int index = -1; uint first = 0; '
+            'a[{index, first}] = a[{index, index}];', (), (), ('a',), (2,))
+
+    def test_destination_duplicates_fail_before_rhs_even_after_negative_normalization(self):
+        prefix = ('angle[4] a = angle[4]("0011"); int last = -1; uint high = 3; int first = 0; int zero = 0; ')
+        for selector in ('{last, high}', '{last, -1}', '{first, first}', '{0, last, 0}', '{last, 0, 1, 2, 3}'):
+            width = len(selector.strip('{}').split(','))
+            for operator, rhs in (('=', '"' + '1' * width + '"'), ('<<=', '1 / zero')):
+                statement = f'a[{selector}] {operator} {rhs};'
+                for wrapper in ('if (false) {{ {} }}', 'while (false) {{ {} }}',
+                                'for int outer in [1:0] {{ {} }}'):
+                    self.check_initializers(prefix + wrapper.format(statement), (), (), ('a',), (3,))
+                result = self.execute(self.program(prefix + statement))
+                self.assertNotEqual(result.returncode, 0, statement)
+                self.assertIn('assertion_error', result.stderr)
+                self.assertNotIn('integer_zero_divisor_error', result.stderr)
+                self.assertNotIn('runtime error:', result.stderr)
+                type(self).checked += 1
+
+    def test_write_bounds_rhs_domains_and_counts_fail_only_when_reached(self):
+        maximum = self.module.QASM2QCXConverter.QCX_UINT_MAX
+        prefix = ('angle[4] a = pi; array[angle[4], 1] phases = {pi}; int element = -1; '
+                  f'int bad_element = 1; int index = -1; uint first = 0; uint huge = {maximum}; '
+                  'int bad = -5; int high = 4; int zero = 0; int negative = -1; '
+                  f'int minimum = {self.module.QASM2QCXConverter.QCX_INT_MIN}; ')
+        for statement in ('a[{index, high}] = "11";', 'a[{bad, first}] ^= "11";',
+                          'a[{index, huge}] &= "11";', f'a[{{index, {2**200}}}] |= "11";',
+                          'a[{index, first}] = phases[bad_element][{index, first}];',
+                          'phases[bad_element][{index, first}] = "11";',
+                          'a[{index, first}] ^= a[{index, high}];',
+                          'a[{index, first}] <<= negative;', 'a[{index, first}] >>= minimum;',
+                          'a[{index, first}] >>= 1 / zero;'):
+            for wrapper in ('if (false) {{ {} }}', 'while (false) {{ {} }}',
+                            'for int outer in [1:0] {{ {} }}'):
+                self.check_initializers(prefix + wrapper.format(statement), (('phases', 1),), (8,), ('a',), (8,))
+            result = self.execute(self.program(prefix + statement))
+            self.assertNotEqual(result.returncode, 0, statement)
+            self.assertNotIn('runtime error:', result.stderr)
+            type(self).checked += 1
+
+    def test_assignments_in_nested_loops_and_during_live_iteration(self):
+        self.check_initializers('angle[4] a; int high = -1; uint low = 0; int visits = 0; '
+            'while (visits < 3) { visits += 1; for int i in {0, 1} { a[{high, low}] ^= "11"; }} '
+            'a[{high, low}] |= "11"; int observed = 0; '
+            'for bit b in a[{low, high}] { observed += int(b); a[{high, low}] = "00"; }',
+            (), (), ('a', 'visits', 'observed'), (0, 3, 1))
+
+    def test_phase_parameters_remain_captured_across_set_writes_with_fusion(self):
+        import cmath
+        import math
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        gates = (
+            ('p(value) q[0];', 1, lambda i: bool(i & 1)),
+            ('inv @ p(value) q[0];', -1, lambda i: bool(i & 1)),
+            ('pow(exponent) @ p(value) q[0];', 2, lambda i: bool(i & 1)),
+            ('pow(0.5) @ p(value) q[0];', 0.5, lambda i: bool(i & 1)),
+            ('cp(value) q[0], q[1];', 1, lambda i: i == 3),
+            ('negctrl @ p(value) q[0], q[1];', 1, lambda i: i == 2),
+            ('gphase(value);', 1, lambda i: True),
+        )
+        for array in (False, True):
+            operand = 'phases[element]' if array else 'value'
+            declaration = ('array[angle[4], 1] phases = {angle[4]("0011")}; int element = -1; '
+                           if array else 'angle[4] value = angle[4]("0011"); ')
+            for gate, factor, active in gates:
+                gate = gate.replace('value', operand)
+                source = ('include "stdgates.inc"; qubit[2] q; h q; int high = -1; uint low = 0; int exponent = 2; '
+                          + declaration + gate + f'{operand}[{{high, low}}] ^= "01"; ' + gate)
+                phase = (-2 if factor == 0.5 else 14) * math.pi / 8
+                expected = tuple(cmath.exp(1j * factor * phase) / 2 if active(i) else 0.5 for i in range(4))
+                for fused in (False, True):
+                    BackendAuditTests.check(self, self.program(source, fused=fused), expected)
 
 
 if __name__ == '__main__':
