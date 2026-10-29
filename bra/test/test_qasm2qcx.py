@@ -8741,14 +8741,12 @@ class AngleSelectionCompoundValidationTests(unittest.TestCase):
                 with self.subTest(body=body, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):
                     qasm2qcx.QASM2QCXConverter(self.program(self.prefix + wrapper.format(body)))
 
-    def test_shift_lowering_is_explicitly_deferred_without_emission(self):
+    def test_shift_lowering_accepts_validated_integer_counts(self):
         for operator, rhs in (('<<=', 'index'), ('>>=', 'index')):
             with self.subTest(operator=operator):
-                before = self.converter._QASM2QCXConverter__qcx_lines.copy()
                 statement = self.program(f'phases[index][0] {operator} {rhs};').statements[0]
-                with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'compound angle bit selection lowering'):
-                    self.converter.visit(statement)
-                self.assertEqual(self.converter._QASM2QCXConverter__qcx_lines, before)
+                self.converter.visit(statement)
+                self.assertEqual(self.converter._QASM2QCXConverter__captured_angle_bit_values, {})
                 self.assertEqual(self.converter._QASM2QCXConverter__used_temporary_variables, set())
 
 
@@ -8830,6 +8828,71 @@ class AngleSelectionBitwiseCompoundTests(unittest.TestCase):
             self.assertEqual(converter._QASM2QCXConverter__qcx_lines, before)
             self.assertEqual(converter._QASM2QCXConverter__captured_angle_bit_values, {})
             self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+
+class AngleSelectionShiftCompoundTests(unittest.TestCase):
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    converter = AngleSelectionBitwiseCompoundTests.converter
+
+    def test_destination_and_count_accesses_are_captured_independently_once(self):
+        for operator in ('<<=', '>>='):
+            with self.subTest(operator=operator):
+                converter = self.converter('array[angle[4], 2] phases = {pi, pi / 2}; int index = -1; '
+                    f'phases[index][0:2] {operator} popcount(phases[index][0:3]);')
+                lines = converter._QASM2QCXConverter__qcx_lines
+                guards = [line for line in lines if line.startswith('ASSERT ') and line.endswith(' < 2')]
+                self.assertEqual(len(guards), 2)
+                self.assertNotEqual(guards[0], guards[1])
+                self.assertEqual(sum(' := PHASES63:QASM2QCX_INT_' in line for line in lines), 2)
+                writes = [line for line in lines if line.startswith('LET PHASES63:QASM2QCX_INT_')]
+                self.assertEqual(len(writes), 1)
+                self.assertTrue(writes[0].startswith('LET PHASES63:QASM2QCX_INT_0 := '))
+
+    def test_runtime_shift_uses_selected_width_and_checks_count_before_commit(self):
+        converter = self.converter('angle[8] a = pi; int count = 1; a[{7, 0}] <<= count;')
+        lines = converter._QASM2QCXConverter__qcx_lines
+        guard = next(index for index, line in enumerate(lines) if line.startswith('ASSERT ') and line.endswith(' >= 0'))
+        stop = next(index for index, line in enumerate(lines) if line.startswith('JUMPIF QASM2QCX_REGISTER_SHIFT_')
+                    and line.endswith(' >= 2'))
+        commit = max(index for index, line in enumerate(lines) if line.startswith('LET A1 := '))
+        self.assertLess(guard, stop)
+        self.assertLess(stop, commit)
+        self.assertEqual(sum(line.endswith(' := A1') for line in lines), 1)
+
+    def test_negative_literal_checks_are_emitted_and_huge_literals_are_bounded(self):
+        for operator in ('<<=', '>>='):
+            converter = self.converter(f'angle[4] a = pi; a[0:1] {operator} -1;')
+            self.assertTrue(any(line.startswith('ASSERT ') and line.endswith(' >= 0')
+                                for line in converter._QASM2QCXConverter__qcx_lines))
+            huge = str(1 << 200)
+            converter = self.converter(f'angle[4] a = pi; a[0:1] {operator} {huge};')
+            self.assertFalse(any(huge in line for line in converter._QASM2QCXConverter__qcx_lines))
+            self.assertFalse(any(line.startswith('@QASM2QCX_REGISTER_SHIFT_')
+                                 for line in converter._QASM2QCXConverter__qcx_lines))
+
+    def test_count_lowering_failure_cleans_capture_and_preserves_caller_storage(self):
+        for operator in ('<<=', '>>='):
+            converter = self.converter('array[angle[4], 2] phases = {pi, pi}; int index = 0; '
+                                       'array[int, 1] counts = {1};')
+            caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+            statement = self.program(f'phases[index][0:1] {operator} counts[1];').statements[0]
+            before = len(converter._QASM2QCXConverter__qcx_lines)
+            fields = ('expression_kind', 'value', 'value_type', 'value_kind')
+            state = [getattr(converter, '_QASM2QCXConverter__' + field) for field in fields]
+            with self.assertRaises(qasm2qcx.QASM2QCXError):
+                converter.visit(statement)
+            self.assertFalse(any(line.startswith('LET PHASES63:')
+                                 for line in converter._QASM2QCXConverter__qcx_lines[before:]))
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertEqual(converter._QASM2QCXConverter__captured_angle_bit_values, {})
+            self.assertEqual([getattr(converter, '_QASM2QCXConverter__' + field) for field in fields], state)
+
+    def test_nested_runtime_reentry_and_unsigned_or_angle_derived_counts(self):
+        self.converter('array[angle[4], 2] phases = {pi, pi / 2}; int stop = 1; uint count = 1; '
+            'for int outer in [0:stop] { for angle[4] value in phases { '
+            'phases[outer][1:3] <<= value / angle[4](pi / 8); '
+            'phases[outer][0:1] >>= popcount(value[0:1]); } } '
+            'while (count < uint(3)) { phases[0][{3, 0}] <<= count; count += 1; }')
 
 
 class StaticBitSelectionOperandTests(unittest.TestCase):

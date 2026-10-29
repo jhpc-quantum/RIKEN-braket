@@ -7962,8 +7962,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         angle_bits = self.__angle_bit_assignment_info(statement)
         if angle_bits is not None:
-            if angle_bits.shift_count_type is not None:
-                raise UnsupportedOpenQASMError('compound angle bit selection lowering')
             self.__emit_angle_bit_assignment(angle_bits.selection, statement.rvalue, angle_bits.binary_operator)
             return
         source_name = self.__operand_name(statement.lvalue)
