@@ -4626,6 +4626,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if selection is not None and (
                 not isinstance(iteration_type, ast.BitType) or iteration_type.size is not None):
             raise UnsupportedOpenQASMError('angle bit-selection iteration requires a scalar bit iterator')
+        if selection is not None and selection.width > self.QCX_INT_MAX:
+            raise InvalidLoopRangeException('Angle bit-selection loop size exceeds QCX INT range')
         return selection
 
     def __validate_loop_header(
@@ -5154,14 +5156,70 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__check_loop_output_limit()
 
     def __visit_angle_selection_for(self, statement: ast.ForInLoop) -> None:
+        selection = self.__angle_selection_loop_info(statement.set_declaration, statement.type)
         # The header has validated the selection before this binding shadows
         # source names. Body validation needs a BIT type, never a made-up bit.
         binding = _RuntimeIteratorBinding('QASM2QCX_VALIDATION_ITERATOR', ValueType.BIT)
         with self.__iterator_binding(statement.identifier.name, binding):
             self.__validate_loop_body(statement.block, self.__loop_iterator_types())
         self.__validate_loop_syntax(statement)
-        if not self.__is_initialization_process:
-            raise UnsupportedOpenQASMError('angle bit-selection loop lowering')
+        if self.__is_initialization_process:
+            return
+        if isinstance(selection, _RuntimeAngleBitSelection):
+            raise UnsupportedOpenQASMError('runtime angle bit-selection loop lowering')
+        self.__emit_static_angle_selection_for(statement, selection)
+
+    def __angle_selection_loop_source(self, source: ast.Identifier | ast.IndexExpression) -> str | int:
+        if isinstance(source, ast.IndexExpression):
+            # Retain the element address, not an entry-value snapshot. Its
+            # captured index remains reserved until the loop finishes.
+            return self.__array_access(source)[0]
+        self.visit(source)
+        if self.__value_type != ValueType.ANGLE:
+            raise InvalidBitOperandException('An angle bit-selection loop requires an angle source')
+        return self.__value
+
+    def __emit_static_angle_selection_for(
+            self, statement: ast.ForInLoop, selection: _StaticAngleBitSelection) -> None:
+        previous = (self.__expression_kind, self.__value, self.__value_type, self.__value_kind)
+        previous_used = self.__used_temporary_variables.copy()
+        previous_temporaries = self.__declared_temporary_variables.copy()
+        loop_index = self.__loop_index
+        self.__loop_index += 1
+        body_label = f'QASM2QCX_LOOP_{loop_index}_BODY'
+        next_label = f'QASM2QCX_LOOP_{loop_index}_NEXT'
+        end_label = f'QASM2QCX_LOOP_{loop_index}_END'
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            source = self.__angle_selection_loop_source(selection.source)
+            positions = self.__add_temporary_int_array(selection.width, 'POSITIONS')
+            iterator = self.__add_new_temporary_variable(ValueType.BIT)
+            index = self.__add_new_temporary_variable(ValueType.INT)
+            scratch = self.__add_new_temporary_variable(ValueType.UINT)
+            # The mapping retains selection order and repeated indices while
+            # allowing the body to be generated just once.
+            for position, bit_index in enumerate(selection.indices):
+                self.__qcx_lines.append(f'LET {positions}:{position} := {bit_index}')
+            self.__qcx_lines.extend([
+                f'LET {index} := 0', f'@{body_label}', f'LET {scratch} := {source}',
+                f'LET {scratch} >>= {positions}:{index}', f'LET {scratch} &= 1',
+                f'LET {iterator} := :INT:{scratch}',
+            ])
+            with self.__iterator_binding(statement.identifier.name, _RuntimeIteratorBinding(iterator, ValueType.BIT)), \
+                    self.__loop_context(end_label, next_label):
+                for child in statement.block:
+                    self.visit(child)
+            self.__qcx_lines.extend([
+                f'@{next_label}', f'JUMPIF {end_label} {index} == {selection.width - 1}',
+                f'LET {index} += 1', f'JUMP {body_label}', f'@{end_label}',
+            ])
+            self.__hoist_temporary_declarations(previous_temporaries)
+            if self.__inside_expanded_loop():
+                self.__check_loop_output_limit()
+        finally:
+            self.__expression_kind, self.__value, self.__value_type, self.__value_kind = previous
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
 
     def __collection_loop_info(
             self, source: ast.Identifier, iteration_type: ast.QASMNode,
@@ -7511,11 +7569,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__release_temporary_variable(str(operand[0]))
 
     def __add_temporary_bit_register(self, width: int) -> str:
+        return self.__add_temporary_int_array(width, 'BITS')
+
+    def __add_temporary_int_array(self, width: int, purpose: str) -> str:
         index = 0
-        name = f'QASM2QCX_BITS_{width}_{index}'
+        name = f'QASM2QCX_{purpose}_{width}_{index}'
         while name in self.__used_temporary_variables or name in self.__reserved_variable_names:
             index += 1
-            name = f'QASM2QCX_BITS_{width}_{index}'
+            name = f'QASM2QCX_{purpose}_{width}_{index}'
         self.__used_temporary_variables.add(name)
         if name not in self.__declared_temporary_variables:
             self.__declared_temporary_variables.add(name)
