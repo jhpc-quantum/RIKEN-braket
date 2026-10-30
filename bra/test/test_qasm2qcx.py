@@ -13329,6 +13329,109 @@ class RuntimeAngleBitRangeLoopFoundationTests(unittest.TestCase):
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
 
 
+class RuntimeAngleBitRangeCaptureTests(unittest.TestCase):
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    converter = ScalarAngleFoundationTests.converter
+    loop = AngleBitSelectionLoopValidationTests.loop
+    info = AngleBitSelectionLoopValidationTests.info
+    prefix = RuntimeAngleBitRangeLoopFoundationTests.prefix
+
+    def setUp(self):
+        self.c = self.converter(self.prefix)
+
+    def test_capture_order_and_source_address_precede_binding(self):
+        c = self.c
+        selected = self.info('phases[index][start:step:stop]')
+        original = c._QASM2QCXConverter__condition_operand
+        captured = []
+        def capture(expression):
+            captured.append(expression.name)
+            self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+            return original(expression)
+        with patch.object(c, '_QASM2QCXConverter__condition_operand', side_effect=capture):
+            with c._QASM2QCXConverter__captured_angle_bit_range(selected) as (source, positions, count):
+                self.assertTrue(source.startswith('PHASES63:QASM2QCX_INT_'))
+                self.assertIn(source.split(':')[1], c._QASM2QCXConverter__used_temporary_variables)
+                self.assertIn(positions, c._QASM2QCXConverter__used_temporary_variables)
+                self.assertIn(count, c._QASM2QCXConverter__used_temporary_variables)
+        self.assertEqual(captured, ['index', 'start', 'step', 'stop'])
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        ForLoopControlLoweringTests.assert_resolved_jumps(c._QASM2QCXConverter__qcx_lines)
+
+    def test_default_step_and_constant_source_capture_without_materializing_value(self):
+        selected = self.info('C[start:stop]')
+        with self.c._QASM2QCXConverter__captured_angle_bit_range(selected) as (source, positions, count):
+            self.assertEqual(source, 8)
+            self.assertTrue(positions.startswith('QASM2QCX_POSITIONS_8_'))
+            self.assertIn(f'ASSERT {count} > 0', self.c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(self.c._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_expression_arithmetic_is_emitted_once_per_range_component(self):
+        selected = self.info('phases[index % 2][start / 2:step / 3:stop / 4]')
+        with self.c._QASM2QCXConverter__captured_angle_bit_range(selected):
+            pass
+        lines = self.c._QASM2QCXConverter__qcx_lines
+        self.assertEqual(sum(' %= 2' in line for line in lines), 1)
+        for divisor in (2, 3, 4):
+            self.assertEqual(sum(f' /= {divisor}' in line for line in lines), 1)
+
+    def test_invalid_source_precedes_any_range_capture(self):
+        selected = self.info('phases[99][start:step:stop]')
+        with patch.object(self.c, '_QASM2QCXConverter__capture_angle_range_integer') as capture:
+            with self.assertRaises(qasm2qcx.InvalidArrayOperandException):
+                with self.c._QASM2QCXConverter__captured_angle_bit_range(selected):
+                    self.fail('An invalid source must not reach the consumer')
+            capture.assert_not_called()
+        self.assertEqual(self.c._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_success_and_capture_or_consumer_failures_restore_state_and_ownership(self):
+        for failure in (None, 'start', 'step', 'stop', 'consumer'):
+            c = self.converter(self.prefix)
+            selected = c._QASM2QCXConverter__angle_selection_loop_info(
+                self.loop('phases[index][start:step:stop]').set_declaration, qasm2qcx.ast.BitType())
+            caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+            fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+            before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+            original = c._QASM2QCXConverter__capture_angle_range_integer
+            def capture(expression, label):
+                if expression.name == failure:
+                    c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.INT)
+                    raise RuntimeError('capture failed')
+                return original(expression, label)
+            def run():
+                with c._QASM2QCXConverter__captured_angle_bit_range(selected):
+                    if failure == 'consumer':
+                        raise RuntimeError('consumer failed')
+            with self.subTest(failure=failure), patch.object(
+                    c, '_QASM2QCXConverter__capture_angle_range_integer', side_effect=capture):
+                if failure is None:
+                    run()
+                else:
+                    with self.assertRaises(RuntimeError):
+                        run()
+            self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+            self.assertEqual(c._QASM2QCXConverter__loop_contexts, [])
+
+    def test_repeated_captures_have_unique_labels_and_respect_reserved_names(self):
+        c = self.converter(self.prefix + 'uint QASM2QCX_UINT_ = 0; int QASM2QCX_INT_ = 0;')
+        loop = self.loop('phases[index][start:step:stop]')
+        selected = c._QASM2QCXConverter__angle_selection_loop_info(loop.set_declaration, loop.type)
+        for _ in range(2):
+            with c._QASM2QCXConverter__captured_angle_bit_range(selected):
+                pass
+        lines = c._QASM2QCXConverter__qcx_lines
+        labels = [line for line in lines if line.startswith('@')]
+        self.assertEqual(len(labels), len(set(labels)))
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+        reserved = {c._QASM2QCXConverter__capitalize_variable_name(name)
+                    for name in ('QASM2QCX_UINT_', 'QASM2QCX_INT_')}
+        self.assertFalse(any(line.startswith(f'LET {name} ') for line in lines[lines.index('LET QASM2QCX_INT_0 := 0') + 1:]
+                             for name in reserved))
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+
 class AngleBitSelectionLoopLoweringTests(unittest.TestCase):
     program = staticmethod(ScalarAngleFoundationTests.program)
     converter = ScalarAngleFoundationTests.converter

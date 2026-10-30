@@ -5265,6 +5265,108 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise InvalidBitOperandException('An angle bit-selection loop requires an angle source')
         return self.__value
 
+    def __capture_angle_range_integer(
+            self, expression: ast.Expression, label: str) -> tuple[str, str]:
+        value, value_type, value_kind = self.__condition_operand(expression)
+        if value_type not in (ValueType.INT, ValueType.UINT):
+            raise InvalidLoopRangeException('Angle bit range operands must be integers')
+        high = self.__add_new_temporary_variable(ValueType.INT)
+        low = self.__add_new_temporary_variable(ValueType.UINT)
+        # Represent n exactly as high * (UINT_MAX + 1) + low. Captured native
+        # operands have high -1 or 0; subsequent addition can produce -2 or 1.
+        # This preserves mathematical range advancement across zero and past
+        # either native endpoint without signed overflow or UINT narrowing.
+        self.__qcx_lines.append(f'LET {high} := 0')
+        if value_kind == ValueKind.LITERAL:
+            minimum = self.QCX_INT_MIN if value_type == ValueType.INT else 0
+            maximum = self.QCX_INT_MAX if value_type == ValueType.INT else self.QCX_UINT_MAX
+            if not minimum <= int(value) <= maximum:
+                # A nonrepresentable literal must fail only when reached; do
+                # not put a literal rejected by the QCX parser on skipped paths.
+                self.__qcx_lines.append(f'ASSERT {high} == 1')
+                value = 0
+            if int(value) < 0:
+                self.__qcx_lines.append(f'LET {high} := -1')
+        elif value_type == ValueType.INT:
+            self.__qcx_lines.extend([
+                f'JUMPIF {label} {value} >= 0', f'LET {high} := -1', f'@{label}',
+            ])
+        self.__emit_assignment(low, ':=', ValueType.UINT, value, value_type, value_kind)
+        return high, low
+
+    def __emit_angle_range_comparison(
+            self, lhs: tuple[str, str], operator: str, rhs: tuple[str, str],
+            true_label: str, false_label: str) -> None:
+        # Lexicographic comparison of the signed high part and unsigned low
+        # part. No mixed signed/unsigned QCX comparison or lossy cast is needed.
+        self.__qcx_lines.extend([
+            f'JUMPIF {true_label} {lhs[0]} {operator} {rhs[0]}',
+            f'JUMPIF {false_label} {lhs[0]} \\= {rhs[0]}',
+            f'JUMPIF {true_label} {lhs[1]} {operator} {rhs[1]}',
+            f'JUMP {false_label}',
+        ])
+
+    def __capture_angle_range_positions(
+            self, selection: _RuntimeAngleBitRangeSelection, label: str) -> tuple[str, str]:
+        bounds, width = selection.bounds, selection.angle_type.width
+        current = self.__capture_angle_range_integer(bounds.start, label + '_START_NONNEGATIVE')
+        step = self.__capture_angle_range_integer(
+            bounds.step if bounds.step is not None else ast.IntegerLiteral(1), label + '_STEP_NONNEGATIVE')
+        stop = self.__capture_angle_range_integer(bounds.end, label + '_STOP_NONNEGATIVE')
+        # Every valid raw position is in [-width, width). A strictly monotonic
+        # nonzero-step range can therefore contain at most 2*width entries,
+        # including aliases such as -1 and width-1, which both must be kept.
+        positions = self.__add_temporary_int_array(2 * width, 'POSITIONS')
+        count = self.__add_new_temporary_variable(ValueType.INT)
+        normalized = self.__add_new_temporary_variable(ValueType.UINT)
+        previous_low = self.__add_new_temporary_variable(ValueType.UINT)
+        entry, positive, append, negative, store, finish = (
+            label + suffix for suffix in ('_ENTRY', '_POSITIVE', '_APPEND', '_NEGATIVE', '_STORE', '_FINISH'))
+        self.__qcx_lines.extend([
+            f'LET {count} := 0',
+            # For native INT/UINT captures, low == 0 iff the step is zero.
+            f'ASSERT {step[1]} \\= 0', f'@{entry}',
+            f'JUMPIF {positive} {step[0]} == 0',
+        ])
+        self.__emit_angle_range_comparison(current, '<', stop, finish, append)
+        self.__qcx_lines.append(f'@{positive}')
+        self.__emit_angle_range_comparison(current, '>', stop, finish, append)
+        self.__qcx_lines.extend([
+            f'@{append}', f'ASSERT {current[0]} >= -1', f'ASSERT {current[0]} <= 0',
+            f'LET {normalized} := {current[1]}', f'JUMPIF {negative} {current[0]} < 0',
+            f'ASSERT {normalized} < {width}', f'JUMP {store}',
+            f'@{negative}', f'ASSERT {normalized} >= {self.QCX_UINT_MAX + 1 - width}',
+            f'LET {normalized} += {width}', f'@{store}',
+            f'ASSERT {count} < {2 * width}', f'LET {positions}:{count} := :INT:{normalized}',
+            f'LET {count} += 1',
+            # UINT addition wraps by definition. Its carry corrects the high
+            # part, so the pair still holds the exact mathematical candidate.
+            f'LET {previous_low} := {current[1]}', f'LET {current[1]} += {step[1]}',
+            f'LET {current[0]} += {step[0]}',
+            f'JUMPIF {entry} {current[1]} >= {previous_low}',
+            f'LET {current[0]} += 1', f'JUMP {entry}', f'@{finish}', f'ASSERT {count} > 0',
+        ])
+        return positions, count
+
+    @contextlib.contextmanager
+    def __captured_angle_bit_range(
+            self, selection: _RuntimeAngleBitRangeSelection) -> Iterator[tuple[str | int, str, str]]:
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        label = f'QASM2QCX_ANGLE_RANGE_{self.__array_index}'
+        self.__array_index += 1
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            source = self.__angle_selection_loop_source(selection.source)
+            positions, count = self.__capture_angle_range_positions(selection, label)
+            yield source, positions, count
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
     def __emit_angle_selection_for(
             self, statement: ast.ForInLoop,
             selection: _AngleBitSelection) -> None:
