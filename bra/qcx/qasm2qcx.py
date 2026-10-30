@@ -283,7 +283,20 @@ class _RuntimeSingletonBitSelection:
         return 1
 
 
-_BitSelectionLoop = _StaticBitSelection | _RuntimeSingletonBitSelection
+@dataclasses.dataclass(frozen=True)
+class _RuntimeBitSetSelection:
+    source_name: str
+    source_width: int
+    # Retain all entries, including constants, until loop-entry capture.
+    indices: tuple[ast.Expression, ...]
+    index_types: tuple[ValueType, ...]
+
+    @property
+    def width(self) -> int:
+        return len(self.indices)
+
+
+_BitSelectionLoop = _StaticBitSelection | _RuntimeSingletonBitSelection | _RuntimeBitSetSelection
 
 
 @dataclasses.dataclass(frozen=True)
@@ -4759,14 +4772,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 and self.__capitalize_variable_name(name) not in self.__sized_bit_variables):
             raise NoVariableNameException(name)
         selection = None
-        if isinstance(source.index, ast.DiscreteSet) and len(source.index.values) == 1:
-            index = source.index.values[0]
-            index_type, runtime = self.__bit_index_info(index, iterators)
-            if runtime:
+        if isinstance(source.index, ast.DiscreteSet):
+            entries = source.index.values
+            info = tuple(self.__bit_index_info(index, iterators) for index in entries)
+            if any(runtime for _, runtime in info):
                 size = constant.width if constant is not None else self.__bit_register_source_sizes[name]
                 if not 1 <= size <= self.QCX_INT_MAX:
-                    raise InvalidLoopRangeException('Runtime singleton source width must fit QCX INT indexing')
-                selection = _RuntimeSingletonBitSelection(name, size, index, index_type)
+                    raise InvalidLoopRangeException('Runtime selection source width must fit QCX INT indexing')
+                if len(entries) == 1:
+                    selection = _RuntimeSingletonBitSelection(name, size, entries[0], info[0][0])
+                else:
+                    selection = _RuntimeBitSetSelection(
+                        name, size, tuple(entries), tuple(value_type for value_type, _ in info))
         # The shared resolver rejects active scalar iterators and retains
         # static index order/repetitions without inspecting mutable bit values.
         if selection is None:
@@ -5320,6 +5337,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         with self.__iterator_binding(statement.identifier.name, binding):
             self.__validate_loop_body(statement.block, self.__loop_iterator_types())
         self.__validate_loop_syntax(statement)
+        if isinstance(selection, _RuntimeBitSetSelection):
+            if not self.__is_initialization_process:
+                raise UnsupportedOpenQASMError('runtime multi-entry bit-register set loop lowering')
+            return
         if isinstance(selection, _RuntimeSingletonBitSelection):
             if not self.__is_initialization_process:
                 self.__emit_runtime_singleton_bit_for(statement, selection)
