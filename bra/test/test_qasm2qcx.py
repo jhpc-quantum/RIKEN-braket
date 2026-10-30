@@ -13460,6 +13460,118 @@ class MutableBitSelectionLoopLoweringTests(unittest.TestCase):
                 self.converter(self.prefix + 'for int outer in [0:0] { for bit b in flags[0:3] {} }')
 
 
+class ConstantBitSelectionLoopLoweringTests(unittest.TestCase):
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    converter = ScalarAngleFoundationTests.converter
+
+    def test_selected_literal_bits_preserve_order_without_source_storage(self):
+        for bits, selector, positions in (
+                ('1', '0:0', (0,)), ('1011', '3:-1:0', (3, 2, 1, 0)),
+                ('1011', '{3, 2, 0, -1}', (3, 2, 0, 3)),
+                ('1' + '0' * 127 + '1', '{-1, 64, 0, -1}', (128, 64, 0, 128))):
+            with self.subTest(bits=len(bits), selector=selector):
+                c = self.converter(f'const bit[{len(bits)}] C = "{bits}"; for bit b in C[{selector}] {{}}')
+                lines = c._QASM2QCXConverter__qcx_lines
+                iterator = next(line.split()[1] for line in lines if line.startswith('VAR '))
+                expected = [f'LET {iterator} := {bits[-1 - index]}' for index in positions]
+                self.assertEqual([line for line in lines if line.startswith('LET ')], expected)
+                self.assertEqual(sum(line.startswith('VAR ') for line in lines), 1)
+                self.assertEqual(c._QASM2QCXConverter__loop_iterations, len(positions))
+                self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+                ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_each_expanded_body_has_runtime_bit_typing(self):
+        c = self.converter('const bit[4] C = "1011"; bit copy;')
+        statement = self.program('for bit b in C[{3, 2, 0}] { copy = b; }').statements[0]
+        original = c.visit_ClassicalAssignment
+        observed = []
+        def assignment(node):
+            observed.append(c._QASM2QCXConverter__loop_expression_info(node.rvalue))
+            return original(node)
+        with patch.object(c, 'visit_ClassicalAssignment', side_effect=assignment):
+            c.visit(statement)
+        self.assertEqual(observed, [(qasm2qcx.ValueType.BIT, True)] * 3)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_source_and_selector_constants_resolve_before_iterator_shadowing(self):
+        for name in ('C', 'LOW'):
+            c = self.converter('const int LOW = 0; const bit[4] C = "1011"; bit copy; '
+                f'for bit {name} in C[LOW:3] {{ copy = {name}; }} copy = C[LOW];')
+            self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        prefix = 'const bit[4] C = "1011";'
+        for body in ('C[0] = false;', 'C[0:1] = "00";', 'C = "0000";', 'b = true;'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(prefix + 'for bit b in C[0:3] {' + body + '}')
+
+    def test_iteration_budget_counts_selected_entries_and_precedes_emission(self):
+        prefix = 'const bit[129] C = "1' + '0' * 128 + '";'
+        c = self.converter(prefix)
+        before = c._QASM2QCXConverter__qcx_lines.copy()
+        statement = self.program('for bit b in C[{-1, 0, -1}] {}').statements[0]
+        with patch.object(c, 'MAX_LOOP_ITERATIONS', 2):
+            with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'iterations'):
+                c.visit(statement)
+        self.assertEqual(c._QASM2QCXConverter__qcx_lines, before)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_LOOP_ITERATIONS', 3):
+            c = self.converter(prefix + 'for bit b in C[{-1, 0, -1}] {}')
+        self.assertEqual(c._QASM2QCXConverter__loop_iterations, 3)
+
+    def test_nested_expansions_and_statement_and_output_budgets_remain_enforced(self):
+        prefix = 'const bit[4] C = "1011"; int total;'
+        nested = 'for bit b in C[{3, 0}] { for bit c in C[{0, 3}] {} }'
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_LOOP_ITERATIONS', 5):
+            with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'iterations'):
+                self.converter(prefix + nested)
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_LOOP_ITERATIONS', 6):
+            self.assertEqual(self.converter(prefix + nested)._QASM2QCXConverter__loop_iterations, 6)
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_EXPANDED_LOOP_STATEMENTS', 2):
+            with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'statements'):
+                self.converter(prefix + 'for bit b in C[{3, 0, 3}] { total += int(b); }')
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_LOOP_OUTPUT_LINES', 4):
+            with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'QCX lines'):
+                self.converter(prefix + 'for bit b in C[{3, 0, 3}] {}')
+
+    def test_mixed_mutable_constant_and_angle_loops_resolve_transfers_and_hoist_storage(self):
+        c = self.converter('const bit[4] C = "1011"; bit[4] flags; angle[4] a; uint total; '
+            'for bit b in C[{3, 0}] { for bit c in flags[0:3] { if (c) { continue; } '
+            'for bit d in C[3:-1:0] { if (b && d) { break; } total += uint(d); } '
+            'for bit e in a[0:3] { if (e) { break; } } } if (b) { continue; } break; }')
+        lines = c._QASM2QCXConverter__qcx_lines
+        labels = [line for line in lines if line.startswith('@')]
+        self.assertEqual(len(labels), len(set(labels)))
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+        first_let = next(i for i, line in enumerate(lines) if line.startswith('LET '))
+        self.assertTrue(all(i < first_let for i, line in enumerate(lines) if line.startswith('VAR QASM2QCX_')))
+        self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(c._QASM2QCXConverter__loop_contexts, [])
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_success_and_failed_body_restore_state_and_caller_storage(self):
+        for failure in (False, True):
+            c = self.converter('const bit[4] C = "1011"; bit copy;')
+            source = c._QASM2QCXConverter__const_bit_register_values['C']
+            caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+            fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+            before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+            statement = self.program('for bit b in C[{3, 0, 3}] { copy = b; }').statements[0]
+            if failure:
+                def fail_body(_):
+                    c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.INT)
+                    raise RuntimeError('body failed')
+                with patch.object(c, 'visit_ClassicalAssignment', side_effect=fail_body):
+                    with self.assertRaisesRegex(RuntimeError, 'body failed'):
+                        c.visit(statement)
+            else:
+                c.visit(statement)
+            self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+            self.assertIs(c._QASM2QCXConverter__const_bit_register_values['C'], source)
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+            self.assertEqual(c._QASM2QCXConverter__loop_contexts, [])
+
+
 class RuntimeAngleBitRangeLoopFoundationTests(unittest.TestCase):
     program = staticmethod(ScalarAngleFoundationTests.program)
     converter = ScalarAngleFoundationTests.converter
@@ -14078,7 +14190,7 @@ class ConstantBitRegisterLoopValidationTests(unittest.TestCase):
         self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
 
     def test_unsupported_scalar_and_expression_sources_remain_rejected(self):
-        for source in ('ON', 'scalar', 'FLAGS[0]', 'FLAGS[0:1]', 'FLAGS[{0, 1}]',
+        for source in ('ON', 'scalar', 'FLAGS[0]',
                        '~FLAGS', 'FLAGS ^ FLAGS', 'rotl(FLAGS, 1)', '"1011"'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert('OPENQASM 3; ' + self.prefix + 'const bit ON = true; bit scalar; '

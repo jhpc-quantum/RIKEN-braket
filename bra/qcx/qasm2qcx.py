@@ -5284,11 +5284,19 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         with self.__iterator_binding(statement.identifier.name, binding):
             self.__validate_loop_body(statement.block, self.__loop_iterator_types())
         self.__validate_loop_syntax(statement)
-        if self.__is_initialization_process:
-            return
         if selection.source_name in self.__const_bit_register_values:
-            raise UnsupportedOpenQASMError('constant bit-register selection loop lowering')
-        self.__emit_mutable_bit_selection_for(statement, selection)
+            source = self.__constant_bit_register(selection.source_name)
+            loop_index = self.__loop_index
+            self.__loop_index += 1
+            previous = (self.__expression_kind, self.__value, self.__value_type,
+                        self.__value_kind, self.__evaluate_constant)
+            try:
+                self.__visit_constant_bit_register_for(statement, source, loop_index, selection.indices)
+            finally:
+                (self.__expression_kind, self.__value, self.__value_type,
+                 self.__value_kind, self.__evaluate_constant) = previous
+        elif not self.__is_initialization_process:
+            self.__emit_mutable_bit_selection_for(statement, selection)
 
     def __emit_mutable_bit_selection_for(
             self, statement: ast.ForInLoop, selection: _StaticBitSelection) -> None:
@@ -5624,8 +5632,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__release_temporary_variable(temporary)
 
     def __visit_constant_bit_register_for(
-            self, statement: ast.ForInLoop, source: _ConstantBitRegister, loop_index: int) -> None:
-        count = source.width
+            self, statement: ast.ForInLoop, source: _ConstantBitRegister, loop_index: int,
+            indices: tuple[int, ...] | None = None) -> None:
+        count = source.width if indices is None else len(indices)
         if count > self.MAX_LOOP_ITERATIONS - self.__loop_iterations:
             raise InvalidLoopRangeException(
                 f'For-loop expansion exceeds {self.MAX_LOOP_ITERATIONS} iterations')
@@ -5643,7 +5652,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     self.__expanded_loop_scope():
                 for index in range(count):
                     if not self.__is_initialization_process:
-                        self.__qcx_lines.append(f'LET {iterator} := {(source.value >> index) & 1}')
+                        source_index = index if indices is None else indices[index]
+                        self.__qcx_lines.append(f'LET {iterator} := {(source.value >> source_index) & 1}')
                     with self.__loop_context(end_label, f'QASM2QCX_LOOP_{loop_index}_NEXT_{index}') as frame:
                         for child in statement.block:
                             self.visit(child)
