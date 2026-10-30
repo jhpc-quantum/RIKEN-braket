@@ -5320,7 +5320,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__validate_loop_syntax(statement)
         if isinstance(selection, _RuntimeSingletonBitSelection):
             if not self.__is_initialization_process:
-                raise UnsupportedOpenQASMError('runtime singleton bit-register selection loop lowering')
+                if selection.source_name in self.__const_bit_register_values:
+                    raise UnsupportedOpenQASMError('constant runtime singleton bit-register loop lowering')
+                self.__emit_runtime_singleton_bit_for(statement, selection)
             return
         if selection.source_name in self.__const_bit_register_values:
             source = self.__constant_bit_register(selection.source_name)
@@ -5335,6 +5337,39 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                  self.__value_kind, self.__evaluate_constant) = previous
         elif not self.__is_initialization_process:
             self.__emit_mutable_bit_selection_for(statement, selection)
+
+    def __emit_runtime_singleton_bit_for(
+            self, statement: ast.ForInLoop, selection: _RuntimeSingletonBitSelection) -> None:
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        previous_temporaries = self.__declared_temporary_variables.copy()
+        loop_index = self.__loop_index
+        self.__loop_index += 1
+        next_label = f'QASM2QCX_LOOP_{loop_index}_NEXT'
+        end_label = f'QASM2QCX_LOOP_{loop_index}_END'
+        try:
+            source = self.__capitalize_variable_name(selection.source_name)
+            index = self.__capture_array_index(selection.index, selection.source_width)
+            iterator = self.__add_new_temporary_variable(ValueType.BIT)
+            operand = source if selection.source_width == 1 else f'{source}:{index}'
+            # Both index capture and the value copy precede the scoped binding.
+            # The body cannot change its copied bit by modifying either source.
+            self.__qcx_lines.append(f'LET {iterator} := {operand}')
+            with self.__iterator_binding(statement.identifier.name, _RuntimeIteratorBinding(iterator, ValueType.BIT)), \
+                    self.__loop_context(end_label, next_label):
+                for child in statement.block:
+                    self.visit(child)
+            # A singleton selection has one visit; either transfer exits it.
+            self.__qcx_lines.extend([f'@{next_label}', f'@{end_label}'])
+            self.__hoist_temporary_declarations(previous_temporaries)
+            if self.__inside_expanded_loop():
+                self.__check_loop_output_limit()
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
 
     def __emit_mutable_bit_selection_for(
             self, statement: ast.ForInLoop, selection: _StaticBitSelection) -> None:
