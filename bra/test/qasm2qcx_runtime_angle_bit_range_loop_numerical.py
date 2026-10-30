@@ -3,6 +3,7 @@
 
 import argparse
 import pathlib
+import re
 import resource
 import unittest
 
@@ -256,6 +257,22 @@ class BackendTests(unittest.TestCase):
                 expected = (1 / math.sqrt(2), cmath.exp(1j * factor * phase) / math.sqrt(2))
                 for fused in (False, True):
                     BackendAuditTests.check(self, self.program(source, fused=fused), expected)
+
+    def test_documented_runtime_angle_bit_range_loop_example(self):
+        import cmath
+        import math
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- runtime-angle-bit-range-loop-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        self.check_initializers(examples[0].removeprefix('OPENQASM 3.0;'),
+                                (('phases', 2),), (10, 8),
+                                ('element', 'start', 'step', 'stop', 'visits', 'ones', 'saved'),
+                                (1, 100, 0, -100, 8, 5, 1))
+        expected = (1 / math.sqrt(2), cmath.exp(1j * 5 * math.pi / 4) / math.sqrt(2))
+        for fused in (False, True):
+            BackendAuditTests.check(self, self.program(examples[0], fused=fused), expected)
 
 
 def main():
