@@ -17,24 +17,46 @@ class BackendTests(unittest.TestCase):
     execute = arrays.BackendTests.execute
     check_initializers = arrays.BackendTests.check_initializers
 
+    def check_indices(self, width, raw, *, constant=False):
+        bits = f'{raw:0{width}b}'
+        source = ('const ' if constant else '') + f'bit[{width}] flags = "{bits}";'
+        outputs, expected = [], []
+        for position in sorted({0, width // 2, width - 1}):
+            for kind, value, typename in (('positive', position, 'int'),
+                                           ('negative', position - width, 'int'),
+                                           ('unsigned', position, 'uint')):
+                suffix = kind + str(position)
+                index, result, visits = 'index' + suffix, 'result' + suffix, 'visits' + suffix
+                source += (f'{typename} {index} = {value}; bit {result} = 0; int {visits} = 0; '
+                           f'for bit b in flags[{{{index}}}] {{ {result} = b; {visits} += 1; }}')
+                outputs.extend((result, visits))
+                expected.extend((int(bits[-1 - position]), 1))
+        source += f'bool same = flags == "{bits}";'
+        self.check_initializers(source, (), (), tuple(outputs) + ('same',), tuple(expected) + (1,))
+
     def test_mutable_signed_unsigned_and_negative_indices_at_wide_widths(self):
         for width in (1, 2, 4, 8, 32, 65, 129):
             for raw in sorted({0, (1 << width) - 1, int(('101100' * width)[:width], 2)}):
-                bits = f'{raw:0{width}b}'
-                source = f'bit[{width}] flags = "{bits}";'
-                outputs, expected = [], []
-                for position in sorted({0, width // 2, width - 1}):
-                    for kind, value, typename in (('positive', position, 'int'),
-                                                   ('negative', position - width, 'int'),
-                                                   ('unsigned', position, 'uint')):
-                        suffix = kind + str(position)
-                        index, result, visits = 'index' + suffix, 'result' + suffix, 'visits' + suffix
-                        source += (f'{typename} {index} = {value}; bit {result} = 0; int {visits} = 0; '
-                                   f'for bit b in flags[{{{index}}}] {{ {result} = b; {visits} += 1; }}')
-                        outputs.extend((result, visits))
-                        expected.extend((int(bits[-1 - position]), 1))
-                source += f'bool same = flags == "{bits}";'
-                self.check_initializers(source, (), (), tuple(outputs) + ('same',), tuple(expected) + (1,))
+                self.check_indices(width, raw)
+
+    def test_constant_signed_unsigned_and_negative_indices_at_word_boundaries(self):
+        word = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
+        for width in (1, word, word + 1, 2 * word, 2 * word + 1, 129):
+            for raw in sorted({0, (1 << width) - 1, int(('101100' * width)[:width], 2)}):
+                self.check_indices(width, raw, constant=True)
+
+    def test_every_constant_bit_across_native_word_boundaries(self):
+        word = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
+        for width in (1, word - 1, word, word + 1, 2 * word - 1, 2 * word, 2 * word + 1, 129):
+            for bits in ('0' * width, '1' * width, ('10010110' * width)[:width]):
+                checksum = 0
+                for index in range(-width, width):
+                    checksum = (checksum * 3 + int(bits[-1 - (index % width)])) % 997
+                self.check_initializers(f'const bit[{width}] C = "{bits}"; int index = {-width}; '
+                    'uint checksum = 0; int visits = 0; '
+                    f'while (index < {width}) {{ for bit b in C[{{index}}] {{ '
+                    'checksum = (checksum * 3 + uint(b)) % 997; visits += 1; } index += 1; } '
+                    f'bool same = C == "{bits}";', (), (), ('checksum', 'visits', 'same'), (checksum, 2 * width, 1))
 
     def test_index_and_value_are_captured_before_body_changes(self):
         self.check_initializers('bit[4] flags = "1010"; int index = -1; bit saved = 0; '
@@ -88,6 +110,52 @@ class BackendTests(unittest.TestCase):
             'flags[3] = measure q; saved = b; visits += 1; } bool same = flags == "1000";',
             (), (), ('saved', 'visits', 'same'), (0, 1, 1))
 
+    def test_constant_headers_shadowing_and_nested_word_table_reuse(self):
+        for name in ('C', 'index'):
+            self.check_initializers('const bit[65] C = "1' + '0' * 64 + '"; int index = -1; uint total = 0; '
+                f'for bit {name} in C[{{index}}] {{ total += uint({name}); }} '
+                'bool same = C == "1' + '0' * 64 + '";', (), (), ('index', 'total', 'same'), (-1, 1, 1))
+        self.check_initializers('const bit[65] C = "1' + '0' * 63 + '1"; '
+            'const bit[65] D = "0' + '1' * 63 + '0"; bit[1] live = "1"; '
+            'uint checksum = 0; int index = 0; int visits = 0; while (index < 65) { '
+            'for bit b in C[{index}] { for bit c in D[{index}] { '
+            'for bit d in live[{int(c)}] { checksum += uint(b || c) + uint(d); visits += 1; } } } '
+            'index += 64; }', (), (), ('checksum', 'visits'), (4, 2))
+
+    def test_constant_transfers_and_changed_index_preserve_the_copy(self):
+        prefix = 'const bit[4] C = "1011"; int index = 0; int visits = 0; uint total = 0; int zero = 0;'
+        for transfer in ('break', 'continue'):
+            self.check_initializers(prefix + 'while (index < 4) { for bit b in C[{index}] { '
+                'visits += 1; total += uint(b); ' + transfer + '; total += 1 / zero; } index += 1; }',
+                (), (), ('index', 'visits', 'total'), (4, 4, 3))
+        self.check_initializers('const bit[129] C = "1' + '0' * 128 + '"; int index = -1; bit saved = 0; '
+            'for bit b in C[{index}] { index = 0; saved = b; }', (), (), ('index', 'saved'), (0, 1))
+
+    def test_invalid_constant_indices_and_skipped_arithmetic(self):
+        limits = self.module.QASM2QCXConverter
+        for width in (1, limits.QCX_UINT_WIDTH + 1, 129):
+            prefix = f'const bit[{width}] C = "' + '0' * width + '"; int zero = 0; int visits = 0;'
+            for typename, index in (('int', -width - 1), ('int', width), ('int', limits.QCX_INT_MIN),
+                                    ('int', limits.QCX_INT_MAX), ('uint', limits.QCX_UINT_MAX)):
+                declaration = f'{typename} index = {index};'
+                loop = 'for bit b in C[{index}] { visits = 1 / zero; break; }'
+                for wrapper in ('if (false) {{ {} }}', 'while (false) {{ {} }}',
+                                'for int outer in [1:0] {{ {} }}'):
+                    self.check_initializers(prefix + declaration + wrapper.format(loop), (), (), ('visits',), (0,))
+                result = self.execute(self.program(prefix + declaration + loop))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn('runtime error:', result.stderr)
+                if typename == 'int':
+                    self.assertIn('assertion_error', result.stderr)
+                type(self).checked += 1
+        prefix = 'const bit[4] C = "1011"; int zero = 0; int visits = 0;'
+        loop = 'for bit b in C[{1 / zero}] { visits += 1; }'
+        self.check_initializers(prefix + 'if (false) {' + loop + '}', (), (), ('visits',), (0,))
+        result = self.execute(self.program(prefix + loop))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('runtime error:', result.stderr)
+        type(self).checked += 1
+
     def test_invalid_indices_fail_before_body_and_only_when_reached(self):
         limits = self.module.QASM2QCXConverter
         for width in (1, 4, 129):
@@ -128,12 +196,15 @@ class BackendTests(unittest.TestCase):
             ('negctrl @ p(pi/4) q[0], q[1];', 1, lambda i: i == 2),
             ('gphase(pi/4);', 1, lambda i: True),
         )
-        for gate, factor, active in gates:
-            source = ('include "stdgates.inc"; qubit[2] q; h q; bit[4] flags = "1010"; int index = -1; '
-                      'for bit b in flags[{index}] { index = 0; flags[3] = false; if (b) { ' + gate + '}}')
-            expected = tuple(cmath.exp(1j * factor * math.pi / 4) / 2 if active(i) else 0.5 for i in range(4))
-            for fused in (False, True):
-                BackendAuditTests.check(self, self.program(source, fused=fused), expected)
+        for constant in (False, True):
+            operand = 'C' if constant else 'flags'
+            for gate, factor, active in gates:
+                source = ('include "stdgates.inc"; qubit[2] q; h q; bit[4] flags = "1010"; '
+                          'const bit[65] C = "1' + '0' * 64 + '"; int index = -1; '
+                          f'for bit b in {operand}[{{index}}] {{ index = 0; flags[3] = false; if (b) {{ ' + gate + '}}')
+                expected = tuple(cmath.exp(1j * factor * math.pi / 4) / 2 if active(i) else 0.5 for i in range(4))
+                for fused in (False, True):
+                    BackendAuditTests.check(self, self.program(source, fused=fused), expected)
 
 
 def main():

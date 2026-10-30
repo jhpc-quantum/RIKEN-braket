@@ -4764,6 +4764,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             index_type, runtime = self.__bit_index_info(index, iterators)
             if runtime:
                 size = constant.width if constant is not None else self.__bit_register_source_sizes[name]
+                if not 1 <= size <= self.QCX_INT_MAX:
+                    raise InvalidLoopRangeException('Runtime singleton source width must fit QCX INT indexing')
                 selection = _RuntimeSingletonBitSelection(name, size, index, index_type)
         # The shared resolver rejects active scalar iterators and retains
         # static index order/repetitions without inspecting mutable bit values.
@@ -5320,8 +5322,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__validate_loop_syntax(statement)
         if isinstance(selection, _RuntimeSingletonBitSelection):
             if not self.__is_initialization_process:
-                if selection.source_name in self.__const_bit_register_values:
-                    raise UnsupportedOpenQASMError('constant runtime singleton bit-register loop lowering')
                 self.__emit_runtime_singleton_bit_for(statement, selection)
             return
         if selection.source_name in self.__const_bit_register_values:
@@ -5349,13 +5349,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         next_label = f'QASM2QCX_LOOP_{loop_index}_NEXT'
         end_label = f'QASM2QCX_LOOP_{loop_index}_END'
         try:
-            source = self.__capitalize_variable_name(selection.source_name)
+            constant = (self.__constant_bit_register(selection.source_name)
+                        if selection.source_name in self.__const_bit_register_values else None)
             index = self.__capture_array_index(selection.index, selection.source_width)
             iterator = self.__add_new_temporary_variable(ValueType.BIT)
-            operand = source if selection.source_width == 1 else f'{source}:{index}'
             # Both index capture and the value copy precede the scoped binding.
             # The body cannot change its copied bit by modifying either source.
-            self.__qcx_lines.append(f'LET {iterator} := {operand}')
+            if constant is None:
+                source = self.__capitalize_variable_name(selection.source_name)
+                operand = source if selection.source_width == 1 else f'{source}:{index}'
+                self.__qcx_lines.append(f'LET {iterator} := {operand}')
+            else:
+                self.__copy_constant_bit_at_index(constant, index, iterator)
             with self.__iterator_binding(statement.identifier.name, _RuntimeIteratorBinding(iterator, ValueType.BIT)), \
                     self.__loop_context(end_label, next_label):
                 for child in statement.block:
@@ -5363,11 +5368,44 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # A singleton selection has one visit; either transfer exits it.
             self.__qcx_lines.extend([f'@{next_label}', f'@{end_label}'])
             self.__hoist_temporary_declarations(previous_temporaries)
-            if self.__inside_expanded_loop():
+            if constant is not None or self.__inside_expanded_loop():
                 self.__check_loop_output_limit()
         finally:
             (self.__expression_kind, self.__value, self.__value_type,
              self.__value_kind, self.__evaluate_constant) = previous
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
+    def __copy_constant_bit_at_index(self, source: _ConstantBitRegister, index: str, destination: str) -> None:
+        word_width = self.QCX_UINT_WIDTH
+        word_count = (source.width + word_width - 1) // word_width
+        if len(self.__qcx_lines) + word_count > self.MAX_LOOP_OUTPUT_LINES:
+            raise InvalidLoopRangeException('Constant bit lookup exceeds QCX output limit')
+        previous_used = self.__used_temporary_variables.copy()
+        try:
+            value = self.__add_new_temporary_variable(ValueType.UINT)
+            if word_count == 1:
+                self.__qcx_lines.append(f'LET {value} := {source.value}')
+                offset = index
+            else:
+                # Keep every source bit in native-width words, including the
+                # partially filled final word. Bounds were checked before this
+                # lookup, so padding bits can never be selected.
+                words = self.__add_temporary_array(word_count, 'CONST_BITS', ValueType.UINT)
+                for word in range(word_count):
+                    bits = (source.value >> (word * word_width)) & self.QCX_UINT_MAX
+                    self.__qcx_lines.append(f'LET {words}:{word} := {bits}')
+                word_index = self.__add_new_temporary_variable(ValueType.INT)
+                offset = self.__add_new_temporary_variable(ValueType.INT)
+                self.__qcx_lines.extend([
+                    f'LET {word_index} := {index}', f'LET {word_index} /= {word_width}',
+                    f'LET {offset} := {index}', f'LET {offset} %= {word_width}',
+                    f'LET {value} := {words}:{word_index}',
+                ])
+            self.__qcx_lines.extend([
+                f'LET {value} >>= {offset}', f'LET {value} &= 1', f'LET {destination} := :INT:{value}',
+            ])
+        finally:
             for temporary in self.__used_temporary_variables - previous_used:
                 self.__release_temporary_variable(temporary)
 
@@ -7962,15 +8000,25 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return self.__add_temporary_int_array(width, 'BITS')
 
     def __add_temporary_int_array(self, width: int, purpose: str) -> str:
+        return self.__add_temporary_array(width, purpose, ValueType.INT)
+
+    def __add_temporary_array(self, width: int, purpose: str, value_type: ValueType) -> str:
+        if value_type not in (ValueType.INT, ValueType.UINT):
+            raise ValueError('temporary arrays require INT or UINT storage')
+        # Preserve INT-array names. A distinct UINT namespace prevents reuse
+        # of storage that was already declared with a different element type.
+        prefix = f'QASM2QCX_{purpose}_{"UINT_" if value_type == ValueType.UINT else ""}{width}_'
         index = 0
-        name = f'QASM2QCX_{purpose}_{width}_{index}'
+        name = prefix + str(index)
         while name in self.__used_temporary_variables or name in self.__reserved_variable_names:
             index += 1
-            name = f'QASM2QCX_{purpose}_{width}_{index}'
+            name = prefix + str(index)
         self.__used_temporary_variables.add(name)
+        if value_type == ValueType.UINT:
+            self.__temporary_uint_types[name] = _UnsignedIntegerType(self.QCX_UINT_WIDTH, False)
         if name not in self.__declared_temporary_variables:
             self.__declared_temporary_variables.add(name)
-            self.__qcx_lines.append(f'VAR {name} INT {width}')
+            self.__qcx_lines.append(f'VAR {name} {value_type.name} {width}')
         return name
 
     @contextlib.contextmanager
