@@ -321,6 +321,21 @@ _AngleBitSelection = _StaticAngleBitSelection | _RuntimeAngleBitSelection | _Run
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeAngleBitRangeSelection:
+    # A range has no compile-time selection width. Keep it out of the fixed-
+    # width register-expression APIs and retain all expressions unevaluated.
+    source: ast.Identifier | ast.IndexExpression
+    angle_type: _AngleType
+    bounds: ast.RangeDefinition
+    start_type: ValueType
+    step_type: ValueType
+    stop_type: ValueType
+
+
+_AngleBitLoopSelection = _AngleBitSelection | _RuntimeAngleBitRangeSelection
+
+
+@dataclasses.dataclass(frozen=True)
 class _AngleBitAssignmentInfo:
     selection: _AngleBitSelection
     operator: str
@@ -2171,7 +2186,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __angle_bit_selection(
             self, operand: ast.QASMNode,
             iterators: set[str] | dict[str, ValueType] | None = None, *,
-            destination: bool = False) -> _AngleBitSelection | None:
+            destination: bool = False,
+            allow_runtime_range: bool = False) -> _AngleBitLoopSelection | None:
         if isinstance(operand, ast.IndexExpression):
             source, selector = operand.collection, operand.index
         elif isinstance(operand, ast.IndexedIdentifier):
@@ -2215,12 +2231,38 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise UnsupportedOpenQASMError('assignment to a for-loop iterator')
             if name in self.__const_angle_values:
                 self.__reject_constant_angle_target(ast.Identifier(name), iterators)
+        if allow_runtime_range:
+            range_selection = self.__runtime_angle_bit_range(source, angle_type, selector, iterators)
+            if range_selection is not None:
+                return range_selection
         runtime_selection = self.__runtime_angle_bit_selector(source, angle_type, selector, iterators)
         if runtime_selection is not None:
             return runtime_selection
         indices, _ = self.__static_bit_indices(selector, angle_type.width, name, iterators, destination=destination)
         # Unlike a bit-register index, even a single angle bit is bit[1].
         return _StaticAngleBitSelection(source, angle_type, tuple(indices), runtime)
+
+    def __runtime_angle_bit_range(
+            self, source: ast.Identifier | ast.IndexExpression, angle_type: _AngleType,
+            selector, iterators: set[str] | dict[str, ValueType] | None
+            ) -> _RuntimeAngleBitRangeSelection | None:
+        if not (isinstance(selector, list) and len(selector) == 1
+                and isinstance(selector[0], ast.RangeDefinition)):
+            return None
+        bounds = selector[0]
+        if bounds.start is None or bounds.end is None:
+            raise InvalidLoopRangeException('Angle bit range requires both bounds')
+        # Source order is start, optional step, stop. Even constants stay as
+        # ASTs in a runtime range: domains and bounds are checked on entry,
+        # never while validating a skipped enclosing loop.
+        start_type, start_runtime = self.__angle_bit_index_info(bounds.start, iterators)
+        step_type, step_runtime = ((ValueType.INT, False) if bounds.step is None
+                                  else self.__angle_bit_index_info(bounds.step, iterators))
+        stop_type, stop_runtime = self.__angle_bit_index_info(bounds.end, iterators)
+        if not (start_runtime or step_runtime or stop_runtime):
+            return None  # Preserve the existing static range path.
+        return _RuntimeAngleBitRangeSelection(
+            source, angle_type, bounds, start_type, step_type, stop_type)
 
     def __bit_operand(
             self, bit: ast.Identifier | ast.IndexedIdentifier, *,
@@ -4661,14 +4703,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __angle_selection_loop_info(
             self, source: ast.QASMNode, iteration_type: ast.QASMNode,
             iterators: set[str] | dict[str, ValueType] | None = None
-            ) -> _AngleBitSelection | None:
+            ) -> _AngleBitLoopSelection | None:
         # Reuse selection metadata without reading the source or capturing
         # either index. Resolve it before introducing the loop's own binding.
-        selection = self.__angle_bit_selection(source, iterators)
+        selection = self.__angle_bit_selection(source, iterators, allow_runtime_range=True)
         if selection is not None and (
                 not isinstance(iteration_type, ast.BitType) or iteration_type.size is not None):
             raise UnsupportedOpenQASMError('angle bit-selection iteration requires a scalar bit iterator')
-        if selection is not None and selection.width > self.QCX_INT_MAX:
+        if (selection is not None and not isinstance(selection, _RuntimeAngleBitRangeSelection)
+                and selection.width > self.QCX_INT_MAX):
             raise InvalidLoopRangeException('Angle bit-selection loop size exceeds QCX INT range')
         return selection
 
@@ -5031,7 +5074,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # Nested for bodies need their own typed iterator scope and are checked
         # by __validate_loop_body. Never invent values for an empty loop.
         if isinstance(node, ast.ForInLoop):
-            self.__validate_bitwise_types(node.set_declaration, iterators)
+            if self.__angle_selection_loop_info(node.set_declaration, node.type, iterators) is None:
+                self.__validate_bitwise_types(node.set_declaration, iterators)
             return
         if isinstance(node, ast.IndexExpression) and self.__angle_bit_selection(node, iterators) is not None:
             return  # The source/index and static bit bounds were validated together.
@@ -5207,6 +5251,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__validate_loop_syntax(statement)
         if self.__is_initialization_process:
             return
+        if isinstance(selection, _RuntimeAngleBitRangeSelection):
+            raise UnsupportedOpenQASMError('runtime-dependent angle bit-range loop lowering')
         self.__emit_angle_selection_for(statement, selection)
 
     def __angle_selection_loop_source(self, source: ast.Identifier | ast.IndexExpression) -> str | int:
