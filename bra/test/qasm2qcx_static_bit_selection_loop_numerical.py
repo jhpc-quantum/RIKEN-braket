@@ -3,6 +3,7 @@
 
 import argparse
 import pathlib
+import re
 import resource
 import unittest
 
@@ -110,6 +111,15 @@ class BackendTests(unittest.TestCase):
         self.assertNotIn('runtime error:', result.stderr)
         type(self).checked += 1
 
+    def test_measurements_update_future_bits_without_changing_current_iterator(self):
+        self.check_initializers('include "stdgates.inc"; qubit q; x q; '
+            'bit[4] flags = "0000"; const bit[4] C = "0011"; uint ones = 0; '
+            'uint constant_ones = 0; int visits = 0; '
+            'for bit b in flags[0:3] { if (visits == 0) { '
+            'flags[0] = measure q; flags[1] = measure q; } ones += uint(b); visits += 1; } '
+            'for bit b in C[{0, 0, 3}] { constant_ones += uint(b); if (b) { flags[2] = measure q; }} '
+            'bool same = flags == "0111";', (), (), ('ones', 'visits', 'constant_ones', 'same'), (1, 4, 2, 1))
+
     def test_constant_headers_resolve_before_shadowing_and_preserve_sources(self):
         for name in ('C', 'LOW', 'HIGH'):
             self.check_initializers('const int LOW = 0; const uint HIGH = 3; '
@@ -173,6 +183,23 @@ class BackendTests(unittest.TestCase):
                                  for i in range(4))
                 for fused in (False, True):
                     BackendAuditTests.check(self, self.program(source, fused=fused), expected)
+
+
+    def test_documented_static_bit_selection_loop_example(self):
+        import cmath
+        import math
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- static-bit-selection-loop-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        source = examples[0].removeprefix('OPENQASM 3.0;')
+        self.check_initializers(source + '\nbool same = flags == "1010"; bool unchanged = C == "1011";',
+                                (), (), ('checksum', 'visits', 'saved', 'ones', 'constant_visits', 'same', 'unchanged'),
+                                (37, 4, 1, 2, 3, 1, 1))
+        expected = (1 / math.sqrt(2), cmath.exp(1j * 5 * math.pi / 4) / math.sqrt(2))
+        for fused in (False, True):
+            BackendAuditTests.check(self, self.program(examples[0], fused=fused), expected)
 
 
 def main():
