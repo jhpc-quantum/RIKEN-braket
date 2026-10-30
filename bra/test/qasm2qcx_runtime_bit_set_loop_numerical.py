@@ -41,6 +41,72 @@ class BackendTests(unittest.TestCase):
             'checksum = checksum * 2 + uint(b); visits += 1; }',
             (), (), ('i', 'checksum', 'visits'), (100, 4, 3))
 
+    def test_constant_sets_at_every_bit_and_word_boundary(self):
+        word = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
+        for width in (1, word - 1, word, word + 1, 2 * word - 1, 2 * word, 2 * word + 1, 129):
+            for bits in ('0' * width, '1' * width, ('10010110' * width)[:width]):
+                # Each loop mixes signed/unsigned runtime entries, a negative
+                # alias, a constant, and a repeat. Inspect every source bit.
+                checksum = 0
+                for index in range(width):
+                    for position in (index, width - 1 - index, index, 0, index):
+                        checksum = (checksum * 3 + int(bits[-1 - position])) % 997
+                self.check_initializers(f'const bit[{width}] C = "{bits}"; int i = 0; '
+                    f'uint j = {width - 1}; uint checksum = 0; int visits = 0; '
+                    f'while (i < {width}) {{ for bit b in C[{{i, j, i - {width}, 0, i}}] {{ '
+                    'checksum = (checksum * 3 + uint(b)) % 997; visits += 1; } i += 1; '
+                    'if (j > 0) { j -= 1; } } '
+                    f'bool same = C == "{bits}";', (), (), ('checksum', 'visits', 'same'),
+                    (checksum, width * 5, 1))
+
+    def test_constant_shadowing_captured_positions_and_transfers(self):
+        for width in (1, 4, 65, 129):
+            bits = ('1011' * width)[:width]
+            positions = (0, width - 1, 0)
+            expected = 0
+            for position in positions:
+                expected = expected * 2 + int(bits[-1 - position])
+            for name in ('C', 'i', 'j'):
+                self.check_initializers(f'const bit[{width}] C = "{bits}"; int i = 0; uint j = {width - 1}; '
+                    f'uint checksum = 0; for bit {name} in C[{{i, j, i}}] {{ '
+                    f'checksum = checksum * 2 + uint({name}); '
+                    # Only write the index whose name is not shadowed.
+                    + ('i = 100;' if name != 'i' else 'j = 100;') + ' }',
+                    (), (), ('checksum',), (expected,))
+        self.check_initializers('const bit[4] C = "1011"; int i = 0; int visits = 0; uint total = 0; '
+            'for bit b in C[{i, 2, -1, i}] { visits += 1; if (!b) { continue; } '
+            'total += uint(b); if (visits == 3) { break; } }',
+            (), (), ('visits', 'total'), (3, 2))
+
+    def test_nested_constant_and_mutable_loops_preserve_word_tables_on_reentry(self):
+        bits = '1' + '0' * 63 + '1'
+        inverse = '0' + '1' * 63 + '0'
+        self.check_initializers(f'const bit[65] C = "{bits}"; const bit[65] D = "{inverse}"; '
+            'bit[2] live = "11"; int i = 0; int visits = 0; uint total = 0; '
+            'while (i < 65) { for bit b in C[{i, 1, i}] { '
+            'for bit c in D[{i, 1}] { for bit d in live[{int(c), 0}] { '
+            'total += uint(b) + uint(c) + uint(d); visits += 1; } } } i += 64; } '
+            'for bit b in D[{1, i - 65}] { total += uint(b); visits += 1; }',
+            (), (), ('visits', 'total'), (26, 54))
+
+    def test_constant_invalid_later_indices_fail_before_body_and_only_when_reached(self):
+        limits = self.module.QASM2QCXConverter
+        for width in (1, limits.QCX_UINT_WIDTH + 1, 129):
+            for typename, bad in (('int', -width - 1), ('int', width), ('uint', limits.QCX_UINT_MAX)):
+                prefix = (f'const bit[{width}] C = "' + '0' * width + '"; int good = 0; '
+                          f'{typename} bad = {bad}; int zero = 0; int visits = 0;')
+                for entries in ('good, bad', 'bad, good', 'good, 999', '-999, good', 'good, 1 / zero'):
+                    loop = f'for bit b in C[{{{entries}}}] {{ visits = 1 / zero; break; }}'
+                    for wrapper in ('if (false) {{ {} }}', 'while (false) {{ {} }}',
+                                    'for int outer in [1:0] {{ {} }}'):
+                        self.check_initializers(prefix + wrapper.format(loop), (), (), ('visits',), (0,))
+                    result = self.execute(self.program(prefix + loop))
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertNotIn('runtime error:', result.stderr)
+                    if 'zero' not in entries and (typename == 'int' or 'bad' not in entries):
+                        self.assertIn('assertion_error', result.stderr)
+                    type(self).checked += 1
+
     def test_header_shadowing_and_nested_array_expressions(self):
         for name in ('flags', 'i', 'j'):
             self.check_initializers('bit[4] flags = "1011"; int i = -1; uint j = 0; uint checksum = 0; '
@@ -114,6 +180,10 @@ class BackendTests(unittest.TestCase):
                       'if (b) { ' + gate + ' } visits += 1; }')
             phase = cmath.exp(1j * math.pi / 2) / math.sqrt(2)
             expected = (phase if gate.startswith('gphase') else 1 / math.sqrt(2), phase)
+            for fused in (False, True):
+                BackendAuditTests.check(self, self.program(source, fused=fused), expected)
+            source = ('include "stdgates.inc"; qubit q; h q; const bit[65] C = "1' + '0' * 63 + '1"; '
+                      'int i = 0; for bit b in C[{i, 1, -1}] { i = 100; if (b) { ' + gate + ' }}')
             for fused in (False, True):
                 BackendAuditTests.check(self, self.program(source, fused=fused), expected)
 
