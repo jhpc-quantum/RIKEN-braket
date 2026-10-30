@@ -3,6 +3,7 @@
 
 import argparse
 import pathlib
+import re
 import resource
 import unittest
 
@@ -168,6 +169,23 @@ class BackendTests(unittest.TestCase):
             'int i = 3; uint checksum = 0; for bit b in flags[{i, i}] { '
             'flags[3] = measure q; checksum = checksum * 2 + uint(b); } bool same = flags == "1000";',
             (), (), ('checksum', 'same'), (1, 1))
+
+    def test_documented_runtime_bit_set_loop_example(self):
+        import cmath
+        import math
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- runtime-bit-set-loop-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        source = examples[0].removeprefix('OPENQASM 3.0;')
+        source += '\nbool same = flags == "1000"; bool unchanged = C == "1' + '0' * 63 + '1";'
+        self.check_initializers(source, (), (),
+                                ('i', 'j', 'checksum', 'visits', 'index', 'ones', 'constant_visits', 'same', 'unchanged'),
+                                (1, 2, 6, 3, 0, 2, 3, 1, 1))
+        expected = (1 / math.sqrt(2), cmath.exp(1j * math.pi / 4) / math.sqrt(2))
+        for fused in (False, True):
+            BackendAuditTests.check(self, self.program(examples[0], fused=fused), expected)
 
     def test_gate_conditions_and_fusion_follow_live_selected_bits(self):
         import cmath
