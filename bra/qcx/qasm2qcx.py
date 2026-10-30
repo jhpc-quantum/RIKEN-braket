@@ -5251,8 +5251,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__validate_loop_syntax(statement)
         if self.__is_initialization_process:
             return
-        if isinstance(selection, _RuntimeAngleBitRangeSelection):
-            raise UnsupportedOpenQASMError('runtime-dependent angle bit-range loop lowering')
         self.__emit_angle_selection_for(statement, selection)
 
     def __angle_selection_loop_source(self, source: ast.Identifier | ast.IndexExpression) -> str | int:
@@ -5369,42 +5367,26 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __emit_angle_selection_for(
             self, statement: ast.ForInLoop,
-            selection: _AngleBitSelection) -> None:
+            selection: _AngleBitLoopSelection) -> None:
         previous = (self.__expression_kind, self.__value, self.__value_type, self.__value_kind)
         previous_used = self.__used_temporary_variables.copy()
         previous_temporaries = self.__declared_temporary_variables.copy()
         loop_index = self.__loop_index
         self.__loop_index += 1
-        body_label = f'QASM2QCX_LOOP_{loop_index}_BODY'
-        next_label = f'QASM2QCX_LOOP_{loop_index}_NEXT'
-        end_label = f'QASM2QCX_LOOP_{loop_index}_END'
         try:
             self.__expression_kind = ExpressionKind.ARITHMETIC
-            source = self.__angle_selection_loop_source(selection.source)
-            # Capture and check the bit index after the element address and
-            # before introducing the iterator, including same-name bindings.
-            indices = self.__capture_angle_bit_indices(selection)
-            positions = self.__add_temporary_int_array(selection.width, 'POSITIONS')
-            iterator = self.__add_new_temporary_variable(ValueType.BIT)
-            index = self.__add_new_temporary_variable(ValueType.INT)
-            scratch = self.__add_new_temporary_variable(ValueType.UINT)
-            # The mapping retains selection order and repeated indices while
-            # allowing the body to be generated just once.
-            for position, bit_index in enumerate(indices):
-                self.__qcx_lines.append(f'LET {positions}:{position} := {bit_index}')
-            self.__qcx_lines.extend([
-                f'LET {index} := 0', f'@{body_label}', f'LET {scratch} := {source}',
-                f'LET {scratch} >>= {positions}:{index}', f'LET {scratch} &= 1',
-                f'LET {iterator} := :INT:{scratch}',
-            ])
-            with self.__iterator_binding(statement.identifier.name, _RuntimeIteratorBinding(iterator, ValueType.BIT)), \
-                    self.__loop_context(end_label, next_label):
-                for child in statement.block:
-                    self.visit(child)
-            self.__qcx_lines.extend([
-                f'@{next_label}', f'JUMPIF {end_label} {index} == {selection.width - 1}',
-                f'LET {index} += 1', f'JUMP {body_label}', f'@{end_label}',
-            ])
+            if isinstance(selection, _RuntimeAngleBitRangeSelection):
+                with self.__captured_angle_bit_range(selection) as (source, positions, count):
+                    self.__emit_angle_selection_loop_body(statement, source, positions, count, loop_index)
+            else:
+                source = self.__angle_selection_loop_source(selection.source)
+                # Capture and check indices before introducing the iterator,
+                # including same-name bindings. Keep selection order/repeats.
+                indices = self.__capture_angle_bit_indices(selection)
+                positions = self.__add_temporary_int_array(selection.width, 'POSITIONS')
+                for position, bit_index in enumerate(indices):
+                    self.__qcx_lines.append(f'LET {positions}:{position} := {bit_index}')
+                self.__emit_angle_selection_loop_body(statement, source, positions, selection.width, loop_index)
             self.__hoist_temporary_declarations(previous_temporaries)
             if self.__inside_expanded_loop():
                 self.__check_loop_output_limit()
@@ -5412,6 +5394,35 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__expression_kind, self.__value, self.__value_type, self.__value_kind = previous
             for temporary in self.__used_temporary_variables - previous_used:
                 self.__release_temporary_variable(temporary)
+
+    def __emit_angle_selection_loop_body(
+            self, statement: ast.ForInLoop, source: str | int, positions: str,
+            count: int | str, loop_index: int) -> None:
+        body_label = f'QASM2QCX_LOOP_{loop_index}_BODY'
+        next_label = f'QASM2QCX_LOOP_{loop_index}_NEXT'
+        end_label = f'QASM2QCX_LOOP_{loop_index}_END'
+        iterator = self.__add_new_temporary_variable(ValueType.BIT)
+        index = self.__add_new_temporary_variable(ValueType.INT)
+        scratch = self.__add_new_temporary_variable(ValueType.UINT)
+        self.__qcx_lines.extend([
+            f'LET {index} := 0', f'@{body_label}', f'LET {scratch} := {source}',
+            f'LET {scratch} >>= {positions}:{index}', f'LET {scratch} &= 1',
+            f'LET {iterator} := :INT:{scratch}',
+        ])
+        with self.__iterator_binding(statement.identifier.name, _RuntimeIteratorBinding(iterator, ValueType.BIT)), \
+                self.__loop_context(end_label, next_label):
+            for child in statement.block:
+                self.visit(child)
+        self.__qcx_lines.append(f'@{next_label}')
+        if isinstance(count, int):
+            # Preserve fixed-width output and avoid incrementing at INT_MAX.
+            self.__qcx_lines.extend([
+                f'JUMPIF {end_label} {index} == {count - 1}', f'LET {index} += 1', f'JUMP {body_label}',
+            ])
+        else:
+            # The runtime count is positive and at most twice the angle width.
+            self.__qcx_lines.extend([f'LET {index} += 1', f'JUMPIF {body_label} {index} < {count}'])
+        self.__qcx_lines.append(f'@{end_label}')
 
     def __collection_loop_info(
             self, source: ast.Identifier, iteration_type: ast.QASMNode,

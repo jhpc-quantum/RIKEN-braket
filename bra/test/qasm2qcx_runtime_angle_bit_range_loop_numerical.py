@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""Audit runtime angle bit-range capture (#432) with a non-MPI bra.
-
-Stage 2 exercises the capture helper independently of loop-body lowering.
-"""
+"""Audit runtime angle bit-range capture and iteration (#432) with a non-MPI bra."""
 
 import argparse
 import pathlib
@@ -17,6 +14,8 @@ class BackendTests(unittest.TestCase):
     checked = 0
     setUp = arrays.BackendTests.setUp
     execute = arrays.BackendTests.execute
+    program = arrays.BackendTests.program
+    check_initializers = arrays.BackendTests.check_initializers
 
     def capture_lines(self, prefix, selection, *, skipped=False, mutate=False):
         program = self.module.openqasm3.parser.parse('OPENQASM 3; ' + prefix)
@@ -134,6 +133,129 @@ class BackendTests(unittest.TestCase):
                 else:
                     self.assertNotEqual(result.returncode, 0, selection)
                 type(self).checked += 1
+
+    def test_public_loops_at_every_width_preserve_order_and_repetitions(self):
+        limits = self.module.QASM2QCXConverter
+        for width in range(1, limits.QCX_UINT_WIDTH + 1):
+            raw = 0xAAAAAAAA & ((1 << width) - 1)
+            prefix = (f'const angle[{width}] C = angle[{width}]("{raw:0{width}b}"); '
+                      f'angle[{width}] a = C; array[angle[{width}], 1] phases = {{C}}; '
+                      f'int element = -1; int first = {-width}; int stride = 1; int last = {width - 1}; ')
+            source, outputs, expected = prefix, [], []
+            for direction in (1, -1):
+                positions = list(range(-width, width)) if direction == 1 else list(range(width - 1, -width - 1, -1))
+                checksum = 0
+                for position in positions:
+                    checksum = (checksum * 2 + ((raw >> (position % width)) & 1)) & limits.QCX_UINT_MAX
+                for origin, operand in enumerate(('C', 'a', 'phases[element]')):
+                    suffix = f'{origin}_{"up" if direction == 1 else "down"}'
+                    total, visits = 'total' + suffix, 'visits' + suffix
+                    selector = 'first:last' if direction == 1 else 'last:-stride:first'
+                    source += (f'uint {total} = 0; int {visits} = 0; '
+                               f'for bit b in {operand}[{selector}] {{ '
+                               f'{total} = {total} * 2 + uint(b); {visits} += 1; }}')
+                    outputs.extend((total, visits))
+                    expected.extend((checksum, 2 * width))
+            self.check_initializers(source, (('phases', 1),), (raw,),
+                                    tuple(outputs) + ('a',), tuple(expected) + (raw,))
+
+    def test_public_loops_keep_full_width_steps_and_unselected_stop_bounds(self):
+        limits = self.module.QASM2QCXConverter
+        for first, stride, last, kinds, wanted in (
+                (0, 3, 4, ('int', 'int', 'int'), (3, 2)),
+                (3, -3, -1, ('int', 'int', 'int'), (3, 2)),
+                (-1, limits.QCX_UINT_MAX, 3, ('int', 'uint', 'int'), (1, 1)),
+                (3, limits.QCX_UINT_MAX, limits.QCX_UINT_MAX, ('int', 'uint', 'uint'), (1, 1)),
+                (0, limits.QCX_INT_MIN, -3, ('uint', 'int', 'int'), (1, 1)),
+                (3, limits.QCX_INT_MAX, 3, ('uint', 'int', 'uint'), (1, 1))):
+            self.check_initializers('angle[4] a = angle[4]("1001"); '
+                f'{kinds[0]} first = {first}; {kinds[1]} stride = {stride}; {kinds[2]} last = {last}; '
+                'uint total = 0; int visits = 0; for bit b in a[first:stride:last] { '
+                'total = total * 2 + uint(b); visits += 1; }',
+                (), (), ('total', 'visits'), wanted)
+
+    def test_public_loops_capture_headers_but_read_source_bits_live(self):
+        self.check_initializers('array[angle[4], 2] phases = {angle[4]("0011"), pi}; '
+            'int element = 0; int first = -4; int stride = 1; int last = 3; '
+            'int visits = 0; uint total = 0; bit saved = 0; '
+            'for bit b in phases[element][first:stride:last] { if (visits == 0) { '
+            'element = 1; first = 100; stride = 0; last = -100; '
+            'phases[0][0] = "0"; phases[0][3] = "1"; saved = b; } '
+            'visits += 1; total += uint(b); }',
+            (('phases', 2),), (10, 8),
+            ('element', 'first', 'stride', 'last', 'visits', 'total', 'saved'), (1, 100, 0, -100, 8, 5, 1))
+
+    def test_public_loop_headers_resolve_before_same_name_iterator_binding(self):
+        for name in ('a', 'C', 'phases', 'element', 'first', 'stride', 'last'):
+            operand = name if name in ('a', 'C') else 'phases[element]'
+            self.check_initializers('const angle[4] C = angle[4]("1010"); angle[4] a = C; '
+                'array[angle[4], 1] phases = {C}; int element = -1; '
+                'int first = 0; int stride = 1; int last = 3; uint total = 0; '
+                f'for bit {name} in {operand}[first:stride:last] {{ total += uint({name}); }}',
+                (), (), ('total',), (2,))
+
+    def test_public_nested_loops_reentry_and_angle_iterators(self):
+        self.check_initializers('array[angle[4], 2] phases = {angle[4]("0011"), angle[4]("1010")}; '
+            'int first = 0; int last = 1; int visits = 0; uint total = 0; int passes = 0; '
+            'while (passes < 2) { passes += 1; for int element in [0:last] { '
+            'for angle[4] a in phases { for bit b in a[first:3] { '
+            'for bit c in phases[element][first:2:3] { visits += 1; if (b && c) { total += 1; } }}}}}',
+            (), (), ('visits', 'total', 'passes'), (64, 8, 2))
+        self.check_initializers('angle[4] a = angle[4]("1011"); int first = 0; int last = 3; '
+            'int passes = 0; int visits = 0; uint total = 0; while (passes < 4) { '
+            'passes += 1; for bit b in a[first:last] { visits += 1; total += uint(b); } first += 1; }',
+            (), (), ('passes', 'visits', 'total'), (4, 10, 7))
+
+    def test_public_break_continue_and_skipped_temporary_initialization(self):
+        prefix = ('angle[4] a = angle[4]("1011"); int first = 0; int last = 3; '
+                  'int visits = 0; uint total = 0; int passes = 0;')
+        self.check_initializers(prefix + 'for bit b in a[first:last] { visits += 1; '
+            'if (!b) { continue; } total += uint(b); if (total == 2) { break; }}',
+            (), (), ('visits', 'total'), (2, 2))
+        for transfer, visits in (('break', 3), ('continue', 12)):
+            self.check_initializers(prefix + 'while (passes < 3) { passes += 1; '
+                'for bit b in a[first:last] { visits += 1; ' + transfer + '; total += uint(b); }} '
+                'total += popcount(a[0:3]);', (), (), ('visits', 'total', 'passes'), (visits, 3, 3))
+        self.check_initializers(prefix + 'for bit b in a[first:last] { '
+            'for bit c in a[first:last] { if (c) { total += uint(b); break; } } '
+            'if (!b) { continue; } visits += 1; }', (), (), ('visits', 'total'), (3, 3))
+
+    def test_public_runtime_checks_execute_before_body_even_with_break(self):
+        prefix = ('array[angle[4], 1] phases = {pi}; angle[4] a; int bad = 1; int zero = 0; '
+                  'int first = 0; int stride = 1; int last = 4; int visits = 0;')
+        for selection in ('a[first:last]', 'a[last:first]', 'a[first:zero:last]',
+                          'a[first:1 / zero:last]', 'a[first:stride:1 / zero]',
+                          'phases[bad][first:last]', 'a[first:stride:999999999999999999999]'):
+            loop = f'for bit b in {selection} {{ visits = 1 / zero; break; }}'
+            for wrapper in ('if (false) {{ {} }}', 'while (false) {{ {} }}',
+                            'for int outer in [1:0] {{ {} }}'):
+                self.check_initializers(prefix + wrapper.format(loop), (), (), ('visits',), (0,))
+            result = self.execute(self.program(prefix + loop))
+            self.assertNotEqual(result.returncode, 0, selection)
+            self.assertNotIn('runtime error:', result.stderr)
+            if '1 / zero' not in selection:
+                self.assertIn('assertion_error', result.stderr, selection)
+            type(self).checked += 1
+
+    def test_public_phase_gates_and_fusion_use_live_values(self):
+        import cmath
+        import math
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        for array in (False, True):
+            operand = 'phases[element]' if array else 'a'
+            declaration = ('array[angle[4], 1] phases = {angle[4]("0011")}; int element = -1; '
+                           if array else 'angle[4] a = angle[4]("0011"); ')
+            for gate, factor in (('p', 1), ('inv @ p', -1), ('pow(0.5) @ p', 0.5)):
+                # Initial bits 0 and 1 select two visits. Each selected visit
+                # applies phases raw 3 then raw 11, toggling bit 3 twice.
+                source = ('include "stdgates.inc"; qubit q; h q; int first = 0; int last = 3; '
+                          + declaration + f'for bit b in {operand}[first:last] {{ if (b) {{ '
+                          + f'{gate}({operand}) q; {operand}[3] ^= "1"; '
+                          + f'{gate}({operand}) q; {operand}[3] ^= "1"; ' + '}}')
+                phase = 2 * (-2 if factor == 0.5 else 14) * math.pi / 8
+                expected = (1 / math.sqrt(2), cmath.exp(1j * factor * phase) / math.sqrt(2))
+                for fused in (False, True):
+                    BackendAuditTests.check(self, self.program(source, fused=fused), expected)
 
 
 def main():
