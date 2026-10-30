@@ -5339,7 +5339,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__validate_loop_syntax(statement)
         if isinstance(selection, _RuntimeBitSetSelection):
             if not self.__is_initialization_process:
-                raise UnsupportedOpenQASMError('runtime multi-entry bit-register set loop lowering')
+                if selection.source_name in self.__const_bit_register_values:
+                    raise UnsupportedOpenQASMError('runtime multi-entry constant bit-register set loop lowering')
+                self.__emit_mutable_bit_selection_for(statement, selection)
             return
         if isinstance(selection, _RuntimeSingletonBitSelection):
             if not self.__is_initialization_process:
@@ -5436,7 +5438,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__release_temporary_variable(temporary)
 
     def __emit_mutable_bit_selection_for(
-            self, statement: ast.ForInLoop, selection: _StaticBitSelection) -> None:
+            self, statement: ast.ForInLoop, selection: _StaticBitSelection | _RuntimeBitSetSelection) -> None:
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
         previous_used = self.__used_temporary_variables.copy()
@@ -5454,7 +5456,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             index = self.__add_new_temporary_variable(ValueType.INT)
             bit_index = self.__add_new_temporary_variable(ValueType.INT)
             for position, selected_index in enumerate(selection.indices):
-                self.__qcx_lines.append(f'LET {positions}:{position} := {selected_index}')
+                if isinstance(selection, _RuntimeBitSetSelection):
+                    # Capture every occurrence in source order before binding
+                    # the iterator or executing any body statement. The table
+                    # owns a copy, so capture storage can be reused immediately.
+                    captured = self.__capture_array_index(selected_index, size)
+                    self.__qcx_lines.append(f'LET {positions}:{position} := {captured}')
+                    self.__release_temporary_variable(captured)
+                else:
+                    self.__qcx_lines.append(f'LET {positions}:{position} := {selected_index}')
             # QCX cannot nest array subscripts. Load the selected position
             # first, then copy that live bit into the scoped scalar iterator.
             # bit[1] has scalar INT storage, so its read needs no subscript.

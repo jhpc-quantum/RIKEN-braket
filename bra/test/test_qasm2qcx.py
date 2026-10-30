@@ -13677,6 +13677,99 @@ class RuntimeBitSetLoopFoundationTests(unittest.TestCase):
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
 
 
+class MutableRuntimeBitSetLoopLoweringTests(unittest.TestCase):
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    converter = ScalarAngleFoundationTests.converter
+    prefix = 'bit[4] flags; bit[1] one; int index; uint count; bit copy; uint total;'
+
+    def test_body_once_and_all_ordered_captures_precede_binding_and_reads(self):
+        c = self.converter(self.prefix)
+        statement = self.program('for bit index in flags[{index % 4, count, -1, index % 4}] { '
+            'copy = index; total += uint(index); flags[0] = false; }').statements[0]
+        original = c._QASM2QCXConverter__capture_array_index
+        observed = []
+        def capture(expression, size):
+            self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+            observed.append(expression)
+            return original(expression, size)
+        with patch.object(c, '_QASM2QCXConverter__capture_array_index', side_effect=capture), patch.object(
+                c, 'MAX_LOOP_ITERATIONS', 0):
+            c.visit(statement)
+        self.assertEqual(observed, statement.set_declaration.index.values)
+        lines = c._QASM2QCXConverter__qcx_lines
+        body = next(i for i, line in enumerate(lines) if line.endswith('_BODY'))
+        self.assertEqual(sum(line.startswith('ASSERT ') for line in lines[:body]), 8)
+        self.assertFalse(any(line.startswith('ASSERT ') for line in lines[body:]))
+        self.assertEqual(sum(' %= 4' in line for line in lines), 2)
+        total = c._QASM2QCXConverter__capitalize_variable_name('total')
+        self.assertEqual(sum(line.startswith(f'LET {total} :=') for line in lines), 1)
+        positions = next(line.split()[1] for line in lines if line.startswith('VAR QASM2QCX_POSITIONS_'))
+        self.assertEqual(sum(line.startswith(f'LET {positions}:') for line in lines[:body]), 4)
+        self.assertEqual(c._QASM2QCXConverter__loop_iterations, 0)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_single_bit_storage_still_checks_every_selector(self):
+        c = self.converter(self.prefix + 'for bit b in one[{index, count, -1}] { copy = b; }')
+        lines = c._QASM2QCXConverter__qcx_lines
+        name = c._QASM2QCXConverter__capitalize_variable_name('one')
+        self.assertTrue(any(line.endswith(' := ' + name) for line in lines))
+        self.assertFalse(any(' := ' + name + ':' in line for line in lines))
+        self.assertEqual(sum(line.startswith('ASSERT ') for line in lines), 6)
+
+    def test_nested_transfers_tables_and_indices_are_independent(self):
+        c = self.converter(self.prefix + 'for bit b in flags[{index, count}] { '
+            'for bit c in flags[{int(b), index}] { if (c) { break; } continue; } '
+            'if (b) { continue; } break; }')
+        lines = c._QASM2QCXConverter__qcx_lines
+        tables = [line.split()[1] for line in lines if line.startswith('VAR QASM2QCX_POSITIONS_')]
+        self.assertEqual(len(tables), 2)
+        self.assertEqual(len(set(tables)), 2)
+        for index in (0, 1):
+            self.assertIn(f'JUMP QASM2QCX_LOOP_{index}_NEXT', lines)
+            self.assertIn(f'JUMP QASM2QCX_LOOP_{index}_END', lines)
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+        self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(c._QASM2QCXConverter__loop_contexts, [])
+
+    def test_success_later_capture_failure_and_body_failure_restore_ownership(self):
+        for failure in (None, 'capture', 'body'):
+            c = self.converter(self.prefix)
+            caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+            fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+            before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+            statement = self.program('for bit b in flags[{index, count}] { copy = b; }').statements[0]
+            original = c._QASM2QCXConverter__capture_array_index
+            calls = []
+            def fail(*args):
+                c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.INT)
+                raise RuntimeError('lowering failed')
+            def capture(*args):
+                calls.append(args)
+                return original(*args) if len(calls) == 1 else fail()
+            if failure:
+                target = '_QASM2QCXConverter__capture_array_index' if failure == 'capture' else 'visit_ClassicalAssignment'
+                with patch.object(c, target, side_effect=capture if failure == 'capture' else fail):
+                    with self.assertRaisesRegex(RuntimeError, 'lowering failed'):
+                        c.visit(statement)
+            else:
+                c.visit(statement)
+            self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+            self.assertEqual(c._QASM2QCXConverter__loop_contexts, [])
+
+    def test_enclosing_expansion_budget_and_reserved_storage(self):
+        c = self.converter(self.prefix + 'int QASM2QCX_POSITIONS_2_0 = 7; '
+            'for bit b in flags[{index, 0}] {}')
+        reserved = c._QASM2QCXConverter__capitalize_variable_name('QASM2QCX_POSITIONS_2_0')
+        self.assertEqual([line for line in c._QASM2QCXConverter__qcx_lines if line.startswith(f'LET {reserved} ')],
+                         [f'LET {reserved} := 7'])
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_LOOP_OUTPUT_LINES', 10):
+            with self.assertRaises(qasm2qcx.InvalidLoopRangeException):
+                self.converter(self.prefix + 'for int outer in [0:0] { for bit b in flags[{index, 0}] {} }')
+
+
 class MutableRuntimeSingletonBitLoopLoweringTests(unittest.TestCase):
     program = staticmethod(ScalarAngleFoundationTests.program)
     converter = ScalarAngleFoundationTests.converter
