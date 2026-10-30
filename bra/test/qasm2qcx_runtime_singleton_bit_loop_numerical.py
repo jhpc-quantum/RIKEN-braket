@@ -3,6 +3,7 @@
 
 import argparse
 import pathlib
+import re
 import resource
 import unittest
 
@@ -205,6 +206,24 @@ class BackendTests(unittest.TestCase):
                 expected = tuple(cmath.exp(1j * factor * math.pi / 4) / 2 if active(i) else 0.5 for i in range(4))
                 for fused in (False, True):
                     BackendAuditTests.check(self, self.program(source, fused=fused), expected)
+
+
+    def test_documented_runtime_singleton_bit_loop_example(self):
+        import cmath
+        import math
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- runtime-singleton-bit-loop-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        source = examples[0].removeprefix('OPENQASM 3.0;')
+        source += '\nbool same = flags == "0010"; bool unchanged = C == "1' + '0' * 64 + '";'
+        self.check_initializers(source, (), (),
+                                ('index', 'wide_index', 'visits', 'mutable_saved', 'constant_saved', 'same', 'unchanged'),
+                                (0, 0, 2, 1, 1, 1, 1))
+        expected = (1 / math.sqrt(2), cmath.exp(1j * math.pi / 4) / math.sqrt(2))
+        for fused in (False, True):
+            BackendAuditTests.check(self, self.program(examples[0], fused=fused), expected)
 
 
 def main():

@@ -5392,8 +5392,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 # partially filled final word. Bounds were checked before this
                 # lookup, so padding bits can never be selected.
                 words = self.__add_temporary_array(word_count, 'CONST_BITS', ValueType.UINT)
+                word_bytes = word_width // 8
+                packed = source.value.to_bytes(word_count * word_bytes, byteorder='little')
                 for word in range(word_count):
-                    bits = (source.value >> (word * word_width)) & self.QCX_UINT_MAX
+                    # Decode fixed-size words instead of repeatedly shifting
+                    # the whole large integer, which would be quadratic.
+                    start = word * word_bytes
+                    bits = int.from_bytes(packed[start:start + word_bytes], byteorder='little')
                     self.__qcx_lines.append(f'LET {words}:{word} := {bits}')
                 word_index = self.__add_new_temporary_variable(ValueType.INT)
                 offset = self.__add_new_temporary_variable(ValueType.INT)
