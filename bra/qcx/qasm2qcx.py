@@ -270,6 +270,23 @@ class _StaticBitSelection:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeSingletonBitSelection:
+    # Only loop-source metadata: a runtime index does not make ordinary
+    # register expressions or assignments support dynamic set selections.
+    source_name: str
+    source_width: int
+    index: ast.Expression
+    index_type: ValueType
+
+    @property
+    def width(self) -> int:
+        return 1
+
+
+_BitSelectionLoop = _StaticBitSelection | _RuntimeSingletonBitSelection
+
+
+@dataclasses.dataclass(frozen=True)
 class _StaticAngleBitSelection:
     # Keep the angle source separate from register storage. An array element
     # retains its unevaluated index until runtime extraction or assignment.
@@ -2147,9 +2164,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __angle_bit_index_info(
             self, index: ast.Expression, iterators: set[str] | dict[str, ValueType] | None
             ) -> tuple[ValueType, bool]:
+        return self.__bit_index_info(index, iterators, role='angle bit index')
+
+    def __bit_index_info(
+            self, index: ast.Expression, iterators: set[str] | dict[str, ValueType] | None, *,
+            role: str = 'bit index') -> tuple[ValueType, bool]:
         value_type, runtime = self.__loop_expression_info(index, iterators)
         if value_type not in (ValueType.INT, ValueType.UINT):
-            raise UnsupportedOpenQASMError('angle bit index must be an integer')
+            raise UnsupportedOpenQASMError(f'{role} must be an integer')
         names = self.__loop_bound_names(index)
         active_names = set(iterators or ()) | {name for scope in self.__loop_bindings for name in scope}
         self.__validate_bitwise_indices(index, iterators)
@@ -4718,7 +4740,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __bit_selection_loop_info(
             self, source: ast.QASMNode, iteration_type: ast.QASMNode,
             iterators: set[str] | dict[str, ValueType] | None = None
-            ) -> _StaticBitSelection | None:
+            ) -> _BitSelectionLoop | None:
         # Whole registers use collection-loop metadata. Only named register
         # selections belong here; angle selections retain their separate path.
         if not (isinstance(source, ast.IndexExpression) and isinstance(source.collection, ast.Identifier)):
@@ -4729,18 +4751,32 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return None
         if source_type.size is None:
             raise UnsupportedOpenQASMError('bit-selection iteration requires a bit-register source')
+        if ((iterators is not None and name in iterators)
+                or any(name in scope for scope in self.__loop_bindings)):
+            raise UnsupportedOpenQASMError('bit selection of a for-loop iterator')
+        constant = self.__constant_bit_register(name) if name in self.__const_bit_register_values else None
+        if (not self.__is_initialization_process and constant is None
+                and self.__capitalize_variable_name(name) not in self.__sized_bit_variables):
+            raise NoVariableNameException(name)
+        selection = None
+        if isinstance(source.index, ast.DiscreteSet) and len(source.index.values) == 1:
+            index = source.index.values[0]
+            index_type, runtime = self.__bit_index_info(index, iterators)
+            if runtime:
+                size = constant.width if constant is not None else self.__bit_register_source_sizes[name]
+                if not 1 <= size <= self.QCX_INT_MAX:
+                    raise InvalidLoopRangeException('Runtime singleton source width must fit QCX INT indexing')
+                selection = _RuntimeSingletonBitSelection(name, size, index, index_type)
         # The shared resolver rejects active scalar iterators and retains
         # static index order/repetitions without inspecting mutable bit values.
-        selection = self.__static_bit_selection(source, iterators)
-        if not selection.is_register:
-            raise UnsupportedOpenQASMError('bit-selection iteration requires a register selection, not a scalar bit')
+        if selection is None:
+            selection = self.__static_bit_selection(source, iterators)
+            if not selection.is_register:
+                raise UnsupportedOpenQASMError('bit-selection iteration requires a register selection, not a scalar bit')
         if not isinstance(iteration_type, ast.BitType) or iteration_type.size is not None:
             raise UnsupportedOpenQASMError('bit-selection iteration requires a scalar bit iterator')
         if selection.width > self.QCX_INT_MAX:
             raise InvalidLoopRangeException('Bit-selection loop size exceeds QCX INT range')
-        if (not self.__is_initialization_process and name not in self.__const_bit_register_values
-                and self.__capitalize_variable_name(name) not in self.__sized_bit_variables):
-            raise NoVariableNameException(name)
         return selection
 
     def __validate_loop_header(
@@ -5284,6 +5320,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         with self.__iterator_binding(statement.identifier.name, binding):
             self.__validate_loop_body(statement.block, self.__loop_iterator_types())
         self.__validate_loop_syntax(statement)
+        if isinstance(selection, _RuntimeSingletonBitSelection):
+            if not self.__is_initialization_process:
+                self.__emit_runtime_singleton_bit_for(statement, selection)
+            return
         if selection.source_name in self.__const_bit_register_values:
             source = self.__constant_bit_register(selection.source_name)
             loop_index = self.__loop_index
@@ -5297,6 +5337,82 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                  self.__value_kind, self.__evaluate_constant) = previous
         elif not self.__is_initialization_process:
             self.__emit_mutable_bit_selection_for(statement, selection)
+
+    def __emit_runtime_singleton_bit_for(
+            self, statement: ast.ForInLoop, selection: _RuntimeSingletonBitSelection) -> None:
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        previous_temporaries = self.__declared_temporary_variables.copy()
+        loop_index = self.__loop_index
+        self.__loop_index += 1
+        next_label = f'QASM2QCX_LOOP_{loop_index}_NEXT'
+        end_label = f'QASM2QCX_LOOP_{loop_index}_END'
+        try:
+            constant = (self.__constant_bit_register(selection.source_name)
+                        if selection.source_name in self.__const_bit_register_values else None)
+            index = self.__capture_array_index(selection.index, selection.source_width)
+            iterator = self.__add_new_temporary_variable(ValueType.BIT)
+            # Both index capture and the value copy precede the scoped binding.
+            # The body cannot change its copied bit by modifying either source.
+            if constant is None:
+                source = self.__capitalize_variable_name(selection.source_name)
+                operand = source if selection.source_width == 1 else f'{source}:{index}'
+                self.__qcx_lines.append(f'LET {iterator} := {operand}')
+            else:
+                self.__copy_constant_bit_at_index(constant, index, iterator)
+            with self.__iterator_binding(statement.identifier.name, _RuntimeIteratorBinding(iterator, ValueType.BIT)), \
+                    self.__loop_context(end_label, next_label):
+                for child in statement.block:
+                    self.visit(child)
+            # A singleton selection has one visit; either transfer exits it.
+            self.__qcx_lines.extend([f'@{next_label}', f'@{end_label}'])
+            self.__hoist_temporary_declarations(previous_temporaries)
+            if constant is not None or self.__inside_expanded_loop():
+                self.__check_loop_output_limit()
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
+    def __copy_constant_bit_at_index(self, source: _ConstantBitRegister, index: str, destination: str) -> None:
+        word_width = self.QCX_UINT_WIDTH
+        word_count = (source.width + word_width - 1) // word_width
+        if len(self.__qcx_lines) + word_count > self.MAX_LOOP_OUTPUT_LINES:
+            raise InvalidLoopRangeException('Constant bit lookup exceeds QCX output limit')
+        previous_used = self.__used_temporary_variables.copy()
+        try:
+            value = self.__add_new_temporary_variable(ValueType.UINT)
+            if word_count == 1:
+                self.__qcx_lines.append(f'LET {value} := {source.value}')
+                offset = index
+            else:
+                # Keep every source bit in native-width words, including the
+                # partially filled final word. Bounds were checked before this
+                # lookup, so padding bits can never be selected.
+                words = self.__add_temporary_array(word_count, 'CONST_BITS', ValueType.UINT)
+                word_bytes = word_width // 8
+                packed = source.value.to_bytes(word_count * word_bytes, byteorder='little')
+                for word in range(word_count):
+                    # Decode fixed-size words instead of repeatedly shifting
+                    # the whole large integer, which would be quadratic.
+                    start = word * word_bytes
+                    bits = int.from_bytes(packed[start:start + word_bytes], byteorder='little')
+                    self.__qcx_lines.append(f'LET {words}:{word} := {bits}')
+                word_index = self.__add_new_temporary_variable(ValueType.INT)
+                offset = self.__add_new_temporary_variable(ValueType.INT)
+                self.__qcx_lines.extend([
+                    f'LET {word_index} := {index}', f'LET {word_index} /= {word_width}',
+                    f'LET {offset} := {index}', f'LET {offset} %= {word_width}',
+                    f'LET {value} := {words}:{word_index}',
+                ])
+            self.__qcx_lines.extend([
+                f'LET {value} >>= {offset}', f'LET {value} &= 1', f'LET {destination} := :INT:{value}',
+            ])
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
 
     def __emit_mutable_bit_selection_for(
             self, statement: ast.ForInLoop, selection: _StaticBitSelection) -> None:
@@ -7889,15 +8005,25 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return self.__add_temporary_int_array(width, 'BITS')
 
     def __add_temporary_int_array(self, width: int, purpose: str) -> str:
+        return self.__add_temporary_array(width, purpose, ValueType.INT)
+
+    def __add_temporary_array(self, width: int, purpose: str, value_type: ValueType) -> str:
+        if value_type not in (ValueType.INT, ValueType.UINT):
+            raise ValueError('temporary arrays require INT or UINT storage')
+        # Preserve INT-array names. A distinct UINT namespace prevents reuse
+        # of storage that was already declared with a different element type.
+        prefix = f'QASM2QCX_{purpose}_{"UINT_" if value_type == ValueType.UINT else ""}{width}_'
         index = 0
-        name = f'QASM2QCX_{purpose}_{width}_{index}'
+        name = prefix + str(index)
         while name in self.__used_temporary_variables or name in self.__reserved_variable_names:
             index += 1
-            name = f'QASM2QCX_{purpose}_{width}_{index}'
+            name = prefix + str(index)
         self.__used_temporary_variables.add(name)
+        if value_type == ValueType.UINT:
+            self.__temporary_uint_types[name] = _UnsignedIntegerType(self.QCX_UINT_WIDTH, False)
         if name not in self.__declared_temporary_variables:
             self.__declared_temporary_variables.add(name)
-            self.__qcx_lines.append(f'VAR {name} INT {width}')
+            self.__qcx_lines.append(f'VAR {name} {value_type.name} {width}')
         return name
 
     @contextlib.contextmanager
