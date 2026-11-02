@@ -150,6 +150,8 @@ The converter currently covers:
   `complex` arrays;
 - runtime iteration over mutable bit registers with scalar `bit` iterators;
 - unrolled iteration over named constant bit registers with scalar `bit` iterators;
+- scalar-bit iteration over static selections and runtime sets/ranges on named
+  mutable and constant bit registers;
 - iteration over supported sized-angle bit selections with scalar `bit` iterators;
 - runtime `while` loops, including nested loops, `break`, and `continue`;
 - scalar expressions used as gate parameters; and
@@ -2275,6 +2277,7 @@ casts, and ordered comparisons remain separate work. Static selections also
 support [iteration with scalar bit iterators](#static-selection-sources).
 Runtime singleton and multi-entry sets have separate
 [loop-source subsets](#runtime-singleton-selection-sources).
+Runtime ranges also support [scalar-bit iteration](#runtime-dependent-bit-register-range-loops).
 
 ### Bit-register equality
 
@@ -4949,7 +4952,8 @@ Bit iterators may index integer-array and mutable bit-register elements through 
 explicit integer cast. Static register selections are also iterable, as described
 [below](#static-selection-sources), as are
 [runtime singleton sets](#runtime-singleton-selection-sources) and
-[runtime multi-entry sets](#runtime-multi-entry-selection-sources).
+[runtime multi-entry sets](#runtime-multi-entry-selection-sources) and
+[runtime ranges](#runtime-dependent-bit-register-range-loops).
 Runtime user-supplied qubit indices, other runtime-dependent register selections
 as iterable sources, aliases, general
 array-type iteration, and block-local declarations remain unsupported.
@@ -4998,7 +5002,7 @@ An empty enclosing constant loop validates the nested loop without expanding
 its body. Large registers can therefore hit expansion limits even though their
 declarations and constant expressions are otherwise supported. No new bra/QCX
 instruction is required. Computed register expressions, runtime-dependent
-selections other than the discrete-set loop subsets below, aliases, scalar bits,
+selections outside the loop subsets below, aliases, scalar bits,
 and general block-local declarations remain unsupported for bit-register loop sources.
 
 ### Static selection sources
@@ -5093,8 +5097,8 @@ than native UINT without packing them into a native integer. Temporary storage
 is released on success and failed lowering, preserving caller-owned storage.
 No new bra instruction or build option is required.
 
-Runtime singleton and multi-entry set selectors are described next.
-Runtime-dependent ranges, aliases, further indexing of a selection result,
+Runtime singleton sets, multi-entry sets, and ranges are described next.
+Aliases, further indexing of a selection result,
 computed register expressions, and general block-local declarations remain
 outside this feature.
 
@@ -5180,9 +5184,9 @@ are released after copying the bit; the iterator remains reserved throughout
 the body. Cleanup on failed lowering preserves caller-owned storage. Existing
 QCX instructions suffice, without a bra instruction or build-option change.
 
-Multi-entry sets have the loop-source subset described next. Runtime ranges
-(including `flags[index:index]`), runtime set selections in general register
-expressions or assignments, aliases, and computed register sources remain
+Multi-entry sets and runtime ranges have the loop-source subsets described next.
+Runtime selections in general register expressions or assignments,
+aliases, and computed register sources remain
 unsupported. Angle selection loops have their own supported forms below.
 
 ### Runtime multi-entry selection sources
@@ -5271,10 +5275,111 @@ limit; enclosing and nested expansions retain their accounting. Temporary declar
 are hoisted, and cleanup preserves caller-owned storage on success and failure.
 No new bra instruction or build option is required.
 
-This feature is restricted to direct scalar-bit loop sources. Runtime ranges,
-general runtime set expressions or assignments, scalar single-index loop sources,
+This feature is restricted to direct scalar-bit loop sources. Runtime ranges
+have their own subset below. General runtime set expressions or assignments, scalar single-index loop sources,
 computed register sources, aliases, further indexing of selections, and general
 block-local declarations remain unsupported.
+
+### Runtime-dependent bit-register range loops
+
+Named mutable and constant bit registers support scalar-bit loops over ranges
+whose start, stop, or step depends on runtime storage or an enclosing iterator:
+
+```qasm
+for bit b in flags[start:stop] { ... }
+for bit b in C[start:step:stop] { ... }
+```
+
+Both bounds are required. Each operand must independently have supported
+INT/UINT type; mixed signed and unsigned operands are accepted. The default
+step is `+1`, descending ranges require an explicit negative step, and zero is
+invalid. Supported operand expressions include arithmetic, integer-array
+elements, integer-valued functions, and enclosing iterators. These forms follow
+the specification's [register slicing](https://openqasm.com/language/types.html#register-concatenation-and-slicing)
+and [for-loop](https://openqasm.com/language/classical.html#for-loops) rules.
+
+The range generates raw positions `start`, `start + step`, and so on, stopping
+before passing the inclusive stop bound. Each negative position then normalizes
+by adding the source width `N`; endpoints are not normalized first. For `bit[4]`,
+`[-4:3]` visits `0,1,2,3,0,1,2,3`. A stop need not itself be selected:
+`[0:3:4]` selects only `0,3`, so the unselected stop `4` is not a bounds error.
+Equal bounds select one position for any nonzero step.
+
+At loop entry, the source is resolved and start, optional step, and stop are
+evaluated once in textual order, before binding the iterator. The complete
+position sequence is built and checked before any body statement executes.
+A zero step, empty selection, or selected position outside `[-N, N - 1]`
+fails on the reached path, even if the body immediately executes `break`.
+Unlike an ordinary integer range loop, an empty register selection is invalid.
+Entirely constant ranges retain conversion-time validation and existing lowering.
+Skipped paths and empty enclosing loops still validate names, types, and syntax
+without evaluating runtime operands or fabricating iterator values.
+
+Captured positions stay fixed throughout the body. Mutable source bits are read
+live on each visit and copied into the scoped, read-only scalar-bit iterator.
+Writes and measurements affect later visits, including negative aliases, while
+leaving the current copied value unchanged. Source and operand names may be
+shadowed; outer bindings are restored afterward. Reentry captures a fresh range,
+and nested loops, `break`, and `continue` retain their usual behavior. Capture,
+complete-selection validation, and live-read timing are converter policies;
+the specification does not explicitly settle these timings.
+
+<!-- runtime-bit-range-loop-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit q;
+bit[4] flags = "0011";
+int start = -4;
+int step = 1;
+int stop = 3;
+int visits = 0;
+uint ones = 0;
+bit saved = 0;
+for bit b in flags[start:step:stop] {
+    if (visits == 0) {
+        start = 999;
+        step = 0;
+        stop = -999;
+        flags[0] = false;
+        flags[3] = true;
+        saved = b; // Still 1: b is a copy.
+    }
+    ones += uint(b);
+    visits += 1;
+}
+// Reads 1,1,0,1,0,1,0,1: ones is 5, visits is 8, flags is "1010".
+const bit[65] C = "1_00000000_00000000_00000000_00000000_00000000_00000000_00000000_00000001";
+int first = -1;
+int stride = -32;
+int last = -65;
+uint constant_ones = 0;
+int constant_visits = 0;
+for bit b in C[first:stride:last] {
+    first = 0; // Positions remain 64,32,0.
+    constant_visits += 1;
+    if (!b) { continue; }
+    constant_ones += uint(b);
+}
+// constant_ones is 2, constant_visits is 3, and C is unchanged.
+h q;
+if (saved && constant_ones == 2) { p(pi / 4) q; }
+```
+
+Both source kinds emit the body once. Wide constants use the native UINT-word
+table prepared once per loop entry; mutable `bit[1]` retains scalar storage.
+Operand capture preserves native INT/UINT values, including full-width UINT
+steps. Range advancement preserves the mathematical progression without wrapping
+at native integer endpoints. Source widths and worst-case counts `2*N` must fit
+QCX INT. A private position table has capacity `min(2*N, 1000000)`; a reached
+selection exceeding this capacity fails before the body. Runtime visits do not
+consume unrolling budgets; generated code obeys the QCX output limit, and
+enclosing/nested expansions retain their accounting. Temporary declarations are
+hoisted and cleanup preserves caller-owned storage on success and failure.
+
+General runtime slice expressions or assignments, omitted bounds, aliases,
+computed register sources, further indexing of selections, and block-local
+declarations remain unsupported. No new bra instruction or build option is needed.
 
 ## Angle bit-selection for loops
 
@@ -5384,7 +5489,7 @@ option is required.
 
 Unsized angles, computed angle sources or cast results, computed expressions
 and runtime-dependent selections on ordinary bit-register sources outside the
-discrete-set loop subsets above, aliases,
+loop subsets above, aliases,
 multidimensional arrays, and block-local declarations remain outside this feature.
 
 ### Runtime-dependent angle bit-range loops
@@ -5468,9 +5573,9 @@ sequence: a nonzero-step range contains at most `2*n` valid raw indices for
 an `angle[n]`, including repeated positions after negative-index normalization.
 The runtime iteration count does not consume unrolling budgets. Existing QCX
 instructions suffice; no bra instruction or build-option change is required.
-General runtime-width selection expressions and assignments, bit selections on
-unsized angles, and runtime ranges on ordinary bit-register sources remain
-unsupported.
+General runtime-width selection expressions and assignments and bit selections
+on unsized angles remain unsupported. Ordinary bit-register ranges have their
+own [loop-source subset](#runtime-dependent-bit-register-range-loops).
 
 ## Runtime while loops
 
@@ -5582,8 +5687,7 @@ The current prototype does not reliably support:
   angle/bit-register conversions above, complex-to-Boolean casts,
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
-- scalar-bit shifts, runtime-dependent ranges on bit-register sources,
-  runtime sets outside direct scalar-bit loop sources,
+- scalar-bit shifts, runtime bit-register ranges and sets outside direct scalar-bit loop sources,
   ordered bit-register comparisons, whole-array bitwise operations, direct
   Boolean bitwise operations, or classical functions other than the
   `exp`/`sqrt`/`log`/`sin`/`cos`/`tan`/`arcsin`/`arccos`/`arctan`/`ceiling`/`floor`/
@@ -6364,6 +6468,19 @@ contexts, body-once lowering, table preparation before the loop, output limits,
 declaration hoisting, and failure cleanup. Run with `--bra /path/to/bra`, including
 a UBSan build.
 
+`bra/test/qasm2qcx_runtime_bit_range_loop_numerical.py` checks mutable and constant
+range sources through 129 bits against independent integer-progression and
+bit-string references. It covers signed/unsigned operands, native endpoints,
+full-width UINT steps, ascending/descending ranges, negative aliases, unselected
+stop bounds, captured positions, live writes and measurements, scoped shadowing,
+mixed nesting, reentry, transfers, and skipped/reached arithmetic and bounds
+failures. Constant cases cross native word boundaries and include partial words.
+It also verifies table-capacity limits before the body, phase gates, global
+phase, fusion, and the documented example. Unit tests cover metadata, validation
+in empty loops, single-copy bodies, table initialization and reservation, output
+limits, declaration hoisting, and cleanup preserving caller storage after failures.
+Run with `--bra /path/to/bra`, including a UBSan build.
+
 `bra/test/qasm2qcx_runtime_bit_numerical.py` verifies runtime reads, assignments,
 both measurement-destination syntaxes, singleton storage, negative indices,
 integer casts, nested bit/integer-array indexing, and short-circuit evaluation.
@@ -6465,6 +6582,7 @@ python3 bra/test/qasm2qcx_constant_bit_register_loop_numerical.py --bra bra/bin/
 python3 bra/test/qasm2qcx_static_bit_selection_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_singleton_bit_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_bit_set_loop_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_bit_range_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_scalar_bit_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_rotation_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_u_phase_numerical.py --bra bra/bin/bra
