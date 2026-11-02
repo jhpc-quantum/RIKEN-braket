@@ -1092,6 +1092,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if not shadowed and name in self.__bit_register_source_sizes:
                 return self.__bit_register_source_sizes[name]
         if isinstance(expression, ast.IndexExpression) and self.__is_register_bit_selection(expression):
+            runtime_selection = self.__runtime_bit_set_selection(expression, iterators)
+            if runtime_selection is not None:
+                return runtime_selection.width
             return self.__static_bit_selection(expression, iterators).width
         if isinstance(expression, ast.BitstringLiteral):
             if expression.width <= 0:
@@ -2211,6 +2214,39 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 elif name in self.__classical_source_types:
                     self.__type_of(self.__capitalize_variable_name(name))
         return value_type, runtime or bool(names & active_names)
+
+    def __runtime_bit_set_selection(
+            self, operand: ast.QASMNode,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitSetSelection | None:
+        # A fixed entry count gives a register width without evaluating indices.
+        # This describes reads only; destinations retain the static resolver.
+        if not (isinstance(operand, ast.IndexExpression)
+                and isinstance(operand.collection, ast.Identifier)
+                and isinstance(operand.index, ast.DiscreteSet)):
+            return None
+        name = operand.collection.name
+        source_type = self.__constant_source_types.get(name) or self.__classical_source_types.get(name)
+        if not isinstance(source_type, ast.BitType):
+            return None
+        if ((iterators is not None and name in iterators)
+                or any(name in scope for scope in self.__loop_bindings)):
+            raise UnsupportedOpenQASMError('bit selection of a for-loop iterator')
+        info = tuple(self.__bit_index_info(index, iterators) for index in operand.index.values)
+        if not any(runtime for _, runtime in info):
+            return None
+        if source_type.size is None:
+            raise UnsupportedOpenQASMError('runtime set selection requires a bit-register source')
+        constant = self.__constant_bit_register(name) if name in self.__const_bit_register_values else None
+        if (not self.__is_initialization_process and constant is None
+                and self.__capitalize_variable_name(name) not in self.__sized_bit_variables):
+            raise NoVariableNameException(name)
+        size = constant.width if constant is not None else self.__bit_register_source_sizes[name]
+        if not 1 <= size <= self.QCX_INT_MAX:
+            raise InvalidBitOperandException('Runtime selection source width must fit QCX INT indexing')
+        if len(info) > self.QCX_INT_MAX:
+            raise InvalidBitOperandException('Runtime selection width exceeds QCX INT range')
+        return _RuntimeBitSetSelection(name, size, tuple(operand.index.values),
+                                       tuple(value_type for value_type, _ in info))
 
     def __runtime_angle_bit_selector(
             self, source: ast.Identifier | ast.IndexExpression, angle_type: _AngleType,
@@ -4393,6 +4429,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         selection = self.__angle_bit_selection(expression, iterators)
         if selection is not None:
             return ValueType.BIT_REGISTER, selection.runtime
+        if self.__runtime_bit_set_selection(expression, iterators) is not None:
+            return ValueType.BIT_REGISTER, True
         if isinstance(expression, ast.Identifier):
             return self.__loop_identifier_info(expression, iterators)
         for literal, value_type in ((ast.IntegerLiteral, ValueType.INT),
@@ -4542,6 +4580,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if isinstance(expression.type, ast.UintType):
             self.__unsigned_integer_type(expression.type, iterators)
         operand_type, runtime = self.__loop_expression_info(expression.argument, iterators)
+        if operand_type == ValueType.BIT_REGISTER:
+            # Supported same-width angle casts were resolved above. Register
+            # values must not fall through scalar numeric/Boolean cast typing.
+            raise UnsupportedOpenQASMError('bit-register cast outside supported angle conversion')
         target_type = self.__source_value_type(expression.type)
         if target_type == ValueType.ANGLE:
             self.__angle_type(expression.type, iterators)
@@ -4656,6 +4698,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 return False
             return True
         if isinstance(expression, ast.IndexExpression):
+            if self.__runtime_bit_set_selection(expression, iterators) is not None:
+                return True
             if (isinstance(expression.collection, ast.Identifier)
                     and expression.collection.name in self.__const_bit_register_values):
                 self.__static_bit_selection(expression, iterators)
@@ -5121,7 +5165,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __validate_bitwise_indices(
             self, expression: ast.Expression, iterators: dict[str, ValueType]) -> None:
-        if self.__angle_bit_selection(expression, iterators) is not None:
+        if (self.__angle_bit_selection(expression, iterators) is not None
+                or self.__runtime_bit_set_selection(expression, iterators) is not None):
             return
         if (isinstance(expression, ast.BinaryExpression)
                 and expression.op.name in ('==', '!=', '<', '<=', '>', '>=')
@@ -5193,7 +5238,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     and self.__bit_selection_loop_info(node.set_declaration, node.type, iterators) is None):
                 self.__validate_bitwise_types(node.set_declaration, iterators)
             return
-        if isinstance(node, ast.IndexExpression) and self.__angle_bit_selection(node, iterators) is not None:
+        if (isinstance(node, ast.IndexExpression)
+                and (self.__angle_bit_selection(node, iterators) is not None
+                     or self.__runtime_bit_set_selection(node, iterators) is not None)):
             return  # The source/index and static bit bounds were validated together.
         if (isinstance(node, ast.IndexExpression) and isinstance(node.collection, ast.Identifier)
                 and (node.collection.name in iterators
@@ -5204,9 +5251,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if isinstance(node, ast.ClassicalAssignment):
             if self.__validate_angle_bit_assignment(node, iterators):
                 return
-            if self.__angle_bit_selection(node.rvalue, iterators) is not None:
+            if (self.__angle_bit_selection(node.rvalue, iterators) is not None
+                    or self.__runtime_bit_set_selection(node.rvalue, iterators) is not None):
                 if not self.__validate_register_operator_assignment(node, iterators):
-                    raise InvalidBitOperandException('An angle bit selection requires a bit-register target')
+                    raise InvalidBitOperandException('A bit selection requires a bit-register target')
                 return
         if (isinstance(node, ast.Identifier)
                 and (node.name in self.__const_bit_variable_values_map
@@ -5258,7 +5306,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 or (isinstance(node, ast.UnaryExpression) and node.op.name in ('~', '-', '!'))
                 or (isinstance(node, ast.Cast)
                     and (isinstance(node.type, (ast.BoolType, ast.BitType, ast.AngleType))
-                         or self.__expression_mentions_angle(node, iterators)))
+                         or self.__expression_mentions_angle(node, iterators)
+                         or self.__bit_register_expression_width(node.argument, iterators) is not None))
                 or (isinstance(node, ast.BinaryExpression) and node.op.name in (
                     '&', '|', '^', '<<', '>>', '**', '%', '&&', '||', '==', '!=', '<', '<=', '>', '>='))
                 or (isinstance(node, ast.BinaryExpression) and self.__expression_mentions_angle(node, iterators))):
@@ -8243,6 +8292,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             yield tuple(self.__qcx_bit_name(name, size, index) for index in indices)
             return
         if isinstance(expression, ast.IndexExpression):
+            if self.__runtime_bit_set_selection(expression) is not None:
+                raise UnsupportedOpenQASMError('runtime bit-register index-set expression lowering')
             selection = self.__static_bit_selection(expression)
             if not selection.is_register:
                 raise InvalidBitOperandException('A bit-register expression requires register operands')
