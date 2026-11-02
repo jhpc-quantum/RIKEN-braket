@@ -2449,8 +2449,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_measurement(
             self, measurement: ast.QuantumMeasurement,
             target: ast.Identifier | ast.IndexedIdentifier | None) -> None:
-        if self.__runtime_bit_set_measurement_info(measurement, target) is not None:
-            raise UnsupportedOpenQASMError('runtime bit-register index-set measurement lowering')
+        runtime_target = self.__runtime_bit_set_measurement_info(measurement, target)
+        if runtime_target is not None:
+            self.__emit_runtime_bit_set_measurement(runtime_target)
+            return
         qubit_indices, qubit_is_register = self.__flattened_qubit_operand(
             measurement.qubit)
 
@@ -9035,6 +9037,41 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 for index, value in zip(indices, snapshot):
                     operand = target if selection.source_width == 1 else f'{target}:{index}'
                     self.__qcx_lines.append(f'LET {operand} := {value}')
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
+    def __emit_runtime_bit_set_measurement(self, info: _RuntimeBitSetMeasurementInfo) -> None:
+        selection = info.destination
+        comparisons = selection.width * (selection.width - 1) // 2
+        remaining_lines = comparisons + 3 * selection.width
+        if len(self.__qcx_lines) + remaining_lines > self.MAX_LOOP_OUTPUT_LINES:
+            raise InvalidBitOperandException('Runtime bit measurement exceeds QCX output limit')
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            target = self.__capitalize_variable_name(selection.source_name)
+            # Capture every address while all classical bits still hold their
+            # original values. Invalid destinations must fail before collapse.
+            indices = tuple(self.__capture_array_index(index, selection.source_width) for index in selection.indices)
+            outcomes = tuple(self.__add_new_temporary_variable(ValueType.BIT) for _ in indices)
+            # Include declarations and capture code in the full budget check,
+            # before emitting any measurement or destination write.
+            if len(self.__qcx_lines) + remaining_lines > self.MAX_LOOP_OUTPUT_LINES:
+                raise InvalidBitOperandException('Runtime bit measurement exceeds QCX output limit')
+            self.__check_distinct_bit_indices(indices)
+            for qubit_index, outcome in zip(info.qubit_indices, outcomes):
+                self.__qcx_lines.extend([
+                    f'M {self.__to_qubit_index(info.qubit_source_name, qubit_index)}',
+                    f'LET {outcome} := :OUTCOME',
+                ])
+            for index, outcome in zip(indices, outcomes):
+                operand = target if selection.source_width == 1 else f'{target}:{index}'
+                self.__qcx_lines.append(f'LET {operand} := {outcome}')
         finally:
             (self.__expression_kind, self.__value, self.__value_type,
              self.__value_kind, self.__evaluate_constant) = previous

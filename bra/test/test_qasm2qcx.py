@@ -9177,7 +9177,7 @@ class RuntimeBitSetMeasurementFoundationTests(unittest.TestCase):
         self.assertEqual(lines, c._QASM2QCXConverter__qcx_lines)
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
 
-    def test_wide_registers_limits_and_staged_lowering_guard(self):
+    def test_wide_registers_and_limits(self):
         c = self.converter('qubit[129] q; bit[129] flags; int index;')
         statement = self.statement('measure q[{-1, 0}] -> flags[{index, -1}];')
         info = c._QASM2QCXConverter__runtime_bit_set_measurement_info(statement.measure, statement.target)
@@ -9185,8 +9185,116 @@ class RuntimeBitSetMeasurementFoundationTests(unittest.TestCase):
         with patch.object(self.c, 'QCX_INT_MAX', 3):
             with self.assertRaises(qasm2qcx.InvalidBitOperandException):
                 self.info('measure q[{0}] -> flags[{index}];')
-        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'measurement lowering'):
-            self.converter(self.prefix + 'measure q[0:1] -> flags[{index, count}];')
+
+
+class RuntimeBitSetMeasurementLoweringTests(unittest.TestCase):
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    converter = ScalarAngleFoundationTests.converter
+    statement = RuntimeBitSetMeasurementFoundationTests.statement
+    prefix = 'qubit pad; qubit[3] q; bit[4] flags = "1010"; int index; uint count;'
+
+    def test_all_captures_and_checks_precede_measurements_and_all_writes_follow(self):
+        for statement in ('measure q[{2, 0}] -> flags[{index, count}];',
+                          'flags[{index, count}] = measure q[{2, 0}];'):
+            c = self.converter(self.prefix)
+            node = self.statement(statement)
+            original = c._QASM2QCXConverter__capture_array_index
+            captured = []
+            def capture(expression, size):
+                captured.append(expression)
+                return original(expression, size)
+            start = len(c._QASM2QCXConverter__qcx_lines)
+            with patch.object(c, '_QASM2QCXConverter__capture_array_index', side_effect=capture):
+                c.visit(node)
+            self.assertEqual(captured, node.target.indices[0].values)
+            lines = c._QASM2QCXConverter__qcx_lines[start:]
+            measurements = [i for i, line in enumerate(lines) if line.startswith('M ')]
+            self.assertEqual([lines[i] for i in measurements], ['M 3', 'M 1'])
+            checks = [i for i, line in enumerate(lines) if line.startswith('ASSERT ')]
+            self.assertEqual(len(checks), 5)
+            self.assertLess(max(checks), min(measurements))
+            outcomes = [lines[i + 1].split()[1] for i in measurements]
+            self.assertEqual(len(set(outcomes)), 2)
+            self.assertTrue(all(lines[i + 1].endswith(' := :OUTCOME') for i in measurements))
+            name = c._QASM2QCXConverter__capitalize_variable_name('flags')
+            writes = [i for i, line in enumerate(lines) if line.startswith(f'LET {name}:')]
+            self.assertEqual(len(writes), 2)
+            self.assertGreater(min(writes), max(measurements) + 1)
+            self.assertEqual([lines[i].split()[-1] for i in writes], outcomes)
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_nested_indices_finish_before_m_without_recapture(self):
+        c = self.converter(self.prefix + 'array[int, 2] positions = {0, 3};')
+        start = len(c._QASM2QCXConverter__qcx_lines)
+        c.visit(self.statement('flags[{positions[int(flags[index])], count}] = measure q[0:1];'))
+        lines = c._QASM2QCXConverter__qcx_lines[start:]
+        first_m = next(i for i, line in enumerate(lines) if line.startswith('M '))
+        self.assertTrue(all(i < first_m for i, line in enumerate(lines) if line.startswith('ASSERT ')))
+        self.assertEqual(sum(' := FLAGS31:' in line for line in lines), 1)
+
+    def test_singleton_and_wide_storage(self):
+        c = self.converter('qubit[1] q; bit[1] one; bit[129] wide; int index; '
+                           'one[{index}] = measure q; wide[{index, -1}] = measure q[{0, 0}];')
+        lines = c._QASM2QCXConverter__qcx_lines
+        one = c._QASM2QCXConverter__capitalize_variable_name('one')
+        self.assertTrue(any(line.startswith(f'LET {one} := QASM2QCX_') for line in lines))
+        self.assertFalse(any(line.startswith(f'LET {one}:') for line in lines))
+        wide = c._QASM2QCXConverter__capitalize_variable_name('wide')
+        self.assertEqual(sum(line.startswith(f'LET {wide}:') for line in lines), 2)
+
+    def test_success_and_partial_capture_failures_restore_fields_and_caller_storage(self):
+        for fail_after in (None, 1, 2):
+            c = self.converter(self.prefix)
+            caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.BIT)
+            fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+            before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+            original = c._QASM2QCXConverter__capture_array_index
+            calls = []
+            def capture(*args):
+                calls.append(args)
+                value = original(*args)
+                if len(calls) == fail_after:
+                    raise RuntimeError('capture failed')
+                return value
+            start = len(c._QASM2QCXConverter__qcx_lines)
+            with patch.object(c, '_QASM2QCXConverter__capture_array_index', side_effect=capture):
+                if fail_after:
+                    with self.assertRaisesRegex(RuntimeError, 'capture failed'):
+                        c.visit(self.statement('measure q[0:1] -> flags[{index, count}];'))
+                    self.assertFalse(any(line.startswith('M ') for line in c._QASM2QCXConverter__qcx_lines[start:]))
+                else:
+                    c.visit(self.statement('measure q[0:1] -> flags[{index, count}];'))
+            self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+
+    def test_preflight_and_full_output_budget_fail_before_any_measurement(self):
+        for limit in (10, 22):
+            c = self.converter(self.prefix)
+            start = len(c._QASM2QCXConverter__qcx_lines)
+            with patch.object(c, 'MAX_LOOP_OUTPUT_LINES', start + limit):
+                # A three-entry selection requires three duplicate checks,
+                # nine measurement/store lines, plus capture/declaration lines.
+                with self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException, 'QCX output limit'):
+                    c.visit(self.statement('measure q -> flags[{index, count, 3}];'))
+            self.assertFalse(any(line.startswith('M ') for line in c._QASM2QCXConverter__qcx_lines[start:]))
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+            if limit == 10:
+                self.assertEqual(len(c._QASM2QCXConverter__qcx_lines), start)
+
+    def test_outcome_allocation_failure_cleans_up_before_m(self):
+        c = self.converter(self.prefix)
+        original = c._QASM2QCXConverter__add_new_temporary_variable
+        def allocate(value_type, *args):
+            value = original(value_type, *args)
+            if value_type == qasm2qcx.ValueType.BIT:
+                raise RuntimeError('allocation failed')
+            return value
+        start = len(c._QASM2QCXConverter__qcx_lines)
+        with patch.object(c, '_QASM2QCXConverter__add_new_temporary_variable', side_effect=allocate):
+            with self.assertRaisesRegex(RuntimeError, 'allocation failed'):
+                c.visit(self.statement('measure q[0:1] -> flags[{index, count}];'))
+        self.assertFalse(any(line.startswith('M ') for line in c._QASM2QCXConverter__qcx_lines[start:]))
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
 
 
 class RuntimeBitSetPlainAssignmentLoweringTests(unittest.TestCase):
