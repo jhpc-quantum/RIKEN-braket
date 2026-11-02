@@ -36,6 +36,72 @@ class BackendTests(unittest.TestCase):
                 'bit[1] after = flags[{index}]; bool first = before == "1"; bool second = after == "0";',
                 (), (), ('first', 'second'), (1, 1))
 
+    def test_constant_sources_at_every_bit_across_full_and_partial_native_words(self):
+        word = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
+        for width in (1, word - 1, word, word + 1, 2 * word - 1, 2 * word, 2 * word + 1, 129):
+            for bits in ('0' * width, '1' * width, ('10010110' * width)[:width]):
+                checksum = 0
+                for index in range(width):
+                    positions = (index, width - 1 - index, index, 0, width - 1)
+                    values = [int(bits[-1 - position]) for position in positions]
+                    checksum = (checksum * 3 + sum(values)) % 997
+                last_bits = sum(bit << index for index, bit in enumerate(values))
+                self.check_initializers(f'const bit[{width}] C = "{bits}"; int i = 0; uint j = {width - 1}; '
+                    f'bit[5] selected; angle[5] phase; uint checksum = 0; while (i < {width}) {{ '
+                    'selected = C[{i, j, i, 0, -1}]; checksum = (checksum * 3 + popcount(selected)) % 997; '
+                    'phase = angle[5](C[{i, j, i, 0, -1}]); i += 1; if (j > 0) { j -= 1; } } '
+                    f'bool same = C == "{bits}";', (), (), ('checksum', 'phase', 'same'), (checksum, last_bits, 1))
+
+    def test_rotation_population_count_and_angle_casts_share_snapshot_consumers(self):
+        limits = self.module.QASM2QCXConverter
+        for constant in (False, True):
+            for width in (1, 4, 65, 129):
+                bits = ('101100' * width)[:width]
+                positions = (0, width - 1, 0, 0, width - 1)
+                raw = sum(int(bits[-1 - position]) << index for index, position in enumerate(positions))
+                for distance in (limits.QCX_INT_MIN, -7, 0, 1, 6, limits.QCX_INT_MAX):
+                    shift = distance % 5
+                    left = ((raw << shift) | (raw >> (5 - shift))) & 31
+                    right = ((raw >> shift) | (raw << (5 - shift))) & 31
+                    prefix = ('const ' if constant else '') + f'bit[{width}] flags = "{bits}"; int i = 0; '
+                    self.check_initializers(prefix + f'int distance = {distance}; '
+                        'bit[5] left = rotl(flags[{i, -1, i, 0, -1}], distance); '
+                        'bit[5] right = rotr(flags[{i, -1, i, 0, -1}], distance); '
+                        'uint ones = popcount(flags[{i, -1, i, 0, -1}]); '
+                        'angle[5] phase = angle[5](flags[{i, -1, i, 0, -1}]); '
+                        f'bool same = left == "{left:05b}" && right == "{right:05b}";',
+                        (), (), ('ones', 'phase', 'same'), (raw.bit_count(), raw, 1))
+
+    def test_nested_constant_and_mutable_selections_preserve_table_and_result_ownership(self):
+        self.check_initializers('const bit[65] C = "1' + '0' * 63 + '1"; '
+            'const bit[65] D = "0' + '1' * 63 + '0"; bit[4] flags = "1011"; int i = 0; '
+            'bit[2] mixed = C[{i, -1}] ^ D[{i, 1}]; '
+            'bit[2] nested = C[{popcount(D[{i, 1}]), i}]; '
+            'bit[2] from_live = D[{popcount(flags[{i, i}]), i}]; '
+            'bool same = mixed == "01" && nested == "10" && from_live == "01";',
+            (), (), ('same',), (1,))
+        self.check_initializers('const bit[65] C = "1' + '0' * 63 + '1"; int i = 0; bit[2] pair; uint total = 0; '
+            'for int i in [0:2] { pair = C[{i, -1}]; total += popcount(pair); } '
+            'pair = C[{i, -1}]; total += popcount(pair);', (), (), ('total', 'i'), (6, 0))
+
+    def test_constant_selected_checks_execute_only_on_reached_paths(self):
+        limits = self.module.QASM2QCXConverter
+        for width in (1, 33, 129):
+            for typename, bad in (('int', -width - 1), ('int', width), ('uint', limits.QCX_UINT_MAX)):
+                prefix = (f'const bit[{width}] C = "' + '0' * width + '"; int i = 0; '
+                          f'{typename} bad = {bad}; int zero = 0; bit[2] pair = "11";')
+                for entries in ('i, bad', 'bad, i', 'i, 999', 'i, 1 / zero'):
+                    statement = f'pair = C[{{{entries}}}];'
+                    for wrapper in ('if (false) {{ {} }}', 'while (false) {{ {} }}', 'for int outer in [1:0] {{ {} }}'):
+                        self.check_initializers(prefix + wrapper.format(statement) + 'bool same = pair == "11";',
+                                                (), (), ('same',), (1,))
+                    result = self.execute(self.program(prefix + statement))
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertNotIn('runtime error:', result.stderr)
+                    if 'zero' not in entries and (typename == 'int' or 'bad' not in entries):
+                        self.assertIn('assertion_error', result.stderr)
+                    type(self).checked += 1
+
     def test_overlapping_whole_static_destination_and_compound_assignments(self):
         self.check_initializers('bit[4] flags = "1010"; int i = 3; uint j = 1; '
             'flags = flags[{i, j, 2, 0}]; bool same = flags == "0011";', (), (), ('same',), (1,))
@@ -111,6 +177,11 @@ class BackendTests(unittest.TestCase):
                   'bit[2] saved = flags[{i, -1}]; flags[0] = false; i = 1; '
                   'if (saved == "11" && flags[{i, 0}] == "00") { p(pi / 4) q; }')
         expected = (1 / math.sqrt(2), cmath.exp(1j * math.pi / 4) / math.sqrt(2))
+        for fused in (False, True):
+            BackendAuditTests.check(self, self.program(source, fused=fused), expected)
+        source = ('include "stdgates.inc"; qubit q; h q; const bit[65] C = "1' + '0' * 63 + '1"; '
+                  'int i = -1; bit[2] saved = C[{i, i}]; i = 0; '
+                  'if (saved == "11" && C[{i, 1}] == "01") { p(pi / 4) q; }')
         for fused in (False, True):
             BackendAuditTests.check(self, self.program(source, fused=fused), expected)
 

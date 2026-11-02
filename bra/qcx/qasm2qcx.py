@@ -5487,7 +5487,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__release_temporary_variable(temporary)
 
     def __prepare_constant_bit_lookup(self, source: _ConstantBitRegister) -> str | int:
-        # The caller retains this storage for the whole loop. Extraction uses
+        # The caller retains this storage across all extractions. Each uses
         # separate scratch storage, so nested lookups cannot overwrite it.
         word_width = self.QCX_UINT_WIDTH
         word_count = (source.width + word_width - 1) // word_width
@@ -8249,8 +8249,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     @contextlib.contextmanager
     def __runtime_bit_set_value(self, selection: _RuntimeBitSetSelection) -> Iterator[tuple[str, ...]]:
-        if selection.source_name in self.__const_bit_register_values:
-            raise UnsupportedOpenQASMError('runtime constant bit-register index-set expression lowering')
         if len(self.__qcx_lines) + selection.width > self.MAX_LOOP_OUTPUT_LINES:
             raise InvalidBitOperandException('Runtime bit selection exceeds QCX output limit')
         previous = (self.__expression_kind, self.__value, self.__value_type,
@@ -8259,15 +8257,21 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         owned = None
         try:
             self.__expression_kind = ExpressionKind.ARITHMETIC
+            constant = (self.__constant_bit_register(selection.source_name)
+                        if selection.source_name in self.__const_bit_register_values else None)
             source = self.__capitalize_variable_name(selection.source_name)
             # Capture every occurrence before reading bits, including repeated
             # indices and constants in a mixed runtime selection.
             indices = tuple(self.__capture_array_index(index, selection.source_width) for index in selection.indices)
+            words = self.__prepare_constant_bit_lookup(constant) if constant is not None else None
             values = []
             for index in indices:
                 bit = self.__add_new_temporary_variable(ValueType.BIT)
-                operand = source if selection.source_width == 1 else f'{source}:{index}'
-                self.__qcx_lines.append(f'LET {bit} := {operand}')
+                if words is None:
+                    operand = source if selection.source_width == 1 else f'{source}:{index}'
+                    self.__qcx_lines.append(f'LET {bit} := {operand}')
+                else:
+                    self.__copy_prepared_constant_bit(words, index, bit)
                 values.append(bit)
             if len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES:
                 raise InvalidBitOperandException('Runtime bit selection exceeds QCX output limit')

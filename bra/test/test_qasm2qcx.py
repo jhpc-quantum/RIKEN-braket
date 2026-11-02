@@ -8988,6 +8988,80 @@ class MutableRuntimeBitSetExpressionReadTests(unittest.TestCase):
             self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
 
 
+class ConstantRuntimeBitSetExpressionReadTests(unittest.TestCase):
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    converter = ScalarAngleFoundationTests.converter
+    expression = RuntimeBitSetExpressionFoundationTests.expression
+
+    def test_word_table_prepared_once_after_all_index_checks(self):
+        word = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        for width in (1, word, word + 1, 129):
+            with self.subTest(width=width):
+                c = self.converter(f'const bit[{width}] C = "' + '1' * width + '"; int i; uint j; '
+                    'bit[4] result = C[{i, -1, j, i}];')
+                lines = c._QASM2QCXConverter__qcx_lines
+                check = max(i for i, line in enumerate(lines) if line.startswith('ASSERT '))
+                tables = [line.split()[1] for line in lines if line.startswith('VAR QASM2QCX_CONST_BITS_')]
+                count = (width + word - 1) // word
+                self.assertEqual(len(tables), int(count > 1))
+                if tables:
+                    table = tables[0]
+                    writes = [i for i, line in enumerate(lines) if line.startswith(f'LET {table}:')]
+                    reads = [i for i, line in enumerate(lines) if ' := ' + table + ':' in line]
+                    self.assertEqual(len(writes), count)
+                    self.assertEqual(len(reads), 4)
+                    self.assertLess(check, min(writes))
+                    self.assertLess(max(writes), min(reads))
+                self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_nested_consumers_keep_independent_word_tables_and_return_values(self):
+        c = self.converter('const bit[65] C = "' + '1' * 65 + '"; int i; '
+            'bit[2] result = C[{i, 0}] ^ C[{1, i}]; '
+            'uint n = popcount(rotl(C[{i, 0, i}], i)); '
+            'angle[2] phase = angle[2](C[{popcount(C[{i}]), i}]);')
+        tables = [line for line in c._QASM2QCXConverter__qcx_lines if line.startswith('VAR QASM2QCX_CONST_BITS_')]
+        self.assertEqual(len(tables), 2)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_context_retains_caller_and_consumer_storage_after_yield(self):
+        c = self.converter('const bit[65] C = "' + '1' * 65 + '"; int i;')
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+        with c._QASM2QCXConverter__bit_register_expression_value(self.expression('C[{i, i}]')) as values:
+            self.assertEqual(len(set(values)), 2)
+            self.assertTrue(set(values) <= c._QASM2QCXConverter__used_temporary_variables)
+            consumer = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller, consumer})
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+
+    def test_partial_table_or_extraction_failure_cleans_up(self):
+        for target in ('_QASM2QCXConverter__prepare_constant_bit_lookup', '_QASM2QCXConverter__copy_prepared_constant_bit'):
+            c = self.converter('const bit[65] C = "' + '1' * 65 + '"; int i;')
+            caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+            fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+            before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+            def fail(*args):
+                c._QASM2QCXConverter__add_temporary_array(3, 'CONST_BITS', qasm2qcx.ValueType.UINT)
+                raise RuntimeError('lookup failed')
+            with self.subTest(target=target), patch.object(c, target, side_effect=fail):
+                with self.assertRaisesRegex(RuntimeError, 'lookup failed'):
+                    with c._QASM2QCXConverter__bit_register_expression_value(self.expression('C[{i, 0}]')):
+                        self.fail('failure must precede consumer')
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+
+    def test_full_output_budget_includes_word_initialization_and_extraction(self):
+        c = self.converter('const bit[65] C = "' + '1' * 65 + '"; int i;')
+        baseline = len(c._QASM2QCXConverter__qcx_lines)
+        # Enough for capture and the table, but not all extraction instructions.
+        with patch.object(c, 'MAX_LOOP_OUTPUT_LINES', baseline + 30):
+            with self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException, 'QCX output limit'):
+                with c._QASM2QCXConverter__bit_register_expression_value(self.expression('C[{i, 0}]')):
+                    self.fail('budget failure must precede consumer')
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+
 class RuntimeAngleBitSetSelectionReadTests(unittest.TestCase):
     program = staticmethod(ScalarAngleFoundationTests.program)
     converter = ScalarAngleFoundationTests.converter
