@@ -9012,7 +9012,7 @@ class RuntimeBitSetAssignmentFoundationTests(unittest.TestCase):
         for body in ('C[{outer, 0}] = pair;', 'flags[{outer, true}] = pair;',
                      'flags[{outer}] = pair;', 'flags[{outer}] += "1";',
                      'flags[outer:3] = pair;', 'flags[{outer, 0}][0] = scalar;',
-                     'measure q -> flags[{outer, 0}];',
+                     'measure q -> flags[{outer}];',
                      'for bit flags in one { flags[{outer}] = "1"; }'):
             with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(self.prefix + 'for int outer in [1:0] {' + body + '}')
@@ -9047,6 +9047,146 @@ class RuntimeBitSetAssignmentFoundationTests(unittest.TestCase):
         self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
         self.assertEqual(lines, c._QASM2QCXConverter__qcx_lines)
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+
+
+class RuntimeBitSetMeasurementFoundationTests(unittest.TestCase):
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    converter = ScalarAngleFoundationTests.converter
+    prefix = ('const int LOW = 0; const uint HIGH = 3; const bit[2] C = "01"; '
+              'bit[4] flags; bit[1] one; int index; uint count; float real; '
+              'qubit[4] q; qubit[1] single; qubit scalar;')
+
+    def setUp(self):
+        self.c = self.converter(self.prefix)
+
+    def statement(self, source):
+        return self.program(source).statements[0]
+
+    def info(self, source, iterators=None):
+        statement = self.statement(source)
+        return self.c._QASM2QCXConverter__runtime_bit_set_measurement_info(
+            statement.measure, statement.target, iterators)
+
+    def test_both_syntaxes_preserve_destination_asts_and_source_order(self):
+        for source in ('flags[{index, count}] = measure q[{2, 0}];',
+                       'measure q[{2, 0}] -> flags[{index, count}];'):
+            statement = self.statement(source)
+            info = self.c._QASM2QCXConverter__runtime_bit_set_measurement_info(
+                statement.measure, statement.target)
+            self.assertIsInstance(info, qasm2qcx._RuntimeBitSetMeasurementInfo)
+            self.assertEqual((info.qubit_source_name, info.qubit_indices), ('q', (2, 0)))
+            self.assertEqual((info.destination.source_name, info.destination.source_width), ('flags', 4))
+            self.assertEqual(info.destination.index_types, (qasm2qcx.ValueType.INT, qasm2qcx.ValueType.UINT))
+            self.assertTrue(all(a is b for a, b in zip(
+                info.destination.indices, statement.target.indices[0].values)))
+            with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                info.qubit_indices = (0, 2)
+
+    def test_whole_register_ranges_sets_and_constant_expressions(self):
+        for source, target, expected in (
+                ('q', 'index, count, 0, -1', (0, 1, 2, 3)),
+                ('q[3:-1:1]', 'index, count, 0', (3, 2, 1)),
+                ('q[0:2:3]', 'index, count', (0, 2)),
+                ('q[{-1, LOW + 1}]', 'index, count', (3, 1)),
+                ('q[HIGH:-1:LOW]', 'index, count, 0, -1', (3, 2, 1, 0)),
+                ('q[{0, 0}]', 'index, count', (0, 0))):
+            with self.subTest(source=source):
+                self.assertEqual(self.info(f'measure {source} -> flags[{{{target}}}];').qubit_indices, expected)
+
+    def test_singleton_registers_remain_distinct_from_scalars(self):
+        for source, expected in (('single', (0,)), ('q[0:0]', (0,)), ('q[{2}]', (2,))):
+            self.assertEqual(self.info(f'one[{{index}}] = measure {source};').qubit_indices, expected)
+        for source in ('scalar', 'q[0]', 'single[0]'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.InvalidBitOperandException):
+                self.info(f'one[{{index}}] = measure {source};')
+
+    def test_invalid_static_qubit_selections_and_widths(self):
+        for source in ('q', 'q[0:2]', 'q[{4, 0}]', 'q[{-5, 0}]', 'q[0:0:1]',
+                       'q[3:0]', 'q[0][1]', 'missing'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(f'measure {source} -> flags[{{index, count}}];')
+
+    def test_runtime_and_iterator_qubit_selections_are_rejected_without_evaluation(self):
+        for source in ('q[{index, 0}]', 'q[0:count]', 'q[{index / 0, 0}]'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                self.info(f'measure {source} -> flags[{{index, count}}];')
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            self.info('measure q[{LOW, 0}] -> flags[{index, count}];', {'LOW': qasm2qcx.ValueType.INT})
+        with self.c._QASM2QCXConverter__iterator_binding('LOW', 0):
+            with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                self.info('measure q[{LOW, 0}] -> flags[{index, count}];')
+        with self.assertRaises(qasm2qcx.InvalidQubitOperandException):
+            self.info('measure q -> flags[{index, count, 0, 1}];', {'q': qasm2qcx.ValueType.INT})
+
+    def test_destination_domains_and_duplicates_are_deferred(self):
+        for indices in ('index, index', '999, index', '-999, count', '1 / 0, index'):
+            with self.subTest(indices=indices):
+                self.assertIsNotNone(self.info(f'measure q[0:1] -> flags[{{{indices}}}];'))
+
+    def test_bad_destination_types_names_and_read_only_targets(self):
+        for target in ('flags[{index, real}]', 'flags[{index, missing}]', 'C[{index, 0}]'):
+            with self.subTest(target=target), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(f'measure q[0:1] -> {target};')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.info('measure q[0:1] -> flags[{index, 0}];', {'flags': qasm2qcx.ValueType.BIT})
+
+    def test_existing_static_scalar_and_discard_paths_are_unchanged(self):
+        for source in ('measure q;', 'measure q -> flags;', 'measure q[0] -> flags[index];',
+                       'measure q[0:1] -> flags[{LOW, HIGH}];'):
+            with self.subTest(source=source):
+                self.assertIsNone(self.info(source))
+                self.converter(self.prefix + source)
+
+    def test_empty_loops_validate_metadata_without_output_or_runtime_checks(self):
+        body = ('measure q[{HIGH, LOW}] -> flags[{outer / 0, 999}]; '
+                'for bit b in one { one[{int(b)}] = measure single; }')
+        c = self.converter(self.prefix + 'for int outer in [1:0] {' + body + '}')
+        self.assertEqual(c._QASM2QCXConverter__qcx_lines, self.c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(c._QASM2QCXConverter__loop_contexts, [])
+
+    def test_empty_loops_reject_invalid_sources_and_forward_references(self):
+        for body in ('measure q[{outer, 0}] -> flags[{index, count}];',
+                     'measure q[{index, 0}] -> flags[{outer, count}];',
+                     'measure q[{4, 0}] -> flags[{outer, count}];',
+                     'measure missing -> one[{outer}];',
+                     'measure q[0:1] -> C[{outer, 0}];',
+                     'measure q[0:1] -> flags[{outer, missing}];'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix + 'for int outer in [1:0] {' + body + '}')
+        for prefix, body, suffix in (
+                ('bit[2] flags; int index;', 'measure later -> flags[{index, 0}];', 'qubit[2] later;'),
+                ('qubit[2] q; bit[2] flags; int index;',
+                 'measure q[{LATE, 0}] -> flags[{index, 0}];', 'const int LATE = 1;'),
+                ('qubit[2] q; bit[2] flags; int index;',
+                 'measure q -> flags[{index, later}];', 'uint later;')):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(prefix + 'for int outer in [1:0] {' + body + '}' + suffix)
+
+    def test_metadata_preserves_expression_fields_output_and_owned_temporaries(self):
+        c = self.c
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+        lines = c._QASM2QCXConverter__qcx_lines.copy()
+        self.info('measure q[{HIGH - 1, LOW}] -> flags[{index / 0, 999}];')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.info('measure q[{99, LOW}] -> flags[{index, count}];')
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+        self.assertEqual(lines, c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+
+    def test_wide_registers_limits_and_staged_lowering_guard(self):
+        c = self.converter('qubit[129] q; bit[129] flags; int index;')
+        statement = self.statement('measure q[{-1, 0}] -> flags[{index, -1}];')
+        info = c._QASM2QCXConverter__runtime_bit_set_measurement_info(statement.measure, statement.target)
+        self.assertEqual((info.destination.source_width, info.qubit_indices), (129, (128, 0)))
+        with patch.object(self.c, 'QCX_INT_MAX', 3):
+            with self.assertRaises(qasm2qcx.InvalidBitOperandException):
+                self.info('measure q[{0}] -> flags[{index}];')
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'measurement lowering'):
+            self.converter(self.prefix + 'measure q[0:1] -> flags[{index, count}];')
 
 
 class RuntimeBitSetPlainAssignmentLoweringTests(unittest.TestCase):
