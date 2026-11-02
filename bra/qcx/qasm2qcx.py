@@ -5725,10 +5725,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         ])
 
     def __capture_bit_range_positions(
-            self, bounds: ast.RangeDefinition, width: int, label: str) -> tuple[str, str]:
-        capacity = min(2 * width, self.MAX_RUNTIME_BIT_RANGE_POSITIONS)
+            self, bounds: ast.RangeDefinition, width: int, label: str, *,
+            capacity: int | None = None) -> tuple[str, str]:
+        capacity = min(2 * width, self.MAX_RUNTIME_BIT_RANGE_POSITIONS) if capacity is None else capacity
         if not 1 <= capacity <= self.QCX_INT_MAX:
             raise InvalidLoopRangeException('Bit-range position capacity must fit QCX INT indexing')
+        if capacity > self.MAX_RUNTIME_BIT_RANGE_POSITIONS:
+            raise InvalidLoopRangeException('Bit-range position capacity exceeds storage limit')
         current = self.__capture_bit_range_integer(bounds.start, label + '_START_NONNEGATIVE')
         step = self.__capture_bit_range_integer(
             bounds.step if bounds.step is not None else ast.IntegerLiteral(1), label + '_STEP_NONNEGATIVE')
@@ -8949,8 +8952,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if bit_set is not None:
             self.__emit_runtime_bit_set_assignment(bit_set.selection, statement.rvalue, bit_set.binary_operator)
             return
-        if self.__runtime_bit_range_assignment_info(statement) is not None:
-            raise UnsupportedOpenQASMError('runtime bit-register range assignment lowering')
+        bit_range = self.__runtime_bit_range_assignment_info(statement)
+        if bit_range is not None:
+            self.__emit_runtime_bit_range_assignment(bit_range, statement.rvalue)
+            return
         source_name = self.__operand_name(statement.lvalue)
         self.__reject_constant_bit_target(statement.lvalue)
         self.__reject_constant_angle_target(statement.lvalue)
@@ -9105,6 +9110,53 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                         snapshot.append(bit)
                 if len(self.__qcx_lines) + selection.width > self.MAX_LOOP_OUTPUT_LINES:
                     raise InvalidBitOperandException('Runtime bit assignment exceeds QCX output limit')
+                for index, value in zip(indices, snapshot):
+                    operand = target if selection.source_width == 1 else f'{target}:{index}'
+                    self.__qcx_lines.append(f'LET {operand} := {value}')
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
+    def __emit_runtime_bit_range_assignment(
+            self, info: _RuntimeBitRangeAssignmentInfo, expression: ast.Expression) -> None:
+        selection, width = info.selection, info.rhs_width
+        comparisons = width * (width - 1) // 2
+        if len(self.__qcx_lines) + comparisons + 2 * width + 1 > self.MAX_LOOP_OUTPUT_LINES:
+            raise InvalidBitOperandException('Runtime range assignment exceeds QCX output limit')
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        label = f'QASM2QCX_BIT_RANGE_ASSIGNMENT_{self.__array_index}'
+        self.__array_index += 1
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            # A successful assignment has exactly the known RHS width. Bound
+            # the table by that width; excess entries fail before any RHS read.
+            positions, count = self.__capture_bit_range_positions(
+                selection.bounds, selection.source_width, label, capacity=width)
+            self.__qcx_lines.append(f'ASSERT {count} == {width}')
+            indices = []
+            for position in range(width):
+                index = self.__add_new_temporary_variable(ValueType.INT)
+                indices.append(index)
+                self.__qcx_lines.append(f'LET {index} := {positions}:{position}')
+            if len(self.__qcx_lines) + comparisons + width > self.MAX_LOOP_OUTPUT_LINES:
+                raise InvalidBitOperandException('Runtime range assignment exceeds QCX output limit')
+            self.__check_distinct_bit_indices(tuple(indices))
+            with self.__bit_register_expression_value(expression) as values:
+                snapshot = []
+                for value in values:
+                    if isinstance(value, int):
+                        snapshot.append(value)
+                    else:
+                        bit = self.__add_new_temporary_variable(ValueType.BIT)
+                        self.__qcx_lines.append(f'LET {bit} := {value}')
+                        snapshot.append(bit)
+                if len(self.__qcx_lines) + width > self.MAX_LOOP_OUTPUT_LINES:
+                    raise InvalidBitOperandException('Runtime range assignment exceeds QCX output limit')
+                target = self.__capitalize_variable_name(selection.source_name)
                 for index, value in zip(indices, snapshot):
                     operand = target if selection.source_width == 1 else f'{target}:{index}'
                     self.__qcx_lines.append(f'LET {operand} := {value}')
