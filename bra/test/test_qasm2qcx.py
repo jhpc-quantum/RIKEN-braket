@@ -9292,6 +9292,85 @@ class RuntimeBitRangeAssignmentLoweringTests(unittest.TestCase):
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
 
 
+class RuntimeBitRangeAssignmentControlFlowTests(unittest.TestCase):
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    converter = ScalarAngleFoundationTests.converter
+    prefix = 'bit[4] flags; bit[1] one; bit[2] pair; int start; int stop; uint stride;'
+
+    def assert_clean(self, c):
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(c._QASM2QCXConverter__loop_contexts, [])
+        self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, {})
+        ForLoopControlLoweringTests.assert_resolved_jumps(c._QASM2QCXConverter__qcx_lines)
+
+    def test_branches_and_runtime_loop_bodies_keep_checks_and_writes_on_reached_paths(self):
+        for body in ('if (start < stop) { flags[start:stop] = pair; }',
+                     'while (start < stop) { flags[start:start + 1] = pair; start += 1; }',
+                     'for int i in [start:stop] { if (i == 1) { continue; } '
+                     'flags[i:i + 1] = pair; if (i == 2) { break; } }'):
+            with self.subTest(body=body):
+                c = self.converter(self.prefix + body)
+                lines = c._QASM2QCXConverter__qcx_lines
+                writes = [i for i, line in enumerate(lines) if line.startswith('LET FLAGS31:QASM2QCX_')]
+                self.assertEqual(len(writes), 2)
+                condition = next(i for i, line in enumerate(lines) if line.startswith('JUMPIF '))
+                self.assertLess(condition, min(writes))
+                self.assert_clean(c)
+
+    def test_unrolled_loops_and_nested_runtime_loops_restore_shadowed_names(self):
+        c = self.converter(self.prefix + 'const int I = 3; '
+            'for int I in [0:1] { for int start in [stop:stop] { flags[start:start] = "1"; } } '
+            'flags[start:I] = pair;')
+        lines = c._QASM2QCXConverter__qcx_lines
+        self.assertEqual(sum(line.startswith('LET FLAGS31:QASM2QCX_') for line in lines), 4)
+        self.assert_clean(c)
+
+    def test_empty_enclosing_loop_elides_all_capture_arithmetic_and_storage(self):
+        c = self.converter(self.prefix + 'for int outer in [1:0] { '
+            'flags[outer:1 / 0:999] = pair; '
+            'while (true) { one[outer:stop] = flags << (outer / 0); break; } '
+            'for int i in [start:stop] { flags[i:0:stop] = pair; } }')
+        self.assertEqual(c._QASM2QCXConverter__qcx_lines,
+                         self.converter(self.prefix)._QASM2QCXConverter__qcx_lines)
+        self.assert_clean(c)
+
+    def test_invalid_nested_skipped_statements_still_validate_names_types_and_read_only_targets(self):
+        for body in ('flags[outer:stride:true] = pair;', 'flags[outer:stop] = one[0];',
+                     'flags[outer:stop] = missing;', 'flags[outer:stop] <<= stride;',
+                     'for bit flags in one { flags[outer:stop] = pair; }',
+                     'for bit b in one { flags[outer:stop] = b; }'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix + 'for int outer in [1:0] { if (false) {' + body + '} }')
+
+    def test_failed_nested_conversion_restores_scopes_state_and_caller_storage(self):
+        c = self.converter(self.prefix)
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        node = self.program('while (start < stop) { for int i in [start:stop] { '
+                            'flags[i:i + 1] = pair; } start += 1; }').statements[0]
+        original = c._QASM2QCXConverter__capture_bit_range_positions
+        def capture(*args, **kwargs):
+            original(*args, **kwargs)
+            raise RuntimeError('nested capture failed')
+        with patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions', side_effect=capture):
+            with self.assertRaisesRegex(RuntimeError, 'nested capture failed'):
+                c.visit(node)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(c._QASM2QCXConverter__loop_contexts, [])
+        self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, {})
+
+    def test_expanded_loops_hoist_declarations_and_resolve_independent_range_labels(self):
+        c = self.converter(self.prefix + 'for int i in {start, stop} { '
+            'flags[i:i + 1] = pair; flags[i:i] = "1"; }')
+        lines = list(c)
+        first_instruction = next(i for i, line in enumerate(lines) if line.startswith(('LET ', 'JUMPIF ', '@')))
+        self.assertTrue(all(i < first_instruction for i, line in enumerate(lines) if line.startswith('VAR ')))
+        self.assertEqual(sum(line.startswith('LET FLAGS31:QASM2QCX_') for line in lines), 6)
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+
 class RuntimeBitSetMeasurementFoundationTests(unittest.TestCase):
     program = staticmethod(ScalarAngleFoundationTests.program)
     converter = ScalarAngleFoundationTests.converter

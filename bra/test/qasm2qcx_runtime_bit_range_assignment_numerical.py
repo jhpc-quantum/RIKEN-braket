@@ -87,6 +87,104 @@ class BackendTests(unittest.TestCase):
         self.check_initializers('bit[4] flags = "0000"; uint stride = 5; '
             'flags[0:stride:4] = "1"; bool same = flags == "0001";', (), (), ('same',), (1,))
 
+    def test_loops_capture_fresh_positions_and_preserve_live_register_iteration(self):
+        for loop in ('for int i in [first:last]', 'for int i in {0, 1, 2, 3}',
+                     'for int i in {first, first + 1, last - 1, last}', 'for int i in indices'):
+            self.check_initializers('bit[4] flags = "0000"; int first = 0; int last = 3; '
+                'array[int, 4] indices = {0, 1, 2, 3}; ' + loop +
+                ' { flags[i:i] = "1"; } bool same = flags == "1111";', (), (), ('same',), (1,))
+        self.check_initializers('bit[4] flags = "1010"; bit[2] indices = "10"; '
+            'for bit i in indices { flags[int(i):int(i)] = "1"; } '
+            'bool same = flags == "1011";', (), (), ('same',), (1,))
+        # The iterator sees later bits after writes to the live source.
+        self.check_initializers('bit[4] flags = "0001"; int next = 1; int total = 0; '
+            'for bit b in flags { total += int(b); '
+            'if (next < 4) { flags[next:next] = "1"; next += 1; } } '
+            'bool same = flags == "1111";', (), (), ('same', 'total'), (1, 4))
+
+    def test_while_reentry_and_changing_direction_capture_new_bounds(self):
+        self.check_initializers('bit[4] flags = "0000"; int i = 0; while (i < 3) { '
+            'flags[i:i + 1] = "10"; i += 1; } bool same = flags == "1000";',
+            (), (), ('same', 'i'), (1, 3))
+        self.check_initializers('bit[4] flags = "0000"; int i = 0; int start = 0; int stop = 3; int step = 1; '
+            'while (i < 3) { flags[start:step:stop] = "1010"; '
+            'start = 3 - start; stop = 3 - stop; step = -step; i += 1; } '
+            'bool same = flags == "1010";', (), (), ('same', 'start', 'stop', 'step'), (1, 3, 0, -1))
+
+    def test_nested_transfers_shadowing_and_outer_binding_restoration(self):
+        self.check_initializers('const int I = 3; int index = -1; bit[4] flags = "0000"; '
+            'int first = 0; int last = 1; int visits = 0; '
+            'for int I in [first:last] { for int index in [0:2] { '
+            'if (index == 1) { continue; } flags[I:I] = "1"; visits += 1; break; } } '
+            'for int index in {2, 3} { flags[index:index] = "1"; } '
+            'flags[I:I] = "0"; bool same = flags == "0111"; int restored = I;',
+            (), (), ('same', 'visits', 'restored', 'index'), (1, 2, 3, -1))
+        self.check_initializers('bit[4] flags = "0000"; int i = 0; while (i < 4) { '
+            'i += 1; if (i == 2) { continue; } flags[i - 1:i - 1] = "1"; '
+            'if (i == 3) { break; } } bool same = flags == "0101";', (), (), ('same', 'i'), (1, 3))
+
+    def test_skipped_bounds_width_duplicates_and_rhs_failures(self):
+        statements = ('flags[start:0:stop] = "11";', 'flags[bad:stop] = "11";',
+                      'flags[start:1 / zero:stop] = "11";', 'flags[start:stop] = "1";',
+                      'flags[-1:stop + 2] = "11111";', 'flags[start:stop] = flags[{start, bad}];',
+                      'flags[start:stop + 2] = flags << (1 / zero);')
+        wrappers = ('if (false) {{ {} }}', 'while (false) {{ {} }}',
+                    'for int outer in [1:0] {{ {} }}',
+                    'for int outer in [0:1] {{ if (outer < 0) {{ {} }} }}')
+        for statement in statements:
+            for wrapper in wrappers:
+                self.check_initializers('bit[4] flags = "1010"; int start = 0; int stop = 1; '
+                    'int zero = 0; int bad = 4; ' + wrapper.format(statement) +
+                    'bool same = flags == "1010";', (), (), ('same',), (1,))
+
+    def test_measurement_controlled_ranges_and_feedback(self):
+        for _ in range(16):
+            self.check_initializers('include "stdgates.inc"; qubit q; h q; bit outcome = measure q; '
+                'bit[4] flags = "0000"; int start = 0; int stop = 1; '
+                'if (outcome) { start = 2; stop = 3; } flags[start:stop] = "10"; '
+                'bool same = (outcome && flags == "1000") || (!outcome && flags == "0010"); '
+                'reset q; if (flags[start + 1]) { x q; } bit observed = measure q;',
+                (), (), ('same', 'observed'), (1, 1))
+
+    def test_later_iteration_failures_preserve_previous_successful_writes(self):
+        for selector, rhs, update, expected, error in (
+                ('start:stop', '"11"', 'stop = 0;', ['1011'], 'assertion failed'),
+                ('start:stop', '"11"', 'stop = 2;', ['1011'], 'assertion failed'),
+                ('start:stop', 'flags[{start, other}]', 'other = 4;', ['1010'], 'assertion failed'),
+                ('start:stop', 'pair << (1 / divisor)', 'divisor = 0;', ['1010'], 'division by zero')):
+            lines = self.program('bit[4] flags = "1010"; bit[2] pair = "01"; '
+                'int start = 0; int stop = 1; int other = 1; int divisor = 1; int i = 0; '
+                f'while (i < 2) {{ flags[{selector}] = {rhs}; i += 1; {update} }}')
+            # Mark every destination write and report each completed store.
+            # Only the first iteration may reach these markers.
+            last_write = max(i for i, line in enumerate(lines) if line.startswith('LET FLAGS31:QASM2QCX_'))
+            instrumented = []
+            for i, line in enumerate(lines):
+                if line.startswith('LET FLAGS31:QASM2QCX_'):
+                    instrumented.append('PRINTLN 12345')
+                instrumented.append(line)
+                if i == last_write:
+                    instrumented.append('PRINTLN FLAGS31:3 FLAGS31:2 FLAGS31:1 FLAGS31:0')
+            result = self.execute(instrumented)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(error, result.stderr)
+            self.assertNotIn('runtime error:', result.stderr)
+            self.assertEqual([''.join(line.split()) for line in result.stdout.splitlines()], ['12345', '12345'] + expected)
+            type(self).checked += 1
+
+    def test_updated_ranges_feed_phase_gates_and_fusion(self):
+        import cmath
+        import math
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        source = ('include "stdgates.inc"; qubit q; h q; bit[4] flags = "1010"; '
+                  'int start = 3; int stop = 0; int stride = -1; int visits = 0; '
+                  'while (visits < 1) { flags[start:stride:stop] = flags; visits += 1; } '
+                  'p(angle[4](flags)) q; start = 0; stop = 3; stride = 1; '
+                  'flags[start:stride:stop] = "0000";')
+        expected = (1 / math.sqrt(2), cmath.exp(1j * 5 * math.pi / 8) / math.sqrt(2))
+        for fused in (False, True):
+            BackendAuditTests.check(self, self.program(source, fused=fused), expected)
+
     def test_destination_and_rhs_failures_precede_all_destination_writes(self):
         cases = (
             ('int start = 0; int stop = 1;', 'start:0:stop', '"11"', 'assertion failed'),
