@@ -8685,13 +8685,13 @@ class RuntimeBitSetExpressionFoundationTests(unittest.TestCase):
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
         self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
 
-    def test_empty_loops_reject_scalar_uses_width_mismatches_and_dynamic_targets(self):
+    def test_empty_loops_reject_scalar_uses_width_mismatches_and_invalid_targets(self):
         for body in ('scalar = flags[{outer}];', 'condition = flags[{outer}];',
                      'pair = flags[{outer}];', 'index = int(flags[{outer}]);',
                      'count = uint(C[{outer}]);', 'real = float(flags[{outer}]);',
                      'index = int(rotl(C[{outer}], 0));', 'condition = bool(flags[{outer}]);',
-                     'for int i in [0:flags[{outer}]] {}', 'flags[{outer, 0}] = "11";',
-                     'flags[{outer, 0}] ^= "11";', 'pair = flags[outer:3];'):
+                     'for int i in [0:flags[{outer}]] {}', 'flags[{outer, 0}] = "1";',
+                     'flags[{outer, 0}] ^= "1";', 'pair = flags[outer:3];'):
             with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(self.prefix + 'bit[2] pair; for int outer in [1:0] {' + body + '}')
 
@@ -8896,6 +8896,154 @@ class RuntimeAngleBitSetSelectionFoundationTests(unittest.TestCase):
         self.selection('phases[index / 0][{count, 100, 1 / 0}]')
         with self.assertRaises(qasm2qcx.QASM2QCXError):
             self.selection('a[{index, real}]')
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+        self.assertEqual(lines, c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+
+
+class RuntimeBitSetAssignmentFoundationTests(unittest.TestCase):
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    converter = ScalarAngleFoundationTests.converter
+    prefix = ('const int LOW = 0; const uint HIGH = 3; const bit[4] C = "1011"; const bit ON = true; '
+              'bit[4] flags; bit[1] one; bit scalar; int index; uint count; float real; bool condition; '
+              'array[int, 2] numbers; bit[2] pair; angle[4] a; qubit[2] q;')
+
+    def setUp(self):
+        self.c = self.converter(self.prefix)
+
+    def assignment(self, source):
+        return self.program(source).statements[0]
+
+    def info(self, source, iterators=None):
+        return self.c._QASM2QCXConverter__runtime_bit_set_assignment_info(self.assignment(source), iterators)
+
+    def test_frozen_metadata_retains_every_index_ast_and_independent_integer_types(self):
+        statement = self.assignment('flags[{LOW, index, count, -1}] = "1010";')
+        info = self.c._QASM2QCXConverter__runtime_bit_set_assignment_info(statement)
+        self.assertIsInstance(info, qasm2qcx._RuntimeBitSetAssignmentInfo)
+        self.assertEqual((info.selection.source_name, info.selection.source_width, info.selection.width), ('flags', 4, 4))
+        self.assertEqual(info.selection.index_types, (qasm2qcx.ValueType.INT, qasm2qcx.ValueType.INT,
+                         qasm2qcx.ValueType.UINT, qasm2qcx.ValueType.INT))
+        self.assertTrue(all(a is b for a, b in zip(info.selection.indices, statement.lvalue.indices[0].values)))
+        self.assertEqual((info.operator, info.binary_operator, info.shift_count_type), ('=', None, None))
+        with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+            info.operator = '^='
+
+    def test_all_six_operators_validate_without_domains_or_capture(self):
+        for operator in ('=', '&=', '|=', '^=', '<<=', '>>='):
+            rhs = 'index / 0' if operator in ('<<=', '>>=') else 'flags[{count, 999}]'
+            source = f'flags[{{index, 1 / 0}}] {operator} {rhs};'
+            with self.subTest(operator=operator):
+                info = self.info(source)
+                self.assertEqual(info.operator, operator)
+                self.assertEqual(info.binary_operator, None if operator == '=' else operator[:-1])
+                self.assertEqual(info.shift_count_type, qasm2qcx.ValueType.INT if operator in ('<<=', '>>=') else None)
+                self.assertTrue(self.c._QASM2QCXConverter__validate_register_operator_assignment(self.assignment(source)))
+        self.assertEqual(self.info('flags[{index}] <<= count;').shift_count_type, qasm2qcx.ValueType.UINT)
+
+    def test_all_runtime_values_and_normalized_duplicates_are_deferred(self):
+        for source in ('flags[{index, index}] = pair;', 'flags[{index, -1}] ^= pair;',
+                       'one[{index, 0}] = pair;', 'flags[{999, index}] = pair;',
+                       'flags[{numbers[index / 0], count}] >>= -999;',
+                       'flags[{1 / 0, index}] = flags[{count, -999}];'):
+            with self.subTest(source=source):
+                self.assertIsInstance(self.info(source), qasm2qcx._RuntimeBitSetAssignmentInfo)
+        # Entirely static destinations still reject repeated normalized indices.
+        with self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException, 'must not repeat'):
+            self.c._QASM2QCXConverter__validate_register_operator_assignment(self.assignment('flags[{3, -1}] = pair;'))
+
+    def test_static_destinations_and_scalar_indexing_keep_existing_paths(self):
+        for source in ('flags[{LOW, HIGH}] = pair;', 'flags[0:1] ^= pair;', 'one[{0}] = "1";',
+                       'flags[index] = scalar;', 'flags = "1111";'):
+            with self.subTest(source=source):
+                self.assertIsNone(self.info(source))
+        for source in ('flags[{LOW, HIGH}] = pair;', 'flags[0:1] ^= pair;'):
+            self.assertTrue(self.c._QASM2QCXConverter__validate_register_operator_assignment(self.assignment(source)))
+        self.assertIsNone(self.info('a[{index, 0}] = pair;'))
+
+    def test_destination_indices_are_all_typed_and_bad_sources_are_rejected(self):
+        for bad in ('real', 'condition', 'scalar', 'one', 'missing', 'unknown(0)', 'numbers[true]'):
+            for source in (f'flags[{{index, {bad}}}] = pair;', f'flags[{{{bad}, count}}] = pair;'):
+                with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    self.info(source)
+        for source in ('scalar[{index}] = "1";', 'C[{index}] = "1";', 'ON[{index}] = "1";'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(source)
+
+    def test_rhs_register_width_and_shift_count_type_are_validated(self):
+        for source in ('flags[{index}] = scalar;', 'flags[{index}] = true;',
+                       'flags[{index}] = pair;', 'flags[{index, 0}] ^= "1";',
+                       'flags[{index}] <<= condition;', 'flags[{index}] >>= scalar;',
+                       'flags[{index}] <<= one;', 'flags[{index}] >>= real;'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(source)
+        for rhs in ('pair', 'flags[{index, 0}]', 'C[0:1]', 'a[0:1]', 'rotl(pair, count)', '~pair ^ "01"'):
+            self.assertIsNotNone(self.info(f'flags[{{index, count}}] = {rhs};'))
+
+    def test_other_operators_are_rejected_before_lowering(self):
+        for operator in ('+=', '-=', '*=', '/=', '%=', '**='):
+            with self.subTest(operator=operator), self.assertRaisesRegex(
+                    qasm2qcx.UnsupportedOpenQASMError, 'assignment operator'):
+                self.info(f'flags[{{index, 0}}] {operator} pair;')
+
+    def test_iterator_dependencies_and_shadowing_do_not_invent_values(self):
+        for value_type in (qasm2qcx.ValueType.INT, qasm2qcx.ValueType.UINT):
+            info = self.info('flags[{LOW, 0}] = pair;', {'LOW': value_type})
+            self.assertEqual(info.selection.index_types[0], value_type)
+        with self.c._QASM2QCXConverter__iterator_binding('LOW', 999):
+            self.assertIsNotNone(self.info('flags[{LOW, 0}] = pair;'))
+        self.assertIsNone(self.info('flags[{LOW, 1}] = pair;'))
+        for bindings in ({'flags': qasm2qcx.ValueType.BIT}, {'C': qasm2qcx.ValueType.BIT}, {'LOW': qasm2qcx.ValueType.BIT}):
+            with self.subTest(bindings=bindings), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info('C[{LOW, index}] = pair;' if 'C' in bindings else 'flags[{LOW, index}] = pair;', bindings)
+
+    def test_empty_enclosing_loops_accept_valid_metadata_and_defer_every_runtime_check(self):
+        body = ('flags[{outer / 0, 999}] = pair; flags[{outer, outer}] &= "11"; '
+                'flags[{numbers[outer / 0], -999}] <<= index / 0; '
+                'one[{outer, 0}] = flags[{999, outer}]; '
+                'for bit b in flags { flags[{int(b), count}] ^= pair; }')
+        c = self.converter(self.prefix + 'for int outer in [1:0] {' + body + '}')
+        self.assertEqual(c._QASM2QCXConverter__qcx_lines, self.c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(c._QASM2QCXConverter__loop_contexts, [])
+
+    def test_invalid_skipped_targets_measurement_and_names_remain_errors(self):
+        for body in ('C[{outer, 0}] = pair;', 'flags[{outer, true}] = pair;',
+                     'flags[{outer}] = pair;', 'flags[{outer}] += "1";',
+                     'flags[outer:3] = pair;', 'flags[{outer, 0}][0] = scalar;',
+                     'measure q -> flags[{outer, 0}];',
+                     'for bit flags in one { flags[{outer}] = "1"; }'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix + 'for int outer in [1:0] {' + body + '}')
+        for prefix, body, declaration in (
+                ('int index; bit[2] pair;', 'flags[{index, 0}] = pair;', 'bit[4] flags;'),
+                ('bit[4] flags; bit[2] pair; int index;', 'flags[{index, later}] = pair;', 'uint later;'),
+                ('bit[4] flags; bit[2] pair; int index;', 'flags[{LATE, index}] = pair;', 'const int LATE = 0;'),
+                ('bit[4] flags; int index;', 'flags[{index, 0}] = later;', 'bit[2] later;')):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(prefix + 'for int outer in [1:0] {' + body + '}' + declaration)
+
+    def test_source_and_selection_width_limits_and_wide_registers(self):
+        with patch.object(self.c, 'QCX_INT_MAX', 3):
+            with self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException, 'source width must fit'):
+                self.info('flags[{index}] = "1";')
+        with patch.object(self.c, 'QCX_INT_MAX', 1):
+            with self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException, 'selection width exceeds'):
+                self.info('one[{index, index}] = pair;')
+        c = self.converter('bit[129] flags; int index;')
+        info = c._QASM2QCXConverter__runtime_bit_set_assignment_info(self.assignment('flags[{index, -1}] = "11";'))
+        self.assertEqual((info.selection.source_width, info.selection.width), (129, 2))
+
+    def test_metadata_preserves_fields_output_and_caller_owned_storage(self):
+        c = self.c
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+        lines = c._QASM2QCXConverter__qcx_lines.copy()
+        self.info('flags[{1 / 0, index}] = pair;')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.info('flags[{index, real}] = pair;')
         self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
         self.assertEqual(lines, c._QASM2QCXConverter__qcx_lines)
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
@@ -9982,7 +10130,7 @@ class StaticBitSelectionAssignmentTests(unittest.TestCase):
 
     def test_invalid_widths_bounds_and_dynamic_selections_rejected(self) -> None:
         for body in ('a[0:2] = "11";', 'a[{0, 1}] &= a;', 'a[0:1] = a[0];',
-                     'a[n:3] <<= 1;', 'a[{n, 0}] = "11";', 'a[1:0] = "1";',
+                     'a[n:3] <<= 1;', 'a[{n, true}] = "11";', 'a[1:0] = "1";',
                      'a[0:4] >>= 1;', 'a[0:1] <<= false;', 'a[0:1] = ~missing;'):
             for wrapper in ('{}', 'while (false) {{ {} }}', 'for int i in [1:0] {{ {} }}'):
                 with self.subTest(body=body, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -10003,7 +10151,7 @@ class StaticBitSelectionAssignmentTests(unittest.TestCase):
         self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
 
     def test_iterator_dependent_bounds_and_iterator_targets_remain_unsupported(self) -> None:
-        for body in ('a[i:3] ^= "1111";', 'a[{0, i}] = "11";', 'i[0:0] <<= 1;'):
+        for body in ('a[i:3] ^= "1111";', 'a[{true, i}] = "11";', 'i[0:0] <<= 1;'):
             with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert('OPENQASM 3.0; bit[4] a; for int i in [1:0] { ' + body + ' }')
 
