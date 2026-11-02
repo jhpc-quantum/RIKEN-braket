@@ -3,6 +3,7 @@
 
 import argparse
 import pathlib
+import re
 import resource
 import unittest
 
@@ -199,6 +200,22 @@ class BackendTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertNotIn('runtime error:', result.stderr)
             type(self).checked += 1
+
+    def test_documented_runtime_bit_set_assignment_example(self):
+        import cmath
+        import math
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- runtime-bit-set-assignment-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        source = examples[0].removeprefix('OPENQASM 3.0;')
+        source += '\nbool same = flags == "0010"; bool restored = wide == "1' + '0' * 64 + '";'
+        self.check_initializers(source, (), (), ('i', 'j', 'ones', 'high', 'low', 'same', 'restored'),
+                                (0, 3, 2, -1, 0, 1, 1))
+        expected = (1 / math.sqrt(2), cmath.exp(1j * 3 * math.pi / 8) / math.sqrt(2))
+        for fused in (False, True):
+            BackendAuditTests.check(self, self.program(examples[0], fused=fused), expected)
 
     def test_updated_registers_feed_phase_gates_and_fusion(self):
         import cmath
