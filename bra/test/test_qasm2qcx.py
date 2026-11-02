@@ -8568,6 +8568,174 @@ class RuntimeAngleBitSelectionFoundationTests(unittest.TestCase):
                 self.converter('const angle[4] C = pi; angle[4] a; int index; bit scalar; ' + body)
 
 
+class RuntimeBitSetExpressionFoundationTests(unittest.TestCase):
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    converter = ScalarAngleFoundationTests.converter
+    prefix = ('const int LOW = 0; const uint HIGH = 3; const bit[4] C = "1011"; '
+              'bit[4] flags; bit[1] one; bit scalar; int index; uint count; '
+              'float real; bool condition; array[int, 2] numbers; angle[4] a;')
+
+    def setUp(self):
+        self.c = self.converter(self.prefix)
+
+    def expression(self, source):
+        return self.program('bit[1] result = ' + source + ';').statements[0].init_expression
+
+    def selection(self, source, iterators=None):
+        return self.c._QASM2QCXConverter__runtime_bit_set_selection(self.expression(source), iterators)
+
+    def test_metadata_retains_source_order_types_repetitions_and_fixed_width(self):
+        for source in ('flags[{LOW, index, count, -1, index}]', 'C[{LOW, index, count, -1, index}]'):
+            expression = self.expression(source)
+            selected = self.c._QASM2QCXConverter__runtime_bit_set_selection(expression)
+            with self.subTest(source=source):
+                self.assertIsInstance(selected, qasm2qcx._RuntimeBitSetSelection)
+                self.assertEqual((selected.source_name, selected.source_width, selected.width),
+                                 (expression.collection.name, 4, 5))
+                self.assertTrue(all(a is b for a, b in zip(selected.indices, expression.index.values)))
+                self.assertEqual(selected.index_types, (qasm2qcx.ValueType.INT, qasm2qcx.ValueType.INT,
+                    qasm2qcx.ValueType.UINT, qasm2qcx.ValueType.INT, qasm2qcx.ValueType.INT))
+                with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                    selected.indices = ()
+
+    def test_singleton_sets_are_registers_and_scalar_indices_keep_existing_paths(self):
+        for source in ('flags[{index}]', 'one[{count}]', 'C[{index}]'):
+            expression = self.expression(source)
+            self.assertEqual(self.c._QASM2QCXConverter__bit_register_expression_width(expression), 1)
+            self.assertEqual(self.c._QASM2QCXConverter__loop_expression_info(expression),
+                             (qasm2qcx.ValueType.BIT_REGISTER, True))
+        for source in ('flags[index]', 'one[count]', 'C[0]'):
+            expression = self.expression(source)
+            self.assertIsNone(self.c._QASM2QCXConverter__bit_register_expression_width(expression))
+            self.assertIsNone(self.selection(source))
+        self.assertEqual(self.c._QASM2QCXConverter__static_bit_selection(self.expression('C[{HIGH, LOW, -1}]')).indices,
+                         (3, 0, 3))
+        self.assertIsNone(self.selection('C[{HIGH, LOW, -1}]'))
+        empty = qasm2qcx.ast.IndexExpression(qasm2qcx.ast.Identifier('flags'), qasm2qcx.ast.DiscreteSet([]))
+        with self.assertRaises(qasm2qcx.InvalidBitOperandException):
+            self.c._QASM2QCXConverter__bit_register_expression_width(empty)
+        for source in ('flags[{4}]', 'C[{1 / 0}]'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.c._QASM2QCXConverter__bit_register_expression_width(self.expression(source))
+
+    def test_any_runtime_entry_defers_all_domains_and_positions(self):
+        for source in ('flags[{index, 1 / 0}]', 'C[{999, count, -999}]',
+                       'one[{1 / 0, count}]', 'flags[{numbers[index / 0], count}]',
+                       'C[{popcount(flags[{index, count}]), index}]'):
+            expression = self.expression(source)
+            with self.subTest(source=source):
+                self.assertIsInstance(self.selection(source), qasm2qcx._RuntimeBitSetSelection)
+                self.assertTrue(self.c._QASM2QCXConverter__register_expression_runtime(expression, None))
+
+    def test_each_entry_is_typed_even_after_runtime_dependencies(self):
+        for entry in ('real', 'condition', 'scalar', 'one', 'missing', 'unknown(0)', 'numbers[true]'):
+            for source in (f'flags[{{index, {entry}}}]', f'C[{{{entry}, count}}]'):
+                with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    self.c._QASM2QCXConverter__bit_register_expression_width(self.expression(source))
+
+    def test_widths_propagate_through_register_consumers_without_values(self):
+        for source, width in (('~flags[{index, count}]', 2), ('flags[{index}] ^ "1"', 1),
+                              ('rotl(C[{index, 0, count}], index)', 3),
+                              ('rotr(flags[{index, count}], count)', 2), ('C[{index, 0}] << count', 2)):
+            expression = self.expression(source)
+            with self.subTest(source=source):
+                self.assertEqual(self.c._QASM2QCXConverter__bit_register_expression_width(expression), width)
+                self.assertTrue(self.c._QASM2QCXConverter__register_expression_runtime(expression, None))
+        for source, kind in (('popcount(C[{index, count}])', qasm2qcx.ValueType.UINT),
+                             ('C[{index, count}] == "11"', qasm2qcx.ValueType.BOOL),
+                             ('angle[2](flags[{index, count}])', qasm2qcx.ValueType.ANGLE)):
+            with self.subTest(source=source):
+                self.assertEqual(self.c._QASM2QCXConverter__loop_expression_info(self.expression(source)), (kind, True))
+        for source in ('flags[{index}] ^ "11"', 'flags[{index}] & scalar',
+                       'flags[{index}] << true', 'flags[{index}] == scalar',
+                       'flags[{index}] > "1"', 'angle[4](flags[{index, 0}])'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                expression = self.expression(source)
+                if source.startswith('angle'):
+                    self.c._QASM2QCXConverter__loop_expression_info(expression)
+                elif '==' in source or '>' in source and '<<' not in source:
+                    self.c._QASM2QCXConverter__loop_expression_info(expression)
+                else:
+                    self.c._QASM2QCXConverter__bit_register_expression_width(expression)
+
+    def test_iterator_dependencies_shadow_constants_and_sources_remain_named_registers(self):
+        for kind in (qasm2qcx.ValueType.INT, qasm2qcx.ValueType.UINT):
+            selected = self.selection('C[{LOW, 0}]', {'LOW': kind})
+            self.assertEqual(selected.index_types[0], kind)
+        with self.c._QASM2QCXConverter__iterator_binding('LOW', 999):
+            self.assertIsNotNone(self.selection('C[{LOW, 0}]'))
+        self.assertIsNone(self.selection('C[{LOW, 0}]'))
+        for source in ('scalar[{index}]', '(flags ^ flags)[{index}]', 'flags[{index}][0]',
+                       'flags[index:3]', 'flags[index:count:3]', 'numbers[{index}]'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.c._QASM2QCXConverter__bit_register_expression_width(self.expression(source))
+        for bindings in ({'flags': qasm2qcx.ValueType.BIT}, {'LOW': qasm2qcx.ValueType.BIT}):
+            with self.subTest(bindings=bindings), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.selection('flags[{LOW, index}]', bindings)
+
+    def test_empty_loops_validate_supported_reads_and_consumers_without_evaluation(self):
+        body = ('pair = flags[{outer, count}]; pair[0:1] = C[{1 / 0, outer}]; '
+                'pair ^= flags[{outer, 999}]; same = C[{outer, -999}] == "11"; '
+                'total += popcount(flags[{numbers[outer / 0], count}]); '
+                'pair = rotl(C[{outer, count}], index / 0); phase = angle[2](flags[{outer, count}]);')
+        prefix = self.prefix + 'bit[2] pair; bool same; uint total; angle[2] phase;'
+        c = self.converter(prefix + 'for int outer in [1:0] {' + body + '}')
+        baseline = self.converter(prefix)
+        self.assertEqual(c._QASM2QCXConverter__qcx_lines, baseline._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+
+    def test_empty_loops_reject_scalar_uses_width_mismatches_and_dynamic_targets(self):
+        for body in ('scalar = flags[{outer}];', 'condition = flags[{outer}];',
+                     'pair = flags[{outer}];', 'index = int(flags[{outer}]);',
+                     'count = uint(C[{outer}]);', 'real = float(flags[{outer}]);',
+                     'index = int(rotl(C[{outer}], 0));', 'condition = bool(flags[{outer}]);',
+                     'for int i in [0:flags[{outer}]] {}', 'flags[{outer, 0}] = "11";',
+                     'flags[{outer, 0}] ^= "11";', 'pair = flags[outer:3];'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix + 'bit[2] pair; for int outer in [1:0] {' + body + '}')
+
+    def test_forward_names_and_self_references_are_rejected_in_empty_loops(self):
+        for prefix, source, declaration in (
+                ('int index;', 'flags[{index, 0}]', 'bit[4] flags;'),
+                ('int index;', 'C[{index, 0}]', 'const bit[4] C = "1011";'),
+                ('bit[4] flags; int index;', 'flags[{index, later}]', 'int later;'),
+                ('bit[4] flags; int index;', 'flags[{LATE, index}]', 'const int LATE = 0;')):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(prefix + f'bit[2] pair; for int outer in [1:0] {{ pair = {source}; }}' + declaration)
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.converter('int index; const bit[1] flags = flags[{index}];')
+
+    def test_runtime_selection_of_constants_is_not_a_constant_initializer(self):
+        for source in ('C[{index}]', '~C[{index}]', 'rotl(C[{index}], 0)'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.NoConstantExpressionException):
+                self.converter(self.prefix + f'const bit[1] BAD = {source};')
+
+    def test_source_and_selection_widths_fit_qcx_indexing_and_wide_sources_remain_valid(self):
+        with patch.object(self.c, 'QCX_INT_MAX', 3):
+            with self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException, 'source width must fit'):
+                self.selection('C[{index}]')
+        with patch.object(self.c, 'QCX_INT_MAX', 1):
+            with self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException, 'selection width exceeds'):
+                self.selection('one[{index, index}]')
+        c = self.converter('const bit[129] C = "' + '1' * 129 + '"; int index;')
+        selected = c._QASM2QCXConverter__runtime_bit_set_selection(self.expression('C[{index, -1, index}]'))
+        self.assertEqual((selected.source_width, selected.width), (129, 3))
+
+    def test_metadata_preserves_expression_state_output_and_caller_temporaries(self):
+        c = self.c
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+        lines = c._QASM2QCXConverter__qcx_lines.copy()
+        self.c._QASM2QCXConverter__bit_register_expression_width(self.expression('C[{1 / 0, count, 999}]'))
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.selection('flags[{index, real}]')
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+        self.assertEqual(lines, c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+
+
 class RuntimeAngleBitSetSelectionFoundationTests(unittest.TestCase):
     program = staticmethod(ScalarAngleFoundationTests.program)
     converter = ScalarAngleFoundationTests.converter
@@ -8731,6 +8899,167 @@ class RuntimeAngleBitSetSelectionFoundationTests(unittest.TestCase):
         self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
         self.assertEqual(lines, c._QASM2QCXConverter__qcx_lines)
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+
+
+class MutableRuntimeBitSetExpressionReadTests(unittest.TestCase):
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    converter = ScalarAngleFoundationTests.converter
+    expression = RuntimeBitSetExpressionFoundationTests.expression
+    prefix = 'bit[4] flags = "1011"; bit[1] one = "1"; int index; uint count; bit[3] result;'
+
+    def test_all_entries_captured_once_before_reads_and_overlapping_writes(self):
+        c = self.converter(self.prefix)
+        statement = self.program('flags[0:2] = flags[{index, count, index}];').statements[0]
+        original = c._QASM2QCXConverter__capture_array_index
+        captures = []
+        def capture(expression, size):
+            captures.append(expression)
+            return original(expression, size)
+        start = len(c._QASM2QCXConverter__qcx_lines)
+        with patch.object(c, '_QASM2QCXConverter__capture_array_index', side_effect=capture):
+            c.visit(statement)
+        self.assertEqual(captures, statement.rvalue.index.values)
+        lines = c._QASM2QCXConverter__qcx_lines[start:]
+        source = c._QASM2QCXConverter__capitalize_variable_name('flags')
+        reads = [i for i, line in enumerate(lines) if ' := ' + source + ':' in line]
+        writes = [i for i, line in enumerate(lines) if line.startswith(f'LET {source}:')]
+        self.assertEqual(len(reads), 3)
+        self.assertEqual(len(writes), 3)
+        self.assertLess(max(i for i, line in enumerate(lines) if line.startswith('ASSERT ')), min(reads))
+        self.assertLess(max(reads), min(writes))
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_owned_snapshots_keep_consumer_and_caller_temporaries_on_success_or_failure(self):
+        for failure in (False, True):
+            c = self.converter(self.prefix)
+            caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+            fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+            before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+            consumer = None
+            try:
+                with c._QASM2QCXConverter__bit_register_expression_value(self.expression('flags[{index, count, index}]')) as values:
+                    self.assertEqual(len(set(values)), 3)
+                    self.assertTrue(set(values) <= c._QASM2QCXConverter__used_temporary_variables)
+                    consumer = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.INT)
+                    if failure:
+                        raise RuntimeError('consumer failed')
+            except RuntimeError as error:
+                self.assertEqual(str(error), 'consumer failed')
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller, consumer})
+            self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+
+    def test_partial_capture_failure_releases_access_storage_and_restores_expression_state(self):
+        c = self.converter(self.prefix)
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+        original = c._QASM2QCXConverter__capture_array_index
+        def capture(expression, size):
+            if expression.name == 'count':
+                c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.INT)
+                raise RuntimeError('capture failed')
+            return original(expression, size)
+        with patch.object(c, '_QASM2QCXConverter__capture_array_index', side_effect=capture):
+            with self.assertRaisesRegex(RuntimeError, 'capture failed'):
+                c.visit(self.program('result = flags[{index, count, index}];').statements[0])
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+
+    def test_singleton_storage_checks_each_index_and_wide_sources_do_not_pack(self):
+        c = self.converter(self.prefix + 'bit[2] pair = one[{index, count}]; '
+                           'bit[129] wide; bit[3] selected = wide[{index, 128, -1}];')
+        lines = c._QASM2QCXConverter__qcx_lines
+        one = c._QASM2QCXConverter__capitalize_variable_name('one')
+        self.assertEqual(sum(line.endswith(' := ' + one) for line in lines), 2)
+        self.assertFalse(any(' := ' + one + ':' in line for line in lines))
+        wide = c._QASM2QCXConverter__capitalize_variable_name('wide')
+        self.assertEqual(sum(' := ' + wide + ':' in line for line in lines), 3)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_budget_preflight_and_full_capture_budget_release_owned_storage(self):
+        for budget in ('preflight', 'capture'):
+            c = self.converter(self.prefix)
+            caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+            limit = len(c._QASM2QCXConverter__qcx_lines) + (1 if budget == 'preflight' else 5)
+            with patch.object(c, 'MAX_LOOP_OUTPUT_LINES', limit):
+                with self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException, 'QCX output limit'):
+                    with c._QASM2QCXConverter__bit_register_expression_value(self.expression('flags[{index, count}]')):
+                        self.fail('budget failure must precede consumer')
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+
+
+class ConstantRuntimeBitSetExpressionReadTests(unittest.TestCase):
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    converter = ScalarAngleFoundationTests.converter
+    expression = RuntimeBitSetExpressionFoundationTests.expression
+
+    def test_word_table_prepared_once_after_all_index_checks(self):
+        word = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        for width in (1, word, word + 1, 129):
+            with self.subTest(width=width):
+                c = self.converter(f'const bit[{width}] C = "' + '1' * width + '"; int i; uint j; '
+                    'bit[4] result = C[{i, -1, j, i}];')
+                lines = c._QASM2QCXConverter__qcx_lines
+                check = max(i for i, line in enumerate(lines) if line.startswith('ASSERT '))
+                tables = [line.split()[1] for line in lines if line.startswith('VAR QASM2QCX_CONST_BITS_')]
+                count = (width + word - 1) // word
+                self.assertEqual(len(tables), int(count > 1))
+                if tables:
+                    table = tables[0]
+                    writes = [i for i, line in enumerate(lines) if line.startswith(f'LET {table}:')]
+                    reads = [i for i, line in enumerate(lines) if ' := ' + table + ':' in line]
+                    self.assertEqual(len(writes), count)
+                    self.assertEqual(len(reads), 4)
+                    self.assertLess(check, min(writes))
+                    self.assertLess(max(writes), min(reads))
+                self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_nested_consumers_keep_independent_word_tables_and_return_values(self):
+        c = self.converter('const bit[65] C = "' + '1' * 65 + '"; int i; '
+            'bit[2] result = C[{i, 0}] ^ C[{1, i}]; '
+            'uint n = popcount(rotl(C[{i, 0, i}], i)); '
+            'angle[2] phase = angle[2](C[{popcount(C[{i}]), i}]);')
+        tables = [line for line in c._QASM2QCXConverter__qcx_lines if line.startswith('VAR QASM2QCX_CONST_BITS_')]
+        self.assertEqual(len(tables), 2)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_context_retains_caller_and_consumer_storage_after_yield(self):
+        c = self.converter('const bit[65] C = "' + '1' * 65 + '"; int i;')
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+        with c._QASM2QCXConverter__bit_register_expression_value(self.expression('C[{i, i}]')) as values:
+            self.assertEqual(len(set(values)), 2)
+            self.assertTrue(set(values) <= c._QASM2QCXConverter__used_temporary_variables)
+            consumer = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller, consumer})
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+
+    def test_partial_table_or_extraction_failure_cleans_up(self):
+        for target in ('_QASM2QCXConverter__prepare_constant_bit_lookup', '_QASM2QCXConverter__copy_prepared_constant_bit'):
+            c = self.converter('const bit[65] C = "' + '1' * 65 + '"; int i;')
+            caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+            fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+            before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+            def fail(*args):
+                c._QASM2QCXConverter__add_temporary_array(3, 'CONST_BITS', qasm2qcx.ValueType.UINT)
+                raise RuntimeError('lookup failed')
+            with self.subTest(target=target), patch.object(c, target, side_effect=fail):
+                with self.assertRaisesRegex(RuntimeError, 'lookup failed'):
+                    with c._QASM2QCXConverter__bit_register_expression_value(self.expression('C[{i, 0}]')):
+                        self.fail('failure must precede consumer')
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+
+    def test_full_output_budget_includes_word_initialization_and_extraction(self):
+        c = self.converter('const bit[65] C = "' + '1' * 65 + '"; int i;')
+        baseline = len(c._QASM2QCXConverter__qcx_lines)
+        # Enough for capture and the table, but not all extraction instructions.
+        with patch.object(c, 'MAX_LOOP_OUTPUT_LINES', baseline + 30):
+            with self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException, 'QCX output limit'):
+                with c._QASM2QCXConverter__bit_register_expression_value(self.expression('C[{i, 0}]')):
+                    self.fail('budget failure must precede consumer')
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
 
 
 class RuntimeAngleBitSetSelectionReadTests(unittest.TestCase):
@@ -13500,10 +13829,9 @@ class RuntimeSingletonBitLoopFoundationTests(unittest.TestCase):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(prefix + f'for int outer in [1:0] {{ for bit b in {source} {{}} }}' + declaration)
 
-    def test_dynamic_singleton_sets_remain_unsupported_in_other_register_contexts(self):
-        for statement in ('bit[1] result = flags[{index}];', 'flags[{index}] = "1";',
-                          'flags[{index}] ^= "1";', 'uint n = popcount(flags[{index}]);',
-                          'bool same = flags[{index}] == "1";', 'a = angle[1](flags[{index}]);'):
+    def test_dynamic_singleton_destinations_and_range_expressions_remain_unsupported(self):
+        for statement in ('flags[{index}] = "1";', 'flags[{index}] ^= "1";',
+                          'bit[1] result = flags[index:index];'):
             with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(self.prefix + statement)
 
@@ -13995,10 +14323,9 @@ class RuntimeBitSetLoopFoundationTests(unittest.TestCase):
         selected = c._QASM2QCXConverter__bit_selection_loop_info(loop.set_declaration, loop.type)
         self.assertEqual((selected.source_width, selected.width), (129, 3))
 
-    def test_general_expressions_and_assignments_remain_unsupported(self):
-        for statement in ('bit[2] result = flags[{index, 0}];', 'flags[{index, 0}] = "11";',
-                          'flags[{index, 0}] ^= "11";', 'uint n = popcount(FLAGS[{index, 0}]);',
-                          'bool same = flags[{index, 0}] == "11";'):
+    def test_dynamic_destinations_and_range_expressions_remain_unsupported(self):
+        for statement in ('flags[{index, 0}] = "11";', 'flags[{index, 0}] ^= "11";',
+                          'bit[2] result = flags[index:3];'):
             with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(self.prefix + statement)
 
