@@ -8822,8 +8822,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if angle_bits is not None:
             self.__emit_angle_bit_assignment(angle_bits.selection, statement.rvalue, angle_bits.binary_operator)
             return
-        if self.__runtime_bit_set_assignment_info(statement) is not None:
-            raise UnsupportedOpenQASMError('runtime bit-register index-set assignment lowering')
+        bit_set = self.__runtime_bit_set_assignment_info(statement)
+        if bit_set is not None:
+            if bit_set.operator != '=':
+                raise UnsupportedOpenQASMError('runtime bit-register index-set compound assignment lowering')
+            self.__emit_runtime_bit_set_assignment(bit_set.selection, statement.rvalue)
+            return
         source_name = self.__operand_name(statement.lvalue)
         self.__reject_constant_bit_target(statement.lvalue)
         self.__reject_constant_angle_target(statement.lvalue)
@@ -8914,6 +8918,49 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     yield bits
             finally:
                 self.__captured_angle_bit_values.pop(id(lhs), None)
+
+    def __emit_runtime_bit_set_assignment(
+            self, selection: _RuntimeBitSetSelection, expression: ast.Expression) -> None:
+        # Pairwise checks depend on the selection length, not the register
+        # width, so they also cover positions beyond a native UINT bitmap.
+        comparisons = selection.width * (selection.width - 1) // 2
+        if len(self.__qcx_lines) + comparisons + selection.width > self.MAX_LOOP_OUTPUT_LINES:
+            raise InvalidBitOperandException('Runtime bit assignment exceeds QCX output limit')
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            target = self.__capitalize_variable_name(selection.source_name)
+            indices = tuple(self.__capture_array_index(index, selection.source_width) for index in selection.indices)
+            self.__check_distinct_bit_indices(indices)
+            # Static/whole-register RHS operands can be direct storage names.
+            # Snapshot every nonliteral value even if dynamic destination
+            # addresses prevent detecting an overlap during conversion.
+            with self.__bit_register_expression_value(expression) as values:
+                snapshot = []
+                for value in values:
+                    if isinstance(value, int):
+                        snapshot.append(value)
+                    else:
+                        bit = self.__add_new_temporary_variable(ValueType.BIT)
+                        self.__qcx_lines.append(f'LET {bit} := {value}')
+                        snapshot.append(bit)
+                if len(self.__qcx_lines) + selection.width > self.MAX_LOOP_OUTPUT_LINES:
+                    raise InvalidBitOperandException('Runtime bit assignment exceeds QCX output limit')
+                for index, value in zip(indices, snapshot):
+                    operand = target if selection.source_width == 1 else f'{target}:{index}'
+                    self.__qcx_lines.append(f'LET {operand} := {value}')
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
+    def __check_distinct_bit_indices(self, indices: tuple[str, ...]) -> None:
+        for position, index in enumerate(indices):
+            for previous in indices[:position]:
+                self.__qcx_lines.append(f'ASSERT {index} \\= {previous}')
 
     def __emit_angle_bit_assignment(
             self, selection: _AngleBitSelection, expression: ast.Expression,
