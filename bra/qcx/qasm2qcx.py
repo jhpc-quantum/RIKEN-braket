@@ -8248,6 +8248,41 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__release_temporary_variable(str(operand[0]))
 
     @contextlib.contextmanager
+    def __runtime_bit_set_value(self, selection: _RuntimeBitSetSelection) -> Iterator[tuple[str, ...]]:
+        if selection.source_name in self.__const_bit_register_values:
+            raise UnsupportedOpenQASMError('runtime constant bit-register index-set expression lowering')
+        if len(self.__qcx_lines) + selection.width > self.MAX_LOOP_OUTPUT_LINES:
+            raise InvalidBitOperandException('Runtime bit selection exceeds QCX output limit')
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        owned = None
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            source = self.__capitalize_variable_name(selection.source_name)
+            # Capture every occurrence before reading bits, including repeated
+            # indices and constants in a mixed runtime selection.
+            indices = tuple(self.__capture_array_index(index, selection.source_width) for index in selection.indices)
+            values = []
+            for index in indices:
+                bit = self.__add_new_temporary_variable(ValueType.BIT)
+                operand = source if selection.source_width == 1 else f'{source}:{index}'
+                self.__qcx_lines.append(f'LET {bit} := {operand}')
+                values.append(bit)
+            if len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES:
+                raise InvalidBitOperandException('Runtime bit selection exceeds QCX output limit')
+            # Only release this access's storage after yield: its consumer may
+            # allocate a result that must remain live beyond this context.
+            owned = self.__used_temporary_variables - previous_used
+            yield tuple(values)
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            temporaries = owned if owned is not None else self.__used_temporary_variables - previous_used
+            for temporary in temporaries:
+                self.__release_temporary_variable(temporary)
+
+    @contextlib.contextmanager
     def __bit_register_expression_value(
             self, expression: ast.Expression) -> Iterator[tuple[str | int, ...]]:
         # The caller validates widths first. Each result owns its temporary
@@ -8292,8 +8327,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             yield tuple(self.__qcx_bit_name(name, size, index) for index in indices)
             return
         if isinstance(expression, ast.IndexExpression):
-            if self.__runtime_bit_set_selection(expression) is not None:
-                raise UnsupportedOpenQASMError('runtime bit-register index-set expression lowering')
+            runtime_selection = self.__runtime_bit_set_selection(expression)
+            if runtime_selection is not None:
+                with self.__runtime_bit_set_value(runtime_selection) as values:
+                    yield values
+                return
             selection = self.__static_bit_selection(expression)
             if not selection.is_register:
                 raise InvalidBitOperandException('A bit-register expression requires register operands')
@@ -8347,9 +8385,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, target_names: list[str], target_is_register: bool,
             expression: ast.Expression) -> None:
         constant_source = self.__is_constant_bit_source(expression)
-        selection = self.__angle_bit_selection(expression)
+        selection = self.__angle_bit_selection(expression) or self.__runtime_bit_set_selection(expression)
         if selection is not None and not target_is_register:
-            raise InvalidBitOperandException('An angle bit selection requires a bit-register target')
+            raise InvalidBitOperandException('A bit selection requires a bit-register target')
         if target_is_register and (constant_source or selection is not None or isinstance(
                 expression, (ast.UnaryExpression, ast.BinaryExpression, ast.FunctionCall, ast.Cast))):
             width = self.__bit_register_expression_width(expression)
