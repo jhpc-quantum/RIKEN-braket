@@ -66,6 +66,90 @@ class BackendTests(unittest.TestCase):
             'flags[{index, positions[int(flags[index])]}] = measure q; '
             'bool same = flags == "1011";', (), (), ('same', 'index'), (1, 0))
 
+    def test_skipped_measurements_do_not_evaluate_destinations_or_collapse_state(self):
+        cases = ('bad, 0', 'index, index', 'index, 1 / zero', 'index, 999999999999999999999999',
+                 'index, int(flags[bad])')
+        wrappers = ('if (false) {{ {} }}', 'while (false) {{ {} }}',
+                    'for int outer in [1:0] {{ {} }}',
+                    'for int outer in [0:1] {{ if (outer < 0) {{ {} }} }}')
+        for indices in cases:
+            for wrapper in wrappers:
+                self.check_initializers('include "stdgates.inc"; qubit[2] q; h q[0]; '
+                    'bit[4] flags = "1010"; bit[2] observed; int index = 0; int bad = 4; int zero = 0; '
+                    + wrapper.format(f'measure q -> flags[{{{indices}}}];') +
+                    'h q[0]; observed = measure q; '
+                    'bool same = flags == "1010"; bool untouched = observed == "00";',
+                    (), (), ('same', 'untouched'), (1, 1))
+
+    def test_range_set_array_and_register_loops_capture_live_indices(self):
+        loops = ('for int i in [first:last]', 'for int i in {-4, -3, -2, -1}',
+                 'for int i in {first, first + 1, last - 1, last}', 'for int i in positions')
+        for loop in loops:
+            self.check_initializers('include "stdgates.inc"; qubit[1] q; bit[4] flags = "0000"; '
+                'int first = -4; int last = -1; array[int, 4] positions = {-4, -3, -2, -1}; '
+                + loop + ' { reset q; if (i % 2 == 0) { x q; } flags[{i}] = measure q; } '
+                'bool same = flags == "0101";', (), (), ('same',), (1,))
+        self.check_initializers('include "stdgates.inc"; qubit[1] q; bit[2] indices = "10"; '
+            'bit[4] flags = "1010"; for bit i in indices { reset q; if (i) { x q; } '
+            'flags[{int(i)}] = measure q; } bool same = flags == "1010";',
+            (), (), ('same',), (1,))
+
+    def test_while_reentry_break_continue_and_nested_loop_transfers(self):
+        self.check_initializers('include "stdgates.inc"; qubit[2] q; x q[0]; '
+            'bit[4] flags = "0000"; int i = 0; while (i < 4) { '
+            'flags[{i, (i + 1) % 4}] = measure q; i += 1; } '
+            'bool same = flags == "1110";', (), (), ('same', 'i'), (1, 4))
+        self.check_initializers('include "stdgates.inc"; qubit[1] q; x q; bit[4] flags = "0000"; '
+            'int first = 0; int last = 3; int visits = 0; '
+            'for int i in [first:last] { if (i == 1) { continue; } '
+            'for int j in [0:2] { if (j == 1) { continue; } '
+            'flags[{i}] = measure q; visits += 1; break; } if (i == 2) { break; } } '
+            'bool same = flags == "0101";', (), (), ('same', 'visits'), (1, 2))
+
+    def test_iterator_shadowing_restores_constants_classical_variables_and_qubits(self):
+        self.check_initializers('include "stdgates.inc"; const int I = 3; int index = -1; '
+            'qubit[1] q; x q; bit[4] flags = "0000"; int first = 0; int last = 1; '
+            'for int I in [first:last] { flags[{I}] = measure q; } '
+            'for int index in {2, 3} { flags[{index}] = measure q; } '
+            'for int q in [0:1] {} flags[{I}] = measure q; '
+            'bool same = flags == "1111"; int restored = I;',
+            (), (), ('same', 'restored', 'index'), (1, 3, -1))
+
+    def test_entangled_correlations_repeated_measurement_and_feedback(self):
+        # Do not assume a particular random outcome or require both branches
+        # to occur. Correlations and repeatability hold for either outcome.
+        for anti in (0, 1):
+            for known in (0, 1):
+                for _ in range(8):
+                    self.check_initializers('include "stdgates.inc"; qubit[3] q; h q[0]; cx q[0], q[1]; '
+                        + ('x q[1];' if anti else '') + ('x q[2];' if known else '') +
+                        'bit[4] flags = "0100"; bit[3] repeated; bit[1] corrected; int i = -1; uint j = 1; '
+                        'flags[{i, 0, j}] = measure q[{1, 2, 0}]; repeated = measure q; '
+                        f'bool correlation = (flags[3] != flags[1]) == bool({anti}); '
+                        f'bool ordered = flags[0] == bool({known}); bool preserved = flags[2]; '
+                        'bool stable = flags[1] == repeated[0] && flags[3] == repeated[1] && flags[0] == repeated[2]; '
+                        'if (flags[3]) { x q[1]; } corrected[{j - 1}] = measure q[{1}]; '
+                        'bool feedback = corrected == "0";',
+                        (), (), ('correlation', 'ordered', 'preserved', 'stable', 'feedback'), (1, 1, 1, 1, 1))
+
+    def test_later_iteration_failures_stop_before_new_measurements(self):
+        for second, update, error in (('other', '', 'assertion failed in ASSERT'),
+                                      ('other', 'other += 3;', 'assertion failed in ASSERT'),
+                                      ('1 / (1 - index)', '', 'integer division by zero')):
+            lines = self.program('qubit[2] q; bit[4] flags; int index = 0; int other = 1; '
+                f'while (index < 2) {{ flags[{{index, {second}}}] = measure q; index += 1; {update} }}')
+            instrumented = []
+            for line in lines:
+                if line.startswith('M '):
+                    instrumented.append('PRINTLN 12345')
+                instrumented.append(line)
+            result = self.execute(instrumented)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(error, result.stderr)
+            self.assertNotIn('runtime error:', result.stderr)
+            self.assertEqual(result.stdout.split(), ['12345', '12345'])
+            type(self).checked += 1
+
     def test_bad_destinations_fail_before_first_measurement(self):
         limits = self.module.QASM2QCXConverter
         cases = []
