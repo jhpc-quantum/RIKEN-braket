@@ -5368,13 +5368,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         with self.__iterator_binding(statement.identifier.name, binding):
             self.__validate_loop_body(statement.block, self.__loop_iterator_types())
         self.__validate_loop_syntax(statement)
-        if isinstance(selection, _RuntimeBitRangeSelection):
-            if not self.__is_initialization_process:
-                if selection.source_name in self.__const_bit_register_values:
-                    raise UnsupportedOpenQASMError('runtime constant bit-register range loop lowering')
-                self.__emit_bit_selection_for(statement, selection)
-            return
-        if isinstance(selection, _RuntimeBitSetSelection):
+        if isinstance(selection, (_RuntimeBitRangeSelection, _RuntimeBitSetSelection)):
             if not self.__is_initialization_process:
                 self.__emit_bit_selection_for(statement, selection)
             return
