@@ -72,6 +72,83 @@ class BackendTests(unittest.TestCase):
             'int i = 0; int high = -1; flags[{i, 3}] = C[{high, i}]; '
             'bool same = flags == "1001";', (), (), ('same',), (1,))
 
+    def test_bitwise_compound_assignments_snapshot_original_and_overlapping_rhs(self):
+        for width in (1, 4, 33, 65, 129):
+            positions = sorted({0, width // 2, width - 1}, reverse=True)
+            selector = '{index' + ''.join(f', {position}' for position in positions[1:]) + '}'
+            rhs = '{' + ','.join('index' if position == positions[0] else str(position)
+                                  for position in reversed(positions)) + '}'
+            for text in ('0' * width, '1' * width, ('101100' * width)[:width]):
+                bits = [int(bit) for bit in reversed(text)]
+                old = sum(bits[position] << i for i, position in enumerate(positions))
+                right = sum(bits[position] << i for i, position in enumerate(reversed(positions)))
+                for op in ('&', '|', '^'):
+                    result = {'&': old & right, '|': old | right, '^': old ^ right}[op]
+                    expected = bits.copy()
+                    for i, position in enumerate(positions):
+                        expected[position] = (result >> i) & 1
+                    expected_text = ''.join(str(bit) for bit in reversed(expected))
+                    self.check_initializers(f'bit[{width}] flags = "{text}"; int index = {positions[0]}; '
+                        f'flags[{selector}] {op}= flags[{rhs}]; bool same = flags == "{expected_text}";',
+                        (), (), ('same',), (1,))
+
+    def test_compound_shifts_act_within_selection_width_and_preserve_other_bits(self):
+        for width in (1, 4, 33, 65, 129):
+            positions = sorted({0, width // 2, width - 1}, reverse=True)
+            selector = '{index' + ''.join(f', {position}' for position in positions[1:]) + '}'
+            count = len(positions)
+            bits = [int(bit) for bit in reversed(('101100' * width)[:width])]
+            old = sum(bits[position] << i for i, position in enumerate(positions))
+            for distance in (0, 1, count, count + 1, self.module.QASM2QCXConverter.QCX_UINT_MAX):
+                for op in ('<<', '>>'):
+                    result = ((old << distance) & ((1 << count) - 1) if op == '<<' else old >> distance) if distance < count else 0
+                    expected = bits.copy()
+                    for i, position in enumerate(positions):
+                        expected[position] = (result >> i) & 1
+                    before = ''.join(str(bit) for bit in reversed(bits))
+                    after = ''.join(str(bit) for bit in reversed(expected))
+                    self.check_initializers(f'bit[{width}] flags = "{before}"; int index = {positions[0]}; '
+                        f'uint distance = {distance}; flags[{selector}] {op}= distance; bool same = flags == "{after}";',
+                        (), (), ('same',), (1,))
+
+    def test_compound_capture_uses_original_indices_and_supports_nested_rhs_consumers(self):
+        self.check_initializers('bit[4] flags = "1001"; '
+            'flags[{0, int(flags[0]) + 1}] ^= "11"; bool same = flags == "1100";',
+            (), (), ('same',), (1,))
+        self.check_initializers('bit[4] flags = "1010"; int index = 3; '
+            'flags[{index, 0}] ^= rotl(flags[{0, index}], 1); bool same = flags == "0010";',
+            (), (), ('same',), (1,))
+        self.check_initializers('bit[4] flags = "0000"; const bit[65] C = "1' + '0' * 63 + '1"; int i = 0; '
+            'flags[{i, 3}] |= C[{i, -1}]; bool same = flags == "1001";', (), (), ('same',), (1,))
+        self.check_initializers('bit[4] flags = "0000"; int i = 0; '
+            'while (i < 4) { flags[{i}] ^= "1"; i += 1; } '
+            'for int j in [0:3] { flags[{j}] &= flags[{j}]; } bool same = flags == "1111";',
+            (), (), ('same',), (1,))
+
+    def test_compound_duplicate_and_bounds_checks_precede_rhs_and_shift_checks(self):
+        for width in (1, 4, 33, 129):
+            for operator in ('&=', '|=', '^=', '<<=', '>>='):
+                prefix = f'bit[{width}] flags; int first = {width - 1}; int second = -1; int zero = 0; int visits = 0;'
+                rhs = '1 / zero' if operator in ('<<=', '>>=') else 'flags[{1 / zero, 0}]'
+                statement = f'flags[{{first, second}}] {operator} {rhs}; visits += 1;'
+                for wrapper in ('if (false) {{ {} }}', 'while (false) {{ {} }}', 'for int outer in [1:0] {{ {} }}'):
+                    self.check_initializers(prefix + wrapper.format(statement), (), (), ('visits',), (0,))
+                result = self.execute(self.program(prefix + statement))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('assertion_error', result.stderr)
+                self.assertNotIn('division', result.stderr.lower())
+                self.assertNotIn('runtime error:', result.stderr)
+                type(self).checked += 1
+        prefix = 'bit[4] flags = "1011"; int first = 0; int last = 3; int negative = -1; int bad = 4;'
+        for statement in ('flags[{first, last}] <<= negative;', 'flags[{first, last}] >>= negative;',
+                          'flags[{first, last}] ^= flags[{first, bad}];'):
+            self.check_initializers(prefix + 'if (false) {' + statement + '} bool same = flags == "1011";',
+                                    (), (), ('same',), (1,))
+            result = self.execute(self.program(prefix + statement))
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn('runtime error:', result.stderr)
+            type(self).checked += 1
+
     def test_loops_reentry_shadowing_and_live_source_reads(self):
         self.check_initializers('bit[4] flags = "1011"; int i = 0; uint total = 0; '
             'for bit b in flags { flags[{i}] = "0"; total += uint(b); i += 1; } '
@@ -130,6 +207,10 @@ class BackendTests(unittest.TestCase):
         source = ('include "stdgates.inc"; qubit q; h q; bit[4] flags = "1010"; int i = 0; int j = 3; '
                   'flags[{i, j}] = flags[{j, i}]; p(angle[4](flags)) q;')
         expected = (1 / math.sqrt(2), cmath.exp(1j * 3 * math.pi / 8) / math.sqrt(2))
+        for fused in (False, True):
+            BackendAuditTests.check(self, self.program(source, fused=fused), expected)
+        source = ('include "stdgates.inc"; qubit q; h q; bit[4] flags = "1010"; int i = 0; int j = 3; '
+                  'flags[{i, j}] ^= "11"; p(angle[4](flags)) q;')
         for fused in (False, True):
             BackendAuditTests.check(self, self.program(source, fused=fused), expected)
 

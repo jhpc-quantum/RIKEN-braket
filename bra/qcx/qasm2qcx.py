@@ -614,7 +614,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__angle_variable_types: dict[str, _AngleType] = {}
         self.__angle_array_types: dict[str, _AngleType] = {}
         self.__captured_angle_array_values: dict[int, tuple[ast.IndexExpression, str]] = {}
-        self.__captured_angle_bit_values: dict[int, tuple[ast.IndexExpression, tuple[str | int, ...]]] = {}
+        self.__captured_bit_register_values: dict[int, tuple[ast.IndexExpression, tuple[str | int, ...]]] = {}
         self.__angle_variable_names: set[str] = set()
         self.__angle_expression_types: dict[int, tuple[ast.Expression, _AngleType]] = {}
         self.__array_element_types: dict[str, ValueType] = {}
@@ -8337,7 +8337,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, expression: ast.Expression) -> Iterator[tuple[str | int, ...]]:
         # The caller validates widths first. Each result owns its temporary
         # bits until the assignment finishes; no destination is written here.
-        captured = self.__captured_angle_bit_values.get(id(expression))
+        captured = self.__captured_bit_register_values.get(id(expression))
         if captured is not None:
             yield captured[1]
             return
@@ -8824,9 +8824,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
         bit_set = self.__runtime_bit_set_assignment_info(statement)
         if bit_set is not None:
-            if bit_set.operator != '=':
-                raise UnsupportedOpenQASMError('runtime bit-register index-set compound assignment lowering')
-            self.__emit_runtime_bit_set_assignment(bit_set.selection, statement.rvalue)
+            self.__emit_runtime_bit_set_assignment(bit_set.selection, statement.rvalue, bit_set.binary_operator)
             return
         source_name = self.__operand_name(statement.lvalue)
         self.__reject_constant_bit_target(statement.lvalue)
@@ -8909,18 +8907,52 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             old_values = self.__angle_bits_value(
                 selection.source, selection.angle_type, selection.indices, captured=snapshot)
         with old_values as old_bits:
-            # Bind only this synthetic read. Explicit RHS self-references
-            # keep their own index evaluation and bounds checks.
-            self.__captured_angle_bit_values[id(lhs)] = (lhs, old_bits)
-            try:
-                operation = ast.BinaryExpression(ast.BinaryOperator[operator], lhs, expression)
-                with self.__bit_register_expression_value(operation) as bits:
-                    yield bits
-            finally:
-                self.__captured_angle_bit_values.pop(id(lhs), None)
+            with self.__bit_register_operation_values(lhs, old_bits, operator, expression) as bits:
+                yield bits
+
+    @contextlib.contextmanager
+    def __bit_register_operation_values(
+            self, lhs: ast.IndexExpression, old_bits: tuple[str | int, ...],
+            operator: str, expression: ast.Expression) -> Iterator[tuple[str | int, ...]]:
+        # Bind only the synthetic LHS read. Explicit RHS accesses retain their
+        # own captures and checks, even when they select the same source bits.
+        previous = self.__captured_bit_register_values.get(id(lhs))
+        self.__captured_bit_register_values[id(lhs)] = (lhs, old_bits)
+        try:
+            operation = ast.BinaryExpression(ast.BinaryOperator[operator], lhs, expression)
+            with self.__bit_register_expression_value(operation) as bits:
+                yield bits
+        finally:
+            if previous is None:
+                self.__captured_bit_register_values.pop(id(lhs), None)
+            else:
+                self.__captured_bit_register_values[id(lhs)] = previous
+
+    @contextlib.contextmanager
+    def __runtime_bit_set_assignment_values(
+            self, selection: _RuntimeBitSetSelection, target: str, indices: tuple[str, ...],
+            expression: ast.Expression, operator: str | None) -> Iterator[tuple[str | int, ...]]:
+        if operator is None:
+            with self.__bit_register_expression_value(expression) as bits:
+                yield bits
+            return
+        old_bits = []
+        try:
+            for index in indices:
+                bit = self.__add_new_temporary_variable(ValueType.BIT)
+                old_bits.append(bit)
+                operand = target if selection.source_width == 1 else f'{target}:{index}'
+                self.__qcx_lines.append(f'LET {bit} := {operand}')
+            lhs = ast.IndexExpression(ast.Identifier(selection.source_name), ast.DiscreteSet(list(selection.indices)))
+            with self.__bit_register_operation_values(lhs, tuple(old_bits), operator, expression) as bits:
+                yield bits
+        finally:
+            for bit in old_bits:
+                self.__release_temporary_variable(bit)
 
     def __emit_runtime_bit_set_assignment(
-            self, selection: _RuntimeBitSetSelection, expression: ast.Expression) -> None:
+            self, selection: _RuntimeBitSetSelection, expression: ast.Expression,
+            operator: str | None = None) -> None:
         # Pairwise checks depend on the selection length, not the register
         # width, so they also cover positions beyond a native UINT bitmap.
         comparisons = selection.width * (selection.width - 1) // 2
@@ -8937,7 +8969,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # Static/whole-register RHS operands can be direct storage names.
             # Snapshot every nonliteral value even if dynamic destination
             # addresses prevent detecting an overlap during conversion.
-            with self.__bit_register_expression_value(expression) as values:
+            with self.__runtime_bit_set_assignment_values(selection, target, indices, expression, operator) as values:
                 snapshot = []
                 for value in values:
                     if isinstance(value, int):
