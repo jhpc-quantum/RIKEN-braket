@@ -296,7 +296,21 @@ class _RuntimeBitSetSelection:
         return len(self.indices)
 
 
-_BitSelectionLoop = _StaticBitSelection | _RuntimeSingletonBitSelection | _RuntimeBitSetSelection
+@dataclasses.dataclass(frozen=True)
+class _RuntimeBitRangeSelection:
+    # Runtime ranges have no fixed selection width. Retain the raw operands
+    # until loop-entry capture, including constants in mixed runtime ranges.
+    source_name: str
+    source_width: int
+    bounds: ast.RangeDefinition
+    start_type: ValueType
+    step_type: ValueType
+    stop_type: ValueType
+
+
+_BitSelectionLoop = (
+    _StaticBitSelection | _RuntimeSingletonBitSelection | _RuntimeBitSetSelection | _RuntimeBitRangeSelection
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -4771,19 +4785,30 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if (not self.__is_initialization_process and constant is None
                 and self.__capitalize_variable_name(name) not in self.__sized_bit_variables):
             raise NoVariableNameException(name)
+        size = constant.width if constant is not None else self.__bit_register_source_sizes[name]
         selection = None
         if isinstance(source.index, ast.DiscreteSet):
             entries = source.index.values
             info = tuple(self.__bit_index_info(index, iterators) for index in entries)
             if any(runtime for _, runtime in info):
-                size = constant.width if constant is not None else self.__bit_register_source_sizes[name]
-                if not 1 <= size <= self.QCX_INT_MAX:
-                    raise InvalidLoopRangeException('Runtime selection source width must fit QCX INT indexing')
                 if len(entries) == 1:
                     selection = _RuntimeSingletonBitSelection(name, size, entries[0], info[0][0])
                 else:
                     selection = _RuntimeBitSetSelection(
                         name, size, tuple(entries), tuple(value_type for value_type, _ in info))
+        elif (isinstance(source.index, list) and len(source.index) == 1
+              and isinstance(source.index[0], ast.RangeDefinition)):
+            bounds = source.index[0]
+            if bounds.start is None or bounds.end is None:
+                raise InvalidLoopRangeException('Bit-register range requires both bounds')
+            start_type, start_runtime = self.__bit_index_info(bounds.start, iterators)
+            step_type, step_runtime = ((ValueType.INT, False) if bounds.step is None
+                                      else self.__bit_index_info(bounds.step, iterators))
+            stop_type, stop_runtime = self.__bit_index_info(bounds.end, iterators)
+            if start_runtime or step_runtime or stop_runtime:
+                selection = _RuntimeBitRangeSelection(name, size, bounds, start_type, step_type, stop_type)
+        if selection is not None and not 1 <= size <= self.QCX_INT_MAX:
+            raise InvalidLoopRangeException('Runtime selection source width must fit QCX INT indexing')
         # The shared resolver rejects active scalar iterators and retains
         # static index order/repetitions without inspecting mutable bit values.
         if selection is None:
@@ -4792,7 +4817,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise UnsupportedOpenQASMError('bit-selection iteration requires a register selection, not a scalar bit')
         if not isinstance(iteration_type, ast.BitType) or iteration_type.size is not None:
             raise UnsupportedOpenQASMError('bit-selection iteration requires a scalar bit iterator')
-        if selection.width > self.QCX_INT_MAX:
+        if isinstance(selection, _RuntimeBitRangeSelection):
+            # The validated raw progression can contain up to 2*size entries,
+            # including negative aliases. Its table capacity/count must fit INT.
+            if 2 * size > self.QCX_INT_MAX:
+                raise InvalidLoopRangeException('Runtime bit-range position capacity must fit QCX INT indexing')
+        elif selection.width > self.QCX_INT_MAX:
             raise InvalidLoopRangeException('Bit-selection loop size exceeds QCX INT range')
         return selection
 
@@ -5337,6 +5367,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         with self.__iterator_binding(statement.identifier.name, binding):
             self.__validate_loop_body(statement.block, self.__loop_iterator_types())
         self.__validate_loop_syntax(statement)
+        if isinstance(selection, _RuntimeBitRangeSelection):
+            if not self.__is_initialization_process:
+                raise UnsupportedOpenQASMError('runtime bit-register range loop lowering')
+            return
         if isinstance(selection, _RuntimeBitSetSelection):
             if not self.__is_initialization_process:
                 self.__emit_bit_selection_for(statement, selection)
