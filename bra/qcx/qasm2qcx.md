@@ -138,6 +138,7 @@ The converter currently covers:
 - compile-time `const bit[n]` registers, expressions, and static selections;
 - runtime-indexed bit-register element reads, assignments, and scalar
   measurement destinations;
+- runtime index-set measurement destinations with static qubit-register sources;
 - scalar `bool` variables and constants, Boolean literals, and expression
   assignments;
 - projective measurement of individual qubits and register selections;
@@ -2463,9 +2464,85 @@ indices, and implicit-read bindings are released on success and failed lowering
 without releasing caller-owned storage. No new bra instruction or build option
 is required.
 
-Runtime range destinations, measurement into runtime index-set destinations,
-aliases, computed register sources, further indexing of selections, arithmetic
-compound operators, and general block-local declarations remain unsupported.
+Runtime range destinations, aliases, computed register sources, further indexing
+of selections, arithmetic compound operators, and general block-local declarations
+remain unsupported.
+
+### Runtime index-set measurement destinations
+
+Both measurement syntaxes accept a runtime-dependent index set on a named,
+writable `bit[n]` register. The source must be a whole qubit register or a static
+qubit-register selection of the same width. The first source qubit maps to the
+first destination entry, and subsequent entries follow selection order.
+As with other measurements, both operands must be registers or both scalars:
+`flags[{i}]` is a `bit[1]` destination and accepts `q[{0}]`, `q[0:0]`, or a whole
+`qubit[1]` register, but does not accept scalar `q[0]` or a scalar qubit.
+
+Destination entries may independently use supported INT/UINT expressions,
+including nested accesses and negative indices. Each occurrence is captured
+once in source order, normalized against the destination register width, and
+checked before any measurement. UINT values pass checked conversion to QCX INT.
+Duplicate normalized destinations are rejected before measuring: for
+`bit[4] flags`, `{i, 3}` fails when `i == -1`. Repeated source qubits are allowed
+and measured in their listed order.
+
+All destination indices see the original classical values. Every QCX `M` is
+immediately followed by a copy of `:OUTCOME` into private storage. Only after
+all measurements complete are those results written to the selected destinations;
+unselected bits are preserved. Destination bounds, duplicate, nested-access,
+and arithmetic failures therefore happen before quantum collapse or destination
+writes. This does not promise rollback for backend failures after measurement
+has begun.
+
+The equal-sized register mapping and two equivalent syntaxes follow the
+[OpenQASM measurement rules](https://openqasm.com/language/insts.html#measurement).
+The exact capture/check timing, delayed writes, and rejection of duplicate
+destinations are converter policies; the specification does not settle
+conflicting writes to repeated destination indices.
+
+Source qubit selections in this subset accept signed integer literals and
+supported constant INT/UINT expressions, including named constants. Ranges
+require both bounds and a nonzero constant step; empty and out-of-bounds
+selections are rejected during conversion. Runtime- or iterator-dependent
+qubit selectors remain unsupported, including unrolled iterator dependencies.
+Destination indices may depend on active iterators, with normal scoped shadowing;
+constant registers and active iterators remain read-only.
+
+Runtime destination checks execute only on reached paths. Skipped branches,
+loop transfers, and empty loops do not evaluate those indices or measure qubits,
+but names, types, syntax, source qubit selections, and matching register widths
+are still validated. Entirely static destinations retain the existing static
+measurement path and conversion-time checks.
+
+<!-- runtime-bit-set-measurement-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit[2] q;
+bit[4] flags = "0100";
+int high = -1;
+uint low = 0;
+x q[0];
+measure q[{1, 0}] -> flags[{high, low}]; // flags is "0101".
+reset q;
+if (flags[low]) { x q[1]; }
+flags[{low, high}] = measure q;         // flags is "1100".
+bit[1] one = "0";
+one[{low}] = measure q[{1}];            // A register destination; one is "1".
+```
+
+Destination registers wider than native UINT use existing QCX element storage,
+while `bit[1]` keeps scalar storage with its index still checked. A selection of `k` entries
+uses `k*(k-1)/2` pairwise comparisons for duplicate detection, avoiding a native
+bitmap limit. The converter checks the comparison count against the QCX output
+budget before allocating capture storage, and checks the full generated output
+before emitting any measurement. Destination register and selection widths must
+fit QCX INT. Captured indices and outcomes are released on success and failed
+lowering while preserving caller-owned temporary storage. No new bra instruction
+or build option is required.
+
+Runtime range destinations, runtime qubit indexing/selections, aliases, computed
+sources, and further indexing of selections remain unsupported.
 
 ### Bit-register equality
 
@@ -3152,9 +3229,10 @@ stay on the paths that reach them: skipped branches, loop bodies, transfers,
 and short-circuit operands skip these runtime operations. Names, types, and
 syntax are still validated during conversion, including on unreachable paths.
 Static indices retain their existing conversion-time checks and QCX output.
-Dynamic ranges and discrete sets, multidimensional indexing, and aliases remain
-unsupported. Whole-register and static-selection bitwise operations and shifts
-are described above.
+Runtime range destinations, multidimensional indexing, and aliases remain
+unsupported. Register-valued measurement destinations are described in
+[Runtime index-set measurement destinations](#runtime-index-set-measurement-destinations).
+Supported register expressions and assignments are described above.
 
 ### Boolean values and conversions
 
@@ -4162,7 +4240,9 @@ register selections. Measurement requires both operands to be scalars or both
 to be equal-sized register selections.
 
 Qubit indices, range bounds, range steps, and discrete indices must be signed
-integer literals outside constant loop scopes. Bit selections also accept
+integer literals outside constant loop scopes, except for the constant-expression
+qubit selectors supported by runtime index-set measurement destinations above.
+Bit selections also accept
 supported constant `int` and `uint` expressions, including named constants and
 casts. Both range bounds must be present. A zero step, an empty
 range, or an out-of-bounds index is rejected during conversion.
@@ -5879,7 +5959,7 @@ The current prototype does not reliably support:
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
 - scalar-bit shifts, runtime bit-register range expressions outside direct scalar-bit loop sources,
-  runtime bit-register range destinations and measurement into runtime index sets,
+  runtime bit-register range destinations,
   ordered bit-register comparisons, whole-array bitwise operations, direct
   Boolean bitwise operations, or classical functions other than the
   `exp`/`sqrt`/`log`/`sin`/`cos`/`tan`/`arcsin`/`arccos`/`arctan`/`ceiling`/`floor`/
@@ -6699,6 +6779,20 @@ Unit tests additionally check capture/check/snapshot/write ordering, once-only
 implicit LHS reads, independent explicit RHS accesses, output budgets, and
 restoration of expression state, temporary ownership, and snapshot bindings after
 success and failure. Run with `--bra /path/to/bra`, including a UBSan build.
+
+`bra/test/qasm2qcx_runtime_bit_set_measurement_numerical.py` checks both measurement
+syntaxes with static qubit sources and runtime index-set destinations through
+129 bits. Independent bit-list references cover selection order, mixed INT/UINT
+indices, negative aliases, singleton storage, repeated qubits, and unchanged
+unselected bits. Cases exercise original-value destination captures, skipped
+measurements without quantum collapse, loop reentry, nested transfers, iterator
+shadowing, entangled-state correlations, repeated measurements, feedback, and
+the executable example above. Instrumented failure cases verify that bad indices,
+duplicates, and arithmetic failures stop before measurement, including on later
+loop iterations. Unit tests cover metadata without evaluation, scalar/register
+distinctions, skipped-body validation, capture/check/measurement/write ordering,
+output budgets, and scope/temporary cleanup after success and failed conversion.
+Run with `--bra /path/to/bra`, including a UBSan build.
 
 `bra/test/qasm2qcx_runtime_bit_numerical.py` verifies runtime reads, assignments,
 both measurement-destination syntaxes, singleton storage, negative indices,

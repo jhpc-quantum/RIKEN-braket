@@ -3,6 +3,7 @@
 
 import argparse
 import pathlib
+import re
 import resource
 import unittest
 
@@ -149,6 +150,15 @@ class BackendTests(unittest.TestCase):
             self.assertNotIn('runtime error:', result.stderr)
             self.assertEqual(result.stdout.split(), ['12345', '12345'])
             type(self).checked += 1
+
+    def test_documented_measurement_example(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- runtime-bit-set-measurement-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        source = examples[0].removeprefix('OPENQASM 3.0;')
+        self.check_initializers(source + '\nbool same = flags == "1100";',
+                                (), (), ('same', 'one', 'high', 'low'), (1, 1, -1, 0))
 
     def test_bad_destinations_fail_before_first_measurement(self):
         limits = self.module.QASM2QCXConverter
