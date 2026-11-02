@@ -296,7 +296,21 @@ class _RuntimeBitSetSelection:
         return len(self.indices)
 
 
-_BitSelectionLoop = _StaticBitSelection | _RuntimeSingletonBitSelection | _RuntimeBitSetSelection
+@dataclasses.dataclass(frozen=True)
+class _RuntimeBitRangeSelection:
+    # Runtime ranges have no fixed selection width. Retain the raw operands
+    # until loop-entry capture, including constants in mixed runtime ranges.
+    source_name: str
+    source_width: int
+    bounds: ast.RangeDefinition
+    start_type: ValueType
+    step_type: ValueType
+    stop_type: ValueType
+
+
+_BitSelectionLoop = (
+    _StaticBitSelection | _RuntimeSingletonBitSelection | _RuntimeBitSetSelection | _RuntimeBitRangeSelection
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -454,6 +468,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     MAX_LOOP_ITERATIONS = 10000
     MAX_EXPANDED_LOOP_STATEMENTS = 100000
     MAX_LOOP_OUTPUT_LINES = 1000000
+    MAX_RUNTIME_BIT_RANGE_POSITIONS = 1000000
     MAX_GATE_POWER_OUTPUT_LINES = 100000
     # Keep literal instruction metadata within bra's ANGLEBITS2PHASE limits.
     MAX_ANGLE_PHASE_MODIFIERS = 1024
@@ -4771,19 +4786,30 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if (not self.__is_initialization_process and constant is None
                 and self.__capitalize_variable_name(name) not in self.__sized_bit_variables):
             raise NoVariableNameException(name)
+        size = constant.width if constant is not None else self.__bit_register_source_sizes[name]
         selection = None
         if isinstance(source.index, ast.DiscreteSet):
             entries = source.index.values
             info = tuple(self.__bit_index_info(index, iterators) for index in entries)
             if any(runtime for _, runtime in info):
-                size = constant.width if constant is not None else self.__bit_register_source_sizes[name]
-                if not 1 <= size <= self.QCX_INT_MAX:
-                    raise InvalidLoopRangeException('Runtime selection source width must fit QCX INT indexing')
                 if len(entries) == 1:
                     selection = _RuntimeSingletonBitSelection(name, size, entries[0], info[0][0])
                 else:
                     selection = _RuntimeBitSetSelection(
                         name, size, tuple(entries), tuple(value_type for value_type, _ in info))
+        elif (isinstance(source.index, list) and len(source.index) == 1
+              and isinstance(source.index[0], ast.RangeDefinition)):
+            bounds = source.index[0]
+            if bounds.start is None or bounds.end is None:
+                raise InvalidLoopRangeException('Bit-register range requires both bounds')
+            start_type, start_runtime = self.__bit_index_info(bounds.start, iterators)
+            step_type, step_runtime = ((ValueType.INT, False) if bounds.step is None
+                                      else self.__bit_index_info(bounds.step, iterators))
+            stop_type, stop_runtime = self.__bit_index_info(bounds.end, iterators)
+            if start_runtime or step_runtime or stop_runtime:
+                selection = _RuntimeBitRangeSelection(name, size, bounds, start_type, step_type, stop_type)
+        if selection is not None and not 1 <= size <= self.QCX_INT_MAX:
+            raise InvalidLoopRangeException('Runtime selection source width must fit QCX INT indexing')
         # The shared resolver rejects active scalar iterators and retains
         # static index order/repetitions without inspecting mutable bit values.
         if selection is None:
@@ -4792,7 +4818,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise UnsupportedOpenQASMError('bit-selection iteration requires a register selection, not a scalar bit')
         if not isinstance(iteration_type, ast.BitType) or iteration_type.size is not None:
             raise UnsupportedOpenQASMError('bit-selection iteration requires a scalar bit iterator')
-        if selection.width > self.QCX_INT_MAX:
+        if isinstance(selection, _RuntimeBitRangeSelection):
+            # The validated raw progression can contain up to 2*size entries,
+            # including negative aliases. Its table capacity/count must fit INT.
+            if 2 * size > self.QCX_INT_MAX:
+                raise InvalidLoopRangeException('Runtime bit-range position capacity must fit QCX INT indexing')
+        elif selection.width > self.QCX_INT_MAX:
             raise InvalidLoopRangeException('Bit-selection loop size exceeds QCX INT range')
         return selection
 
@@ -5337,7 +5368,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         with self.__iterator_binding(statement.identifier.name, binding):
             self.__validate_loop_body(statement.block, self.__loop_iterator_types())
         self.__validate_loop_syntax(statement)
-        if isinstance(selection, _RuntimeBitSetSelection):
+        if isinstance(selection, (_RuntimeBitRangeSelection, _RuntimeBitSetSelection)):
             if not self.__is_initialization_process:
                 self.__emit_bit_selection_for(statement, selection)
             return
@@ -5451,7 +5482,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__release_temporary_variable(temporary)
 
     def __emit_bit_selection_for(
-            self, statement: ast.ForInLoop, selection: _StaticBitSelection | _RuntimeBitSetSelection) -> None:
+            self, statement: ast.ForInLoop,
+            selection: _StaticBitSelection | _RuntimeBitSetSelection | _RuntimeBitRangeSelection) -> None:
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
         previous_used = self.__used_temporary_variables.copy()
@@ -5466,20 +5498,26 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                         if selection.source_name in self.__const_bit_register_values else None)
             source = self.__capitalize_variable_name(selection.source_name)
             size = constant.width if constant is not None else self.__bit_variable_name_size_map[source]
-            positions = self.__add_temporary_int_array(selection.width, 'POSITIONS')
             iterator = self.__add_new_temporary_variable(ValueType.BIT)
             index = self.__add_new_temporary_variable(ValueType.INT)
             bit_index = self.__add_new_temporary_variable(ValueType.INT)
-            for position, selected_index in enumerate(selection.indices):
-                if isinstance(selection, _RuntimeBitSetSelection):
-                    # Capture every occurrence in source order before binding
-                    # the iterator or executing any body statement. The table
-                    # owns a copy, so capture storage can be reused immediately.
-                    captured = self.__capture_array_index(selected_index, size)
-                    self.__qcx_lines.append(f'LET {positions}:{position} := {captured}')
-                    self.__release_temporary_variable(captured)
-                else:
-                    self.__qcx_lines.append(f'LET {positions}:{position} := {selected_index}')
+            if isinstance(selection, _RuntimeBitRangeSelection):
+                label = f'QASM2QCX_BIT_RANGE_{self.__array_index}'
+                self.__array_index += 1
+                positions, count = self.__capture_bit_range_positions(selection.bounds, size, label)
+            else:
+                positions = self.__add_temporary_int_array(selection.width, 'POSITIONS')
+                count = selection.width
+                for position, selected_index in enumerate(selection.indices):
+                    if isinstance(selection, _RuntimeBitSetSelection):
+                        # Capture every occurrence in source order before binding
+                        # the iterator or executing any body statement. The table
+                        # owns a copy, so capture storage can be reused immediately.
+                        captured = self.__capture_array_index(selected_index, size)
+                        self.__qcx_lines.append(f'LET {positions}:{position} := {captured}')
+                        self.__release_temporary_variable(captured)
+                    else:
+                        self.__qcx_lines.append(f'LET {positions}:{position} := {selected_index}')
             # QCX cannot nest array subscripts. Load the selected position
             # first, then copy that live bit into the scoped scalar iterator.
             # bit[1] has scalar INT storage, so its read needs no subscript.
@@ -5497,12 +5535,19 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     self.__loop_context(end_label, next_label):
                 for child in statement.block:
                     self.visit(child)
-            self.__qcx_lines.extend([
-                f'@{next_label}', f'JUMPIF {end_label} {index} == {selection.width - 1}',
-                f'LET {index} += 1', f'JUMP {body_label}', f'@{end_label}',
-            ])
+            self.__qcx_lines.append(f'@{next_label}')
+            if isinstance(count, int):
+                self.__qcx_lines.extend([
+                    f'JUMPIF {end_label} {index} == {count - 1}', f'LET {index} += 1', f'JUMP {body_label}',
+                ])
+            else:
+                # count fits INT and index is at most count-1 before advancing.
+                self.__qcx_lines.extend([
+                    f'LET {index} += 1', f'JUMPIF {body_label} {index} < {count}',
+                ])
+            self.__qcx_lines.append(f'@{end_label}')
             self.__hoist_temporary_declarations(previous_temporaries)
-            if constant is not None or self.__inside_expanded_loop():
+            if constant is not None or isinstance(selection, _RuntimeBitRangeSelection) or self.__inside_expanded_loop():
                 self.__check_loop_output_limit()
         finally:
             (self.__expression_kind, self.__value, self.__value_type,
@@ -5532,11 +5577,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise InvalidBitOperandException('An angle bit-selection loop requires an angle source')
         return self.__value
 
-    def __capture_angle_range_integer(
+    def __capture_bit_range_integer(
             self, expression: ast.Expression, label: str) -> tuple[str, str]:
         value, value_type, value_kind = self.__condition_operand(expression)
         if value_type not in (ValueType.INT, ValueType.UINT):
-            raise InvalidLoopRangeException('Angle bit range operands must be integers')
+            raise InvalidLoopRangeException('Bit range operands must be integers')
         high = self.__add_new_temporary_variable(ValueType.INT)
         low = self.__add_new_temporary_variable(ValueType.UINT)
         # Represent n exactly as high * (UINT_MAX + 1) + low. Captured native
@@ -5561,7 +5606,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__emit_assignment(low, ':=', ValueType.UINT, value, value_type, value_kind)
         return high, low
 
-    def __emit_angle_range_comparison(
+    def __emit_bit_range_comparison(
             self, lhs: tuple[str, str], operator: str, rhs: tuple[str, str],
             true_label: str, false_label: str) -> None:
         # Lexicographic comparison of the signed high part and unsigned low
@@ -5573,17 +5618,21 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             f'JUMP {false_label}',
         ])
 
-    def __capture_angle_range_positions(
-            self, selection: _RuntimeAngleBitRangeSelection, label: str) -> tuple[str, str]:
-        bounds, width = selection.bounds, selection.angle_type.width
-        current = self.__capture_angle_range_integer(bounds.start, label + '_START_NONNEGATIVE')
-        step = self.__capture_angle_range_integer(
+    def __capture_bit_range_positions(
+            self, bounds: ast.RangeDefinition, width: int, label: str) -> tuple[str, str]:
+        capacity = min(2 * width, self.MAX_RUNTIME_BIT_RANGE_POSITIONS)
+        if not 1 <= capacity <= self.QCX_INT_MAX:
+            raise InvalidLoopRangeException('Bit-range position capacity must fit QCX INT indexing')
+        current = self.__capture_bit_range_integer(bounds.start, label + '_START_NONNEGATIVE')
+        step = self.__capture_bit_range_integer(
             bounds.step if bounds.step is not None else ast.IntegerLiteral(1), label + '_STEP_NONNEGATIVE')
-        stop = self.__capture_angle_range_integer(bounds.end, label + '_STOP_NONNEGATIVE')
+        stop = self.__capture_bit_range_integer(bounds.end, label + '_STOP_NONNEGATIVE')
         # Every valid raw position is in [-width, width). A strictly monotonic
         # nonzero-step range can therefore contain at most 2*width entries,
         # including aliases such as -1 and width-1, which both must be kept.
-        positions = self.__add_temporary_int_array(2 * width, 'POSITIONS')
+        # Cap allocation independently of the source width; oversized reached
+        # selections fail before their first body, without unbounded storage.
+        positions = self.__add_temporary_int_array(capacity, 'POSITIONS')
         count = self.__add_new_temporary_variable(ValueType.INT)
         normalized = self.__add_new_temporary_variable(ValueType.UINT)
         previous_low = self.__add_new_temporary_variable(ValueType.UINT)
@@ -5595,16 +5644,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             f'ASSERT {step[1]} \\= 0', f'@{entry}',
             f'JUMPIF {positive} {step[0]} == 0',
         ])
-        self.__emit_angle_range_comparison(current, '<', stop, finish, append)
+        self.__emit_bit_range_comparison(current, '<', stop, finish, append)
         self.__qcx_lines.append(f'@{positive}')
-        self.__emit_angle_range_comparison(current, '>', stop, finish, append)
+        self.__emit_bit_range_comparison(current, '>', stop, finish, append)
         self.__qcx_lines.extend([
             f'@{append}', f'ASSERT {current[0]} >= -1', f'ASSERT {current[0]} <= 0',
             f'LET {normalized} := {current[1]}', f'JUMPIF {negative} {current[0]} < 0',
             f'ASSERT {normalized} < {width}', f'JUMP {store}',
             f'@{negative}', f'ASSERT {normalized} >= {self.QCX_UINT_MAX + 1 - width}',
             f'LET {normalized} += {width}', f'@{store}',
-            f'ASSERT {count} < {2 * width}', f'LET {positions}:{count} := :INT:{normalized}',
+            f'ASSERT {count} < {capacity}', f'LET {positions}:{count} := :INT:{normalized}',
             f'LET {count} += 1',
             # UINT addition wraps by definition. Its carry corrects the high
             # part, so the pair still holds the exact mathematical candidate.
@@ -5626,7 +5675,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         try:
             self.__expression_kind = ExpressionKind.ARITHMETIC
             source = self.__angle_selection_loop_source(selection.source)
-            positions, count = self.__capture_angle_range_positions(selection, label)
+            positions, count = self.__capture_bit_range_positions(selection.bounds, selection.angle_type.width, label)
             yield source, positions, count
         finally:
             (self.__expression_kind, self.__value, self.__value_type,
