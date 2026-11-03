@@ -2490,8 +2490,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_measurement(
             self, measurement: ast.QuantumMeasurement,
             target: ast.Identifier | ast.IndexedIdentifier | None) -> None:
-        if self.__runtime_bit_range_measurement_info(measurement, target) is not None:
-            raise UnsupportedOpenQASMError('runtime bit-register range measurement lowering')
+        runtime_range = self.__runtime_bit_range_measurement_info(measurement, target)
+        if runtime_range is not None:
+            self.__emit_runtime_bit_range_measurement(runtime_range)
+            return
         runtime_target = self.__runtime_bit_set_measurement_info(measurement, target)
         if runtime_target is not None:
             self.__emit_runtime_bit_set_measurement(runtime_target)
@@ -9356,6 +9358,47 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__qcx_lines.extend([
                 f'LET {index} := 0', f'@{label}_WRITE', f'JUMPIF {label}_END {index} >= {count}',
                 f'LET {position} := {positions}:{index}', f'LET {operand} := {result}:{index}',
+                f'LET {index} += 1', f'JUMP {label}_WRITE', f'@{label}_END',
+            ])
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
+    def __emit_runtime_bit_range_measurement(self, info: _RuntimeBitRangeMeasurementInfo) -> None:
+        # Two lines per measured qubit, one count assertion, and a write loop.
+        remaining_lines = 2 * info.width + 9
+        if len(self.__qcx_lines) + remaining_lines > self.MAX_LOOP_OUTPUT_LINES:
+            raise InvalidBitOperandException('Runtime range measurement exceeds QCX output limit')
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        label = f'QASM2QCX_RANGE_MEASUREMENT_{self.__array_index}'
+        self.__array_index += 1
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            positions, count = self.__capture_bit_range_positions(
+                info.destination.bounds, info.destination.source_width, label, capacity=info.width)
+            self.__qcx_lines.append(f'ASSERT {count} == {info.width}')
+            self.__check_distinct_bit_range_positions(positions, count, info.destination.source_width, label)
+            # The private position table remains reserved and unchanged across
+            # every M and destination write. All addresses are already checked.
+            outcomes = self.__add_temporary_int_array(info.width, 'RANGE_MEASUREMENT_OUTCOMES')
+            index = self.__add_new_temporary_variable(ValueType.INT)
+            position = self.__add_new_temporary_variable(ValueType.INT)
+            if len(self.__qcx_lines) + 2 * info.width + 8 > self.MAX_LOOP_OUTPUT_LINES:
+                raise InvalidBitOperandException('Runtime range measurement exceeds QCX output limit')
+            for entry, qubit in enumerate(info.qubit_indices):
+                self.__qcx_lines.extend([
+                    f'M {self.__to_qubit_index(info.qubit_source_name, qubit)}',
+                    f'LET {outcomes}:{entry} := :OUTCOME',
+                ])
+            target = self.__capitalize_variable_name(info.destination.source_name)
+            operand = target if info.destination.source_width == 1 else f'{target}:{position}'
+            self.__qcx_lines.extend([
+                f'LET {index} := 0', f'@{label}_WRITE', f'JUMPIF {label}_END {index} >= {count}',
+                f'LET {position} := {positions}:{index}', f'LET {operand} := {outcomes}:{index}',
                 f'LET {index} += 1', f'JUMP {label}_WRITE', f'@{label}_END',
             ])
         finally:
