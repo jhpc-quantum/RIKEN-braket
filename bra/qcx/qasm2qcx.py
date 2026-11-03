@@ -405,6 +405,11 @@ class _RuntimeBitSetAssignmentInfo:
 class _RuntimeBitRangeAssignmentInfo:
     selection: _RuntimeBitRangeSelection
     rhs_width: int
+    operator: str
+
+    @property
+    def binary_operator(self) -> str | None:
+        return None if self.operator == '=' else self.operator[:-1]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -7264,8 +7269,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         selection = self.__runtime_bit_range_destination(statement.lvalue, iterators)
         if selection is None:
             return None
-        if statement.op.name != '=':
-            raise UnsupportedOpenQASMError(f'runtime bit-register range assignment operator {statement.op.name}')
+        operator = statement.op.name
+        if operator not in ('=', '&=', '|=', '^='):
+            raise UnsupportedOpenQASMError(f'runtime bit-register range assignment operator {operator}')
         width = self.__bit_register_expression_width(statement.rvalue, iterators)
         if width is None or not 1 <= width <= self.QCX_INT_MAX:
             raise InvalidBitOperandException('A runtime range assignment requires a known-width bit register RHS')
@@ -7277,7 +7283,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                         raise NoVariableNameException(bound)
                 elif bound in self.__classical_source_types:
                     self.__type_of(self.__capitalize_variable_name(bound))
-        return _RuntimeBitRangeAssignmentInfo(selection, width)
+        return _RuntimeBitRangeAssignmentInfo(selection, width, operator)
 
     def __runtime_bit_set_assignment_info(
             self, statement: ast.ClassicalAssignment,
@@ -9121,6 +9127,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __emit_runtime_bit_range_assignment(
             self, info: _RuntimeBitRangeAssignmentInfo, expression: ast.Expression) -> None:
+        if info.binary_operator is not None:
+            raise UnsupportedOpenQASMError('runtime bit-register range bitwise assignment lowering')
         selection, width = info.selection, info.rhs_width
         comparisons = width * (width - 1) // 2
         if len(self.__qcx_lines) + comparisons + 2 * width + 1 > self.MAX_LOOP_OUTPUT_LINES:
