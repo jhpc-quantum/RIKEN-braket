@@ -3,6 +3,7 @@
 
 import argparse
 import pathlib
+import re
 import resource
 import unittest
 from unittest.mock import patch
@@ -250,6 +251,16 @@ class BackendTests(unittest.TestCase):
             expected = (1 / math.sqrt(2), cmath.exp(1j * pattern * math.pi / 8) / math.sqrt(2))
             for fused in (False, True):
                 BackendAuditTests.check(self, self.program(source, fused=fused), expected)
+
+    def test_documented_runtime_range_shift_example(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- runtime-bit-range-shift-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        source = examples[0].removeprefix('OPENQASM 3.0;')
+        self.check_initializers(source + '\nbool same = flags == "00110000";',
+                                (), (), ('same', 'one', 'start', 'step', 'stop', 'distance', 'last'),
+                                (1, 0, 0, 1, 3, 4, -1))
 
     def test_range_count_and_arithmetic_failures_precede_all_writes(self):
         cases = (('start:0:stop', '1 / zero', 'assertion failed'),
