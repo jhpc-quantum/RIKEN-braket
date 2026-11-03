@@ -8984,8 +8984,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         bit_range = self.__runtime_bit_range_assignment_info(statement)
         if bit_range is not None:
             if isinstance(bit_range, _RuntimeBitRangeShiftAssignmentInfo):
-                raise UnsupportedOpenQASMError('runtime bit-register range shift assignment lowering')
-            self.__emit_runtime_bit_range_assignment(bit_range, statement.rvalue)
+                self.__emit_runtime_bit_range_shift_assignment(bit_range, statement.rvalue)
+            else:
+                self.__emit_runtime_bit_range_assignment(bit_range, statement.rvalue)
             return
         source_name = self.__operand_name(statement.lvalue)
         self.__reject_constant_bit_target(statement.lvalue)
@@ -9195,6 +9196,113 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 for index, value in zip(indices, snapshot):
                     operand = target if selection.source_width == 1 else f'{target}:{index}'
                     self.__qcx_lines.append(f'LET {operand} := {value}')
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
+    def __check_distinct_bit_range_positions(self, positions: str, count: str, width: int, label: str) -> None:
+        index, first, stride, divisor, remainder, period = (
+            self.__add_new_temporary_variable(ValueType.INT) for _ in range(6))
+        # The normalized arithmetic progression repeats after
+        # width/gcd(width, step mod width) entries. Derive the stride from
+        # its first two captured positions without reevaluating the raw step.
+        # This avoids a quadratic duplicate scan for large runtime selections.
+        self.__qcx_lines.extend([
+            f'JUMPIF {label}_DISTINCT_END {count} <= 1',
+            f'LET {index} := 0', f'LET {first} := {positions}:{index}',
+            f'LET {index} := 1', f'LET {stride} := {positions}:{index}', f'LET {stride} -= {first}',
+            f'JUMPIF {label}_DISTINCT_NONNEGATIVE {stride} >= 0', f'LET {stride} += {width}',
+            f'@{label}_DISTINCT_NONNEGATIVE', f'LET {divisor} := {width}', f'@{label}_DISTINCT_GCD',
+            f'JUMPIF {label}_DISTINCT_PERIOD {stride} == 0',
+            f'LET {remainder} := {divisor}', f'LET {remainder} %= {stride}',
+            f'LET {divisor} := {stride}', f'LET {stride} := {remainder}', f'JUMP {label}_DISTINCT_GCD',
+            f'@{label}_DISTINCT_PERIOD', f'LET {period} := {width}', f'LET {period} /= {divisor}',
+            f'ASSERT {count} <= {period}', f'@{label}_DISTINCT_END',
+        ])
+
+    def __capture_runtime_range_shift_distance(
+            self, expression: ast.Expression, capacity: int, count: str, label: str) -> str:
+        value, value_type, value_kind = self.__condition_operand(expression)
+        captured = self.__add_new_temporary_variable(value_type)
+        if value_kind == ValueKind.LITERAL:
+            # Large nonnegative counts always produce zeros. Representable
+            # negative literals fail only when reached. Neither case needs
+            # its original magnitude in the generated QCX.
+            value = -1 if int(value) < 0 else min(int(value), capacity)
+        self.__qcx_lines.append(f'LET {captured} := {value}')
+        if value_type == ValueType.INT:
+            self.__qcx_lines.append(f'ASSERT {captured} >= 0')
+            limit = count
+        else:
+            limit = self.__add_new_temporary_variable(ValueType.UINT)
+            self.__qcx_lines.append(f'LET {limit} := :UINT:{count}')
+        self.__qcx_lines.append(f'JUMPIF {label}_SHIFT_END {captured} >= {limit}')
+        distance = self.__add_new_temporary_variable(ValueType.INT)
+        operand = f':INT:{captured}' if value_type == ValueType.UINT else captured
+        self.__qcx_lines.append(f'LET {distance} := {operand}')
+        return distance
+
+    def __runtime_bit_range_shift_result(
+            self, info: _RuntimeBitRangeShiftAssignmentInfo, positions: str, count: str,
+            expression: ast.Expression, label: str) -> str:
+        original = self.__add_temporary_int_array(info.capacity, 'RANGE_SHIFT_SOURCE')
+        result = self.__add_temporary_int_array(info.capacity, 'RANGE_SHIFT_RESULT')
+        index = self.__add_new_temporary_variable(ValueType.INT)
+        position = self.__add_new_temporary_variable(ValueType.INT)
+        target = self.__capitalize_variable_name(info.selection.source_name)
+        operand = target if info.selection.source_width == 1 else f'{target}:{position}'
+        # Snapshot every selected bit and initialize the complete zero result
+        # before evaluating a possibly self-referential shift distance.
+        self.__qcx_lines.extend([
+            f'LET {index} := 0', f'@{label}_SNAPSHOT', f'JUMPIF {label}_SNAPSHOT_END {index} >= {count}',
+            f'LET {position} := {positions}:{index}', f'LET {original}:{index} := {operand}',
+            f'LET {result}:{index} := 0', f'LET {index} += 1', f'JUMP {label}_SNAPSHOT',
+            f'@{label}_SNAPSHOT_END',
+        ])
+        distance = self.__capture_runtime_range_shift_distance(expression, info.capacity, count, label)
+        source_index = self.__add_new_temporary_variable(ValueType.INT)
+        target_index = self.__add_new_temporary_variable(ValueType.INT)
+        # Advance two bounded indices instead of adding a distance to each
+        # candidate. Each index increments at most to count, which fits INT.
+        self.__qcx_lines.extend([
+            f'LET {source_index} := {0 if info.operator == "<<=" else distance}',
+            f'LET {target_index} := {distance if info.operator == "<<=" else 0}',
+            f'@{label}_SHIFT_COPY', f'JUMPIF {label}_SHIFT_END {source_index} >= {count}',
+            f'JUMPIF {label}_SHIFT_END {target_index} >= {count}',
+            f'LET {result}:{target_index} := {original}:{source_index}',
+            f'LET {source_index} += 1', f'LET {target_index} += 1', f'JUMP {label}_SHIFT_COPY',
+            f'@{label}_SHIFT_END',
+        ])
+        return result
+
+    def __emit_runtime_bit_range_shift_assignment(
+            self, info: _RuntimeBitRangeShiftAssignmentInfo, expression: ast.Expression) -> None:
+        if len(self.__qcx_lines) + 8 > self.MAX_LOOP_OUTPUT_LINES:
+            raise InvalidBitOperandException('Runtime range shift exceeds QCX output limit')
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        label = f'QASM2QCX_RANGE_SHIFT_{self.__array_index}'
+        self.__array_index += 1
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            positions, count = self.__capture_bit_range_positions(
+                info.selection.bounds, info.selection.source_width, label, capacity=info.capacity)
+            self.__check_distinct_bit_range_positions(positions, count, info.selection.source_width, label)
+            result = self.__runtime_bit_range_shift_result(info, positions, count, expression, label)
+            index = self.__add_new_temporary_variable(ValueType.INT)
+            position = self.__add_new_temporary_variable(ValueType.INT)
+            if len(self.__qcx_lines) + 8 > self.MAX_LOOP_OUTPUT_LINES:
+                raise InvalidBitOperandException('Runtime range shift exceeds QCX output limit')
+            target = self.__capitalize_variable_name(info.selection.source_name)
+            operand = target if info.selection.source_width == 1 else f'{target}:{position}'
+            self.__qcx_lines.extend([
+                f'LET {index} := 0', f'@{label}_WRITE', f'JUMPIF {label}_END {index} >= {count}',
+                f'LET {position} := {positions}:{index}', f'LET {operand} := {result}:{index}',
+                f'LET {index} += 1', f'JUMP {label}_WRITE', f'@{label}_END',
+            ])
         finally:
             (self.__expression_kind, self.__value, self.__value_type,
              self.__value_kind, self.__evaluate_constant) = previous
