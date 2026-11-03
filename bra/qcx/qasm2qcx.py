@@ -402,6 +402,13 @@ class _RuntimeBitSetAssignmentInfo:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeBitRangeCopyInfo:
+    selection: _RuntimeBitRangeSelection
+    destination_name: str
+    width: int
+
+
+@dataclasses.dataclass(frozen=True)
 class _RuntimeBitRangeAssignmentInfo:
     selection: _RuntimeBitRangeSelection
     rhs_width: int
@@ -5275,6 +5282,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __validate_register_operator_assignment(
             self, statement: ast.ClassicalAssignment,
             iterators: dict[str, ValueType] | None = None) -> bool:
+        if self.__runtime_bit_range_copy_info(statement, iterators) is not None:
+            return True
         if self.__validate_angle_bit_assignment(statement, iterators):
             return True
         if self.__runtime_bit_set_assignment_info(statement, iterators) is not None:
@@ -5337,6 +5346,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # skipped body. Sized angle bit selections were handled above.
             self.__loop_index_info(node, iterators)
         if isinstance(node, ast.ClassicalAssignment):
+            if self.__runtime_bit_range_copy_info(node, iterators) is not None:
+                return
             if self.__validate_angle_bit_assignment(node, iterators):
                 return
             if self.__runtime_bit_range_assignment_info(node, iterators) is not None:
@@ -7297,6 +7308,69 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise MeasurementSizeMismatchException(len(indices), expected_width)
         return name, tuple(indices)
 
+    def __runtime_bit_range_source(
+            self, source: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangeSelection | None:
+        if (not isinstance(source, ast.IndexExpression) or not isinstance(source.collection, ast.Identifier)
+                or not isinstance(source.index, list) or len(source.index) != 1
+                or not isinstance(source.index[0], ast.RangeDefinition)):
+            return None
+        name, bounds = source.collection.name, source.index[0]
+        source_type = self.__constant_source_types.get(name) or self.__classical_source_types.get(name)
+        if not isinstance(source_type, ast.BitType):
+            return None
+        if ((iterators is not None and name in iterators)
+                or any(name in scope for scope in self.__loop_bindings)):
+            raise UnsupportedOpenQASMError('bit selection of a for-loop iterator')
+        if bounds.start is None or bounds.end is None:
+            raise InvalidBitOperandException('Bit-register range requires both bounds')
+        # Inspect all operands without evaluating mixed runtime domains or
+        # guessing the selected width, including in skipped loop bodies.
+        start_type, start_runtime = self.__bit_index_info(bounds.start, iterators)
+        step_type, step_runtime = ((ValueType.INT, False) if bounds.step is None
+                                  else self.__bit_index_info(bounds.step, iterators))
+        stop_type, stop_runtime = self.__bit_index_info(bounds.end, iterators)
+        if not (start_runtime or step_runtime or stop_runtime):
+            return None
+        if source_type.size is None:
+            raise InvalidBitOperandException('Runtime range copy requires a bit-register source')
+        constant = self.__constant_bit_register(name) if name in self.__const_bit_register_values else None
+        if (not self.__is_initialization_process and constant is None
+                and self.__capitalize_variable_name(name) not in self.__sized_bit_variables):
+            raise NoVariableNameException(name)
+        size = constant.width if constant is not None else self.__bit_register_source_sizes[name]
+        if not 1 <= size <= self.QCX_INT_MAX:
+            raise InvalidBitOperandException('Runtime selection source width must fit QCX INT indexing')
+        return _RuntimeBitRangeSelection(name, size, bounds, start_type, step_type, stop_type)
+
+    def __runtime_bit_range_copy_info(
+            self, statement: ast.ClassicalAssignment,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangeCopyInfo | None:
+        selection = self.__runtime_bit_range_source(statement.rvalue, iterators)
+        if selection is None:
+            return None
+        if statement.op.name != '=':
+            raise UnsupportedOpenQASMError('runtime bit-register range copy requires plain assignment')
+        target = statement.lvalue
+        if not isinstance(target, ast.Identifier):
+            raise UnsupportedOpenQASMError('runtime bit-register range copy requires a whole-register destination')
+        name = target.name
+        self.__reject_constant_bit_target(target, iterators)
+        if ((iterators is not None and name in iterators)
+                or any(name in scope for scope in self.__loop_bindings)):
+            raise UnsupportedOpenQASMError('assignment to a for-loop iterator')
+        if name not in self.__bit_register_source_sizes:
+            raise InvalidBitOperandException('Runtime range copy requires a mutable bit-register destination')
+        if (not self.__is_initialization_process
+                and self.__capitalize_variable_name(name) not in self.__sized_bit_variables):
+            raise NoVariableNameException(name)
+        width = self.__bit_register_source_sizes[name]
+        if not 1 <= width <= self.QCX_INT_MAX:
+            raise InvalidBitOperandException('Runtime range copy width must fit QCX INT indexing')
+        # Source aliases may repeat. Only the runtime count must equal width;
+        # copies need no 2*source_width position capacity or distinctness test.
+        return _RuntimeBitRangeCopyInfo(selection, name, width)
+
     def __runtime_bit_range_destination(
             self, target: ast.Identifier | ast.IndexedIdentifier,
             iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangeSelection | None:
@@ -9030,6 +9104,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__is_initialization_process:
             return
 
+        if self.__runtime_bit_range_copy_info(statement) is not None:
+            raise UnsupportedOpenQASMError('runtime bit-register range copy lowering')
         angle_bits = self.__angle_bit_assignment_info(statement)
         if angle_bits is not None:
             self.__emit_angle_bit_assignment(angle_bits.selection, statement.rvalue, angle_bits.binary_operator)
