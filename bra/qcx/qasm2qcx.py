@@ -9065,8 +9065,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__captured_bit_register_values[id(lhs)] = previous
 
     @contextlib.contextmanager
-    def __runtime_bit_set_assignment_values(
-            self, selection: _RuntimeBitSetSelection, target: str, indices: tuple[str, ...],
+    def __runtime_bit_assignment_values(
+            self, selection: _RuntimeBitSetSelection | _RuntimeBitRangeSelection,
+            target: str, indices: tuple[str, ...],
             expression: ast.Expression, operator: str | None) -> Iterator[tuple[str | int, ...]]:
         if operator is None:
             with self.__bit_register_expression_value(expression) as bits:
@@ -9079,7 +9080,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 old_bits.append(bit)
                 operand = target if selection.source_width == 1 else f'{target}:{index}'
                 self.__qcx_lines.append(f'LET {bit} := {operand}')
-            lhs = ast.IndexExpression(ast.Identifier(selection.source_name), ast.DiscreteSet(list(selection.indices)))
+            selector = (ast.DiscreteSet(list(selection.indices)) if isinstance(selection, _RuntimeBitSetSelection)
+                        else [selection.bounds])
+            lhs = ast.IndexExpression(ast.Identifier(selection.source_name), selector)
             with self.__bit_register_operation_values(lhs, tuple(old_bits), operator, expression) as bits:
                 yield bits
         finally:
@@ -9105,7 +9108,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # Static/whole-register RHS operands can be direct storage names.
             # Snapshot every nonliteral value even if dynamic destination
             # addresses prevent detecting an overlap during conversion.
-            with self.__runtime_bit_set_assignment_values(selection, target, indices, expression, operator) as values:
+            with self.__runtime_bit_assignment_values(selection, target, indices, expression, operator) as values:
                 snapshot = []
                 for value in values:
                     if isinstance(value, int):
@@ -9127,8 +9130,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __emit_runtime_bit_range_assignment(
             self, info: _RuntimeBitRangeAssignmentInfo, expression: ast.Expression) -> None:
-        if info.binary_operator is not None:
-            raise UnsupportedOpenQASMError('runtime bit-register range bitwise assignment lowering')
         selection, width = info.selection, info.rhs_width
         comparisons = width * (width - 1) // 2
         if len(self.__qcx_lines) + comparisons + 2 * width + 1 > self.MAX_LOOP_OUTPUT_LINES:
@@ -9153,7 +9154,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if len(self.__qcx_lines) + comparisons + width > self.MAX_LOOP_OUTPUT_LINES:
                 raise InvalidBitOperandException('Runtime range assignment exceeds QCX output limit')
             self.__check_distinct_bit_indices(tuple(indices))
-            with self.__bit_register_expression_value(expression) as values:
+            target = self.__capitalize_variable_name(selection.source_name)
+            with self.__runtime_bit_assignment_values(
+                    selection, target, tuple(indices), expression, info.binary_operator) as values:
                 snapshot = []
                 for value in values:
                     if isinstance(value, int):
@@ -9164,7 +9167,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                         snapshot.append(bit)
                 if len(self.__qcx_lines) + width > self.MAX_LOOP_OUTPUT_LINES:
                     raise InvalidBitOperandException('Runtime range assignment exceeds QCX output limit')
-                target = self.__capitalize_variable_name(selection.source_name)
                 for index, value in zip(indices, snapshot):
                     operand = target if selection.source_width == 1 else f'{target}:{index}'
                     self.__qcx_lines.append(f'LET {operand} := {value}')
