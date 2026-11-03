@@ -432,6 +432,17 @@ class _RuntimeBitSetMeasurementInfo:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeBitRangeMeasurementInfo:
+    destination: _RuntimeBitRangeSelection
+    qubit_source_name: str
+    qubit_indices: tuple[int, ...]
+
+    @property
+    def width(self) -> int:
+        return len(self.qubit_indices)
+
+
+@dataclasses.dataclass(frozen=True)
 class _RuntimeIteratorBinding:
     # Unlike an unrolled iterator's integer value, this names live QCX storage.
     storage: str
@@ -2061,7 +2072,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __index_selection(
             self, index, size: int, kind: str, container: str,
-            invalid_operand_exception: type[QASM2QCXError], *, constant_indices: bool = False
+            invalid_operand_exception: type[QASM2QCXError], *, constant_indices: bool = False,
+            max_indices: int | None = None
             ) -> tuple[list[int], bool]:
         def resolve_index(value):
             return (self.__constant_loop_integer(value, f'{kind} index') if constant_indices
@@ -2108,6 +2120,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if not raw_indices:
             raise invalid_operand_exception(
                 f'{kind.capitalize()} index set is empty')
+        if max_indices is not None:
+            count = ((abs(raw_indices.stop - raw_indices.start) + abs(raw_indices.step) - 1)
+                     // abs(raw_indices.step) if isinstance(raw_indices, range) else len(raw_indices))
+            if count > max_indices:
+                raise invalid_operand_exception(f'{kind.capitalize()} selection exceeds supported size limit')
 
         result = []
         for index_value in raw_indices:
@@ -2212,7 +2229,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __static_bit_indices(
             self, selector, size: int, name: str,
             iterators: set[str] | dict[str, ValueType] | None = None, *,
-            destination: bool = False, kind: str = 'bit') -> tuple[list[int], bool]:
+            destination: bool = False, kind: str = 'bit',
+            max_indices: int | None = None) -> tuple[list[int], bool]:
         # Shared normalization for static register/angle selectors, including
         # qubit sources of measurements with runtime classical destinations.
         # Even an unrolled iterator is not a declaration-scope constant. Do
@@ -2232,7 +2250,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             indices, is_register = self.__index_selection(
                 selector, size, kind, f'variable {name}[{size}]',
                 InvalidQubitOperandException if kind == 'qubit' else InvalidBitOperandException,
-                constant_indices=kind == 'qubit')
+                constant_indices=kind == 'qubit', max_indices=max_indices)
         finally:
             (self.__expression_kind, self.__value, self.__value_type,
              self.__value_kind, self.__evaluate_constant) = previous
@@ -2472,6 +2490,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_measurement(
             self, measurement: ast.QuantumMeasurement,
             target: ast.Identifier | ast.IndexedIdentifier | None) -> None:
+        if self.__runtime_bit_range_measurement_info(measurement, target) is not None:
+            raise UnsupportedOpenQASMError('runtime bit-register range measurement lowering')
         runtime_target = self.__runtime_bit_set_measurement_info(measurement, target)
         if runtime_target is not None:
             self.__emit_runtime_bit_set_measurement(runtime_target)
@@ -5339,8 +5359,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__reject_constant_bit_target(target, iterators)
             self.__reject_constant_angle_target(target, iterators)
             if (isinstance(node, ast.QuantumMeasurementStatement)
-                    and self.__runtime_bit_range_destination(target, iterators) is not None):
-                raise UnsupportedOpenQASMError('measurement into a runtime bit-register range destination')
+                    and self.__runtime_bit_range_measurement_info(node.measure, target, iterators) is not None):
+                return
             if (isinstance(node, ast.QuantumMeasurementStatement)
                     and self.__runtime_bit_set_measurement_info(node.measure, target, iterators) is not None):
                 return
@@ -7213,6 +7233,38 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         destination = self.__runtime_bit_set_selection(target, iterators, destination=True)
         if destination is None:
             return None
+        name, indices = self.__static_measurement_qubit_source(
+            measurement, iterators, expected_width=destination.width)
+        return _RuntimeBitSetMeasurementInfo(destination, name, indices)
+
+    def __runtime_bit_range_measurement_info(
+            self, measurement: ast.QuantumMeasurement,
+            target: ast.Identifier | ast.IndexedIdentifier | None,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangeMeasurementInfo | None:
+        if target is None:
+            return None
+        destination = self.__runtime_bit_range_destination(target, iterators)
+        if destination is None:
+            if (isinstance(target, ast.IndexedIdentifier) and len(target.indices) == 1
+                    and isinstance(target.indices[0], list) and len(target.indices[0]) == 1
+                    and isinstance(target.indices[0][0], ast.RangeDefinition)):
+                name = target.name.name
+                source_type = self.__constant_source_types.get(name) or self.__classical_source_types.get(name)
+                if source_type is None:
+                    raise NoVariableNameException(name)
+                if not isinstance(source_type, ast.BitType):
+                    raise InvalidBitOperandException('A measurement target must be a bit variable')
+            return None
+        # At least one M is required per source qubit. Bound static expansion
+        # before materializing whole registers or enormous valid source ranges.
+        name, indices = self.__static_measurement_qubit_source(
+            measurement, iterators, max_width=min(self.QCX_INT_MAX, self.MAX_LOOP_OUTPUT_LINES))
+        return _RuntimeBitRangeMeasurementInfo(destination, name, indices)
+
+    def __static_measurement_qubit_source(
+            self, measurement: ast.QuantumMeasurement,
+            iterators: set[str] | dict[str, ValueType] | None = None, *,
+            expected_width: int | None = None, max_width: int | None = None) -> tuple[str, tuple[int, ...]]:
         qubit = measurement.qubit
         if not isinstance(qubit, (ast.Identifier, ast.IndexedIdentifier)):
             raise UnsupportedOpenQASMError('computed measurement qubit source')
@@ -7227,18 +7279,21 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if isinstance(qubit, ast.Identifier):
             if name not in self.__sized_quantum_registers:
                 raise InvalidBitOperandException('Measurement operands must both be scalars or both be registers')
-            if size != destination.width:
-                raise MeasurementSizeMismatchException(size, destination.width)
+            if expected_width is not None and size != expected_width:
+                raise MeasurementSizeMismatchException(size, expected_width)
+            if max_width is not None and size > max_width:
+                raise InvalidQubitOperandException('Qubit selection exceeds supported size limit')
             indices = range(size)
         else:
             if len(qubit.indices) != 1:
                 raise UnsupportedOpenQASMError('multidimensional measurement qubit indexing')
-            indices, is_register = self.__static_bit_indices(qubit.indices[0], size, name, iterators, kind='qubit')
+            indices, is_register = self.__static_bit_indices(
+                qubit.indices[0], size, name, iterators, kind='qubit', max_indices=max_width)
             if not is_register:
                 raise InvalidBitOperandException('Measurement operands must both be scalars or both be registers')
-            if len(indices) != destination.width:
-                raise MeasurementSizeMismatchException(len(indices), destination.width)
-        return _RuntimeBitSetMeasurementInfo(destination, name, tuple(indices))
+            if expected_width is not None and len(indices) != expected_width:
+                raise MeasurementSizeMismatchException(len(indices), expected_width)
+        return name, tuple(indices)
 
     def __runtime_bit_range_destination(
             self, target: ast.Identifier | ast.IndexedIdentifier,
