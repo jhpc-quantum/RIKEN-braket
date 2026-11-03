@@ -413,6 +413,18 @@ class _RuntimeBitRangeAssignmentInfo:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeBitRangeShiftAssignmentInfo:
+    selection: _RuntimeBitRangeSelection
+    operator: str
+    shift_count_type: ValueType
+    capacity: int
+
+    @property
+    def binary_operator(self) -> str:
+        return self.operator[:-1]
+
+
+@dataclasses.dataclass(frozen=True)
 class _RuntimeBitSetMeasurementInfo:
     destination: _RuntimeBitSetSelection
     qubit_source_name: str
@@ -7265,11 +7277,22 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __runtime_bit_range_assignment_info(
             self, statement: ast.ClassicalAssignment,
-            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangeAssignmentInfo | None:
+            iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> _RuntimeBitRangeAssignmentInfo | _RuntimeBitRangeShiftAssignmentInfo | None:
         selection = self.__runtime_bit_range_destination(statement.lvalue, iterators)
         if selection is None:
             return None
         operator = statement.op.name
+        if operator in ('<<=', '>>='):
+            count_type, _ = self.__bit_index_info(statement.rvalue, iterators, role='range shift count')
+            # Successful destinations are distinct, so at most source_width
+            # entries can be written. Unlike iteration, shifts need no extra
+            # room for negative aliases. Larger sources may still use short
+            # selections when the configured position limit is smaller.
+            capacity = min(selection.source_width, self.MAX_RUNTIME_BIT_RANGE_POSITIONS)
+            if not 1 <= capacity <= self.QCX_INT_MAX:
+                raise InvalidBitOperandException('Runtime range shift capacity must fit QCX INT indexing')
+            return _RuntimeBitRangeShiftAssignmentInfo(selection, operator, count_type, capacity)
         if operator not in ('=', '&=', '|=', '^='):
             raise UnsupportedOpenQASMError(f'runtime bit-register range assignment operator {operator}')
         width = self.__bit_register_expression_width(statement.rvalue, iterators)
@@ -8960,6 +8983,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
         bit_range = self.__runtime_bit_range_assignment_info(statement)
         if bit_range is not None:
+            if isinstance(bit_range, _RuntimeBitRangeShiftAssignmentInfo):
+                raise UnsupportedOpenQASMError('runtime bit-register range shift assignment lowering')
             self.__emit_runtime_bit_range_assignment(bit_range, statement.rvalue)
             return
         source_name = self.__operand_name(statement.lvalue)
