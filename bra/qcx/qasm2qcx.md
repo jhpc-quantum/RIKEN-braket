@@ -139,7 +139,8 @@ The converter currently covers:
 - runtime-indexed bit-register element reads, assignments, and scalar
   measurement destinations;
 - runtime index-set measurement destinations with static qubit-register sources;
-- plain assignments into runtime bit-register ranges with known-width register RHS values;
+- plain and bitwise compound assignments into runtime bit-register ranges with
+  known-width register RHS values;
 - scalar `bool` variables and constants, Boolean literals, and expression
   assignments;
 - projective measurement of individual qubits and register selections;
@@ -2276,14 +2277,15 @@ incrementally rather than fully allocated before a bounds failure.
 Supported branches and loops may contain these assignments. Widths, types,
 selection bounds, and repeated destinations are checked on skipped paths and
 in empty loop bodies; runtime shift-count arithmetic and checks stay on reached
-paths. Active iterators remain read-only. Runtime-dependent range destinations
-and range expressions, multidimensional
+paths. Active iterators remain read-only. Runtime range expressions, multidimensional
 indexing, indexing computed register results, aliases, concatenation, register
 casts, and ordered comparisons remain separate work. Static selections also
 support [iteration with scalar bit iterators](#static-selection-sources).
 Runtime singleton and multi-entry sets have separate
 [loop-source subsets](#runtime-singleton-selection-sources).
 Runtime ranges also support [scalar-bit iteration](#runtime-dependent-bit-register-range-loops).
+Their [plain and bitwise compound assignments](#runtime-bit-register-range-assignments)
+are described below.
 
 ### Runtime bit-register index-set expressions
 
@@ -2372,10 +2374,11 @@ QCX output limit. Temporaries remain reserved throughout the consumer and are
 released on success and failure without releasing caller- or consumer-owned
 results. No new bra instruction or build option is required.
 
-Runtime-dependent range destinations, runtime range expressions with
-variable result widths, computed register sources, aliases, concatenation,
+Runtime ranges support [plain and bitwise compound assignments](#runtime-bit-register-range-assignments).
+Runtime range expressions with variable result widths, computed register sources,
+aliases, concatenation,
 further indexing of selection results, and ordered register comparisons remain
-unsupported. Runtime ranges retain their separate
+unsupported. Runtime ranges also retain their separate
 [loop-source subset](#runtime-dependent-bit-register-range-loops).
 
 ### Runtime bit-register index-set assignments
@@ -2465,14 +2468,15 @@ indices, and implicit-read bindings are released on success and failed lowering
 without releasing caller-owned storage. No new bra instruction or build option
 is required.
 
-Runtime ranges support the plain-assignment subset described next. Aliases,
+Runtime ranges support the assignment subset described next. Aliases,
 computed register sources, further indexing of selections, arithmetic compound
 operators, and general block-local declarations remain unsupported.
 
 ### Runtime bit-register range assignments
 
-Plain `=` assignments accept `flags[start:stop]` and
-`flags[start:step:stop]` destinations on named mutable `bit[n]` registers when
+Plain `=` and bitwise compound `&=`, `|=`, and `^=` assignments accept
+`flags[start:stop]` and `flags[start:step:stop]` destinations on named mutable
+`bit[n]` registers when
 any bound or step depends on runtime storage or an enclosing iterator.
 Each operand may independently use a supported INT/UINT expression. Both bounds
 are required; the default step is one. Positive and negative steps, negative
@@ -2488,21 +2492,29 @@ The RHS must have a register width known during conversion. It may use existing
 whole-register, static/runtime index-set, bitwise, shift, rotation, and supported
 angle-to-bit-register expressions. The selected destination count must equal
 that width at runtime, without padding, truncation, or scalar broadcasting.
-A one-entry range remains a `bit[1]` destination: assign `"1"` or another
-one-bit register, rather than scalar `true` or `1`.
+A one-entry range remains a `bit[1]` destination: its RHS must be `"1"`, `"0"`,
+or another one-bit register, rather than scalar `true` or `1`.
 
 The converter captures start, step, and stop once in that order, before
 evaluating the RHS. It rejects zero steps, empty selections, invalid selected
 positions, width mismatches, and duplicate normalized destinations before any
 RHS evaluation. A nonzero raw step does not prevent negative aliases from
 repeating a destination: for `bit[4] flags`, `-1:3` selects bit 3 twice.
-All RHS result bits are copied before the first destination write, so overlapping
+All result bits are copied before the first destination write, so overlapping
 assignments use original values. Unselected bits are preserved, and failed
 destination checks or RHS accesses/arithmetic do not partially update the target.
+
+For bitwise compound assignments, the original selected LHS bits are copied
+after destination validation and before RHS evaluation. The implicit LHS read
+uses that snapshot without recapturing range bounds or reading the selected bits
+again. Explicit RHS accesses retain their own evaluation, captures, and checks,
+including accesses to the same destination register. Each operation pairs bits
+by selection order and computes all results before writing any destination.
 
 These rules implement the specification's reference slices and assignment by
 value; see [register slicing](https://openqasm.com/language/types.html#register-concatenation-and-slicing)
 and [classical assignment](https://openqasm.com/language/classical.html#generalities).
+Bitwise compounds follow the [equal-sized register operation rules](https://openqasm.com/language/classical.html#classical-bits-and-registers).
 Exact capture/check timing and duplicate rejection are documented converter
 policies; the specification does not explicitly settle those details.
 
@@ -2532,6 +2544,21 @@ int single = -1;
 one[single:single] = "1";          // One-bit register with a checked negative index.
 ```
 
+<!-- runtime-bit-range-bitwise-example -->
+```qasm
+OPENQASM 3.0;
+bit[4] flags = "1010";
+int start = 3;
+int step = -2;
+uint stop = 0;
+int index = 0;
+flags[start:step:stop] &= "01";             // Positions 3, 1; flags is "1000".
+flags[start:step:stop] |= flags[{index, 3}]; // flags is "1010".
+flags[start:step:stop] ^= flags[{1, 3}];     // Both sides use original bits; flags is "0000".
+bit[1] one = "1";
+one[index:index] ^= "1";                   // One-bit register result is "0".
+```
+
 Registers wider than native UINT use existing QCX element storage; `bit[1]`
 keeps scalar storage while still checking its range. For an RHS width `k`, a
 private position table has exactly `k` entries. Reached ranges longer than `k`
@@ -2544,7 +2571,8 @@ captured positions, and range temporaries are released on success and failed
 lowering while preserving caller-owned storage. No new bra instruction or build
 option is required.
 
-Compound assignments into runtime ranges, runtime range expression reads,
+Shift and arithmetic compound assignments into runtime ranges, runtime range
+expression reads,
 measurement into runtime ranges, aliases, computed destination sources, further
 selection indexing, and general block-local declarations remain unsupported.
 
@@ -3310,7 +3338,7 @@ and short-circuit operands skip these runtime operations. Names, types, and
 syntax are still validated during conversion, including on unreachable paths.
 Static indices retain their existing conversion-time checks and QCX output.
 Runtime range measurement destinations, multidimensional indexing, and aliases
-remain unsupported. Plain range assignments are described in
+remain unsupported. Plain and bitwise compound range assignments are described in
 [Runtime bit-register range assignments](#runtime-bit-register-range-assignments).
 Register-valued measurement destinations are described in
 [Runtime index-set measurement destinations](#runtime-index-set-measurement-destinations).
@@ -5536,7 +5564,7 @@ QCX instructions suffice, without a bra instruction or build-option change.
 
 Multi-entry sets and runtime ranges have the loop-source subsets described next.
 Fixed-width runtime sets also support [expression reads](#runtime-bit-register-index-set-expressions).
-Runtime ranges also support [plain assignments](#runtime-bit-register-range-assignments).
+Runtime ranges also support [plain and bitwise compound assignments](#runtime-bit-register-range-assignments).
 Runtime range expressions, aliases, and computed register sources remain
 unsupported. Angle selection loops have their own supported forms below.
 
@@ -5630,7 +5658,7 @@ This feature is restricted to direct scalar-bit loop sources. Runtime ranges
 have their own subset below, and runtime sets also support
 [expression reads](#runtime-bit-register-index-set-expressions) and
 [assignments](#runtime-bit-register-index-set-assignments). Runtime ranges also
-support [plain assignments](#runtime-bit-register-range-assignments).
+support [plain and bitwise compound assignments](#runtime-bit-register-range-assignments).
 Scalar single-index loop sources,
 computed register sources, aliases, further indexing of selections, and general
 block-local declarations remain unsupported.
@@ -5732,7 +5760,9 @@ consume unrolling budgets; generated code obeys the QCX output limit, and
 enclosing/nested expansions retain their accounting. Temporary declarations are
 hoisted and cleanup preserves caller-owned storage on success and failure.
 
-Runtime range expressions and range destinations, omitted bounds, aliases,
+Runtime ranges also support [plain and bitwise compound assignments](#runtime-bit-register-range-assignments).
+Runtime range expressions, shift/arithmetic compound range destinations,
+range measurement destinations, omitted bounds, aliases,
 computed register sources, further indexing of selections, and block-local
 declarations remain unsupported. No new bra instruction or build option is needed.
 
@@ -6043,7 +6073,7 @@ The current prototype does not reliably support:
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
 - scalar-bit shifts, runtime bit-register range expressions outside direct scalar-bit loop sources,
-  runtime bit-register range compound assignments and range measurement destinations,
+  runtime bit-register range shift/arithmetic compound assignments and range measurement destinations,
   ordered bit-register comparisons, whole-array bitwise operations, direct
   Boolean bitwise operations, or classical functions other than the
   `exp`/`sqrt`/`log`/`sin`/`cos`/`tan`/`arcsin`/`arccos`/`arctan`/`ceiling`/`floor`/
@@ -6878,6 +6908,20 @@ capture/check/snapshot/write ordering, table capacity, output limits, declaratio
 hoisting, label resolution, and cleanup preserving caller-owned storage.
 Run with `--bra /path/to/bra`, including a UBSan build.
 
+`bra/test/qasm2qcx_runtime_bit_range_bitwise_numerical.py` checks `&=`, `|=`, and
+`^=` through 129 bits against independent bit-list references. Cases cover
+descending/nonunit ranges, negative indices, mixed INT/UINT operands, singleton
+storage, full-width self-operations, overlapping RHS selections, nested bounds,
+and register expressions. Loops exercise reentry, changing direction, live
+iteration, transfers, scoped shadowing, and measurement-controlled feedback.
+Instrumented failures verify that destination checks and RHS failures precede
+all writes, including on later iterations. Full quantum states check phase gates
+and fusion; the documented example is executed. Unit tests cover metadata without
+evaluation, skipped-body validation, original LHS snapshots, independent RHS
+captures, output limits, declaration hoisting, and restoration of snapshot
+bindings, temporary ownership, and scopes on success and failed lowering.
+Run with `--bra /path/to/bra`, including a UBSan build.
+
 `bra/test/qasm2qcx_runtime_bit_set_measurement_numerical.py` checks both measurement
 syntaxes with static qubit sources and runtime index-set destinations through
 129 bits. Independent bit-list references cover selection order, mixed INT/UINT
@@ -6997,6 +7041,7 @@ python3 bra/test/qasm2qcx_runtime_bit_range_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_bit_set_expression_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_bit_set_assignment_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_bit_range_assignment_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_bit_range_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_scalar_bit_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_rotation_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_u_phase_numerical.py --bra bra/bin/bra
