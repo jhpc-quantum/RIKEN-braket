@@ -409,6 +409,11 @@ class _RuntimeBitRangeCopyInfo:
     # A whole register has neither static positions nor a runtime set.
     destination_indices: tuple[int, ...] | None = None
     runtime_destination: _RuntimeBitSetSelection | None = None
+    operator: str = '='
+
+    @property
+    def binary_operator(self) -> str | None:
+        return None if self.operator == '=' else self.operator[:-1]
 
     @property
     def width(self) -> int:
@@ -7367,11 +7372,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         selection = self.__runtime_bit_range_source(statement.rvalue, iterators)
         if selection is None:
             return None
-        if statement.op.name != '=':
-            raise UnsupportedOpenQASMError('runtime bit-register range copy requires plain assignment')
+        operator = statement.op.name
+        if operator not in ('=', '&=', '|=', '^='):
+            raise UnsupportedOpenQASMError(f'runtime bit-register range RHS assignment operator {operator}')
         target = statement.lvalue
         destination_range = self.__runtime_bit_range_destination(target, iterators)
         if destination_range is not None:
+            if operator != '=':
+                raise UnsupportedOpenQASMError('runtime range RHS bitwise assignment requires a static destination')
             # A successful destination is distinct, so its count cannot exceed
             # its containing width. Reuse this bounded capacity for both ranges
             # and the source snapshot without guessing either runtime count.
@@ -7401,6 +7409,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise InvalidBitOperandException('Runtime range copy requires a register selection, not a scalar bit')
             runtime_destination = self.__runtime_bit_set_selection(target, iterators, destination=True)
             if runtime_destination is not None:
+                if operator != '=':
+                    raise UnsupportedOpenQASMError('runtime range RHS bitwise assignment requires a static destination')
                 # Retain every occurrence and type, including constants in a
                 # mixed set. Bounds, arithmetic and duplicates are checked only
                 # when the destination is captured on a reached execution path.
@@ -7417,7 +7427,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     raise InvalidBitOperandException('Runtime range copy selection width must fit QCX INT indexing')
         # Source aliases may repeat. Only the runtime count must equal width;
         # copies need no 2*source_width position capacity or distinctness test.
-        return _RuntimeBitRangeCopyInfo(selection, name, destination_width, indices, runtime_destination)
+        return _RuntimeBitRangeCopyInfo(selection, name, destination_width, indices, runtime_destination, operator)
 
     def __runtime_bit_range_destination(
             self, target: ast.Identifier | ast.IndexedIdentifier,
@@ -9397,11 +9407,31 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             for temporary in self.__used_temporary_variables - previous_used:
                 self.__release_temporary_variable(temporary)
 
+    def __snapshot_bit_range_destination(self, info: _RuntimeBitRangeCopyInfo, label: str) -> str:
+        original = self.__add_temporary_int_array(info.width, 'RANGE_BITWISE_ORIGINAL')
+        target = self.__capitalize_variable_name(info.destination_name)
+        if info.destination_indices is None:
+            index = self.__add_new_temporary_variable(ValueType.INT)
+            operand = target if info.destination_width == 1 else f'{target}:{index}'
+            self.__qcx_lines.extend([
+                f'LET {index} := 0', f'@{label}_ORIGINAL', f'LET {original}:{index} := {operand}',
+                f'LET {index} += 1', f'JUMPIF {label}_ORIGINAL {index} < {info.width}',
+            ])
+        else:
+            for offset, position in enumerate(info.destination_indices):
+                operand = target if info.destination_width == 1 else f'{target}:{position}'
+                self.__qcx_lines.append(f'LET {original}:{offset} := {operand}')
+        return original
+
     def __emit_runtime_bit_range_copy(self, info: _RuntimeBitRangeCopyInfo) -> None:
+        bitwise = info.binary_operator is not None
+        if bitwise and not 1 <= info.width <= self.MAX_RUNTIME_BIT_RANGE_POSITIONS:
+            raise InvalidBitOperandException('Runtime range bitwise snapshot exceeds storage limit')
         runtime_destination = info.runtime_destination
         write_lines = (5 if runtime_destination is None and info.destination_indices is None else info.width)
         comparisons = info.width * (info.width - 1) // 2 if runtime_destination is not None else 0
-        if len(self.__qcx_lines) + comparisons + max(8, write_lines) > self.MAX_LOOP_OUTPUT_LINES:
+        original_lines = (5 if info.destination_indices is None else info.width) if bitwise else 0
+        if len(self.__qcx_lines) + comparisons + max(8, write_lines + original_lines) > self.MAX_LOOP_OUTPUT_LINES:
             raise InvalidBitOperandException('Runtime range copy exceeds QCX output limit')
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
@@ -9411,6 +9441,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__array_index += 1
         try:
             self.__expression_kind = ExpressionKind.ARITHMETIC
+            # Compound assignments read their original destination before any
+            # RHS evaluation. Keep this private snapshot reserved until writes.
+            original = self.__snapshot_bit_range_destination(info, label) if bitwise else None
             destinations = info.destination_indices
             if runtime_destination is not None:
                 # Reserve all captured addresses throughout source evaluation.
@@ -9448,6 +9481,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__qcx_lines.extend([
                 f'LET {index} += 1', f'JUMPIF {label}_SNAPSHOT {index} < {count}',
             ])
+            if bitwise:
+                # Compute every result in the original-value buffer, retaining
+                # the complete RHS snapshot and leaving user storage untouched.
+                self.__qcx_lines.extend([
+                    f'LET {index} := 0', f'@{label}_BITWISE',
+                    f'LET {original}:{index} {info.operator} {snapshot}:{index}',
+                    f'LET {index} += 1', f'JUMPIF {label}_BITWISE {index} < {count}',
+                ])
+                snapshot = original
             if len(self.__qcx_lines) + write_lines > self.MAX_LOOP_OUTPUT_LINES:
                 raise InvalidBitOperandException('Runtime range copy exceeds QCX output limit')
             target = self.__capitalize_variable_name(info.destination_name)

@@ -9240,11 +9240,11 @@ class RuntimeBitRangeCopyFoundationTests(unittest.TestCase):
             with self.subTest(bounds=bounds), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.info(f'flags = C[{bounds}];')
 
-    def test_mutable_register_targets_and_plain_assignment_are_required(self):
+    def test_mutable_register_targets_and_supported_operators_are_required(self):
         for lhs in ('scalar', 'start', 'condition', 'C', 'missing', 'flags[0]', 'flags[start]'):
             with self.subTest(lhs=lhs), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.info(f'{lhs} = flags[start:stop];')
-        for op in ('&=', '|=', '^=', '<<=', '>>='):
+        for op in ('<<=', '>>=', '+='):
             with self.subTest(op=op), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.info(f'flags {op} C[start:stop];')
         with self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -9268,7 +9268,7 @@ class RuntimeBitRangeCopyFoundationTests(unittest.TestCase):
         for body in ('flags = later[i:stop];', 'flags = LATER[i:stop];',
                      'flags = unknown[i:stop];', 'later = flags[i:stop];',
                      'flags = C[i:LATE];', 'C = flags[i:stop];', 'scalar = flags[i:stop];',
-                     'flags[0] = flags[i:stop];', 'flags &= flags[i:stop];',
+                     'flags[0] = flags[i:stop];', 'flags += flags[i:stop];',
                      'flags = ~flags[i:stop];', 'flags = flags[i:stop] << 1;',
                      'for bit flags in one { result = flags[i:stop]; }'):
             with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -9393,8 +9393,8 @@ class StaticSelectionRangeCopyFoundationTests(unittest.TestCase):
             self.assertIsInstance(self.info('destination[LOW:HIGH] = C[start:stop];'),
                                   qasm2qcx._RuntimeBitRangeToRangeCopyInfo)
 
-    def test_compounds_and_nested_runtime_range_consumers_remain_unsupported(self):
-        for op in ('&=', '|=', '^=', '<<=', '>>=', '+='):
+    def test_shift_arithmetic_compounds_and_nested_range_consumers_remain_unsupported(self):
+        for op in ('<<=', '>>=', '+='):
             with self.subTest(op=op), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.info(f'destination[0:1] {op} C[start:stop];')
         for rhs in ('~C[start:stop]', 'C[start:stop] & "11"', 'rotl(C[start:stop], 1)'):
@@ -9793,6 +9793,404 @@ class RuntimeRangeToRangeCopyFoundationTests(unittest.TestCase):
         self.assertEqual(capture.call_count, 2)
         self.assertTrue(all(call.kwargs == {'capacity': 8} for call in capture.call_args_list))
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+
+class RuntimeRangeBitwiseRHSFoundationTests(unittest.TestCase):
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    converter = ScalarAngleFoundationTests.converter
+    assignment = RuntimeBitSetAssignmentFoundationTests.assignment
+    prefix = StaticSelectionRangeCopyFoundationTests.prefix
+
+    def setUp(self):
+        self.c = self.converter(self.prefix)
+
+    def info(self, source, iterators=None):
+        return self.c._QASM2QCXConverter__runtime_bit_range_copy_info(self.assignment(source), iterators)
+
+    def test_frozen_metadata_preserves_operator_source_ast_and_destination_order(self):
+        for operator in ('&=', '|=', '^='):
+            node = self.assignment(f'destination[LAST:-2:1] {operator} C[start:stride:stop];')
+            info = self.c._QASM2QCXConverter__runtime_bit_range_copy_info(node)
+            self.assertIsInstance(info, qasm2qcx._RuntimeBitRangeCopyInfo)
+            self.assertEqual((info.operator, info.binary_operator), (operator, operator[0]))
+            self.assertEqual((info.destination_name, info.destination_width, info.width,
+                              info.destination_indices), ('destination', 8, 4, (7, 5, 3, 1)))
+            self.assertIsNone(info.runtime_destination)
+            self.assertIs(info.selection.bounds, node.rvalue.index[0])
+            self.assertEqual((info.selection.source_name, info.selection.source_width), ('C', 4))
+            self.assertEqual((info.selection.start_type, info.selection.step_type, info.selection.stop_type),
+                             (qasm2qcx.ValueType.INT, qasm2qcx.ValueType.UINT, qasm2qcx.ValueType.INT))
+            with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                info.operator = '='
+
+    def test_whole_registers_static_ranges_sets_and_singletons_supply_known_widths(self):
+        for operator in ('&=', '|=', '^='):
+            for target, size, indices in (('destination', 8, None), ('destination[1:2:6]', 8, (1, 3, 5)),
+                                          ('destination[{-1, 0, 3}]', 8, (7, 0, 3)),
+                                          ('destination[4:4]', 8, (4,)), ('one[{0}]', 1, (0,)),
+                                          ('wide[{128, 64, 0}]', 129, (128, 64, 0))):
+                with self.subTest(operator=operator, target=target):
+                    info = self.info(f'{target} {operator} flags[start:stop];')
+                    self.assertEqual((info.destination_width, info.destination_indices), (size, indices))
+                    self.assertEqual(info.width, size if indices is None else len(indices))
+
+    def test_source_domains_count_mismatches_and_repeated_source_positions_are_deferred(self):
+        for operator in ('&=', '|=', '^='):
+            for bounds in ('start:0:stop', '999:stride:-999', '-1:stop',
+                           'positions[start / 0]:stride:stop', 'start:1 / 0:HIGH'):
+                with self.subTest(operator=operator, bounds=bounds):
+                    info = self.info(f'destination[{{7, 0, 3, 1, 5}}] {operator} C[{bounds}];')
+                    self.assertEqual(info.width, 5)
+            self.assertEqual(self.info(f'wide {operator} C[start:stop];').width, 129)
+
+    def test_plain_copies_and_fixed_width_bitwise_rhs_keep_existing_paths(self):
+        for target in ('destination', 'destination[0:1]', 'destination[{start, 0}]'):
+            info = self.info(f'{target} = C[start:stop];')
+            self.assertEqual((info.operator, info.binary_operator), ('=', None))
+        self.assertIsInstance(self.info('destination[start:stop] = C[start:stop];'),
+                              qasm2qcx._RuntimeBitRangeToRangeCopyInfo)
+        for operator in ('&=', '|=', '^='):
+            for rhs in ('C', 'flags[LOW:HIGH]', 'flags[{start, 0}]', '~pair'):
+                with self.subTest(operator=operator, rhs=rhs):
+                    self.assertIsNone(self.info(f'destination {operator} {rhs};'))
+
+    def test_runtime_set_and_range_destinations_remain_out_of_scope(self):
+        for operator in ('&=', '|=', '^='):
+            for target in ('destination[{start}]', 'destination[{LAST, start, 0}]',
+                           'destination[start:stop]', 'destination[LOW:stride:HIGH]'):
+                with self.subTest(operator=operator, target=target), self.assertRaisesRegex(
+                        qasm2qcx.UnsupportedOpenQASMError, 'static destination'):
+                    self.info(f'{target} {operator} C[start:stop];')
+
+    def test_read_only_wrong_type_scalar_and_further_indexed_targets_are_rejected(self):
+        for target in ('C', 'C[0:1]', 'scalar', 'scalar[0:0]', 'start', 'condition', 'a[0:1]',
+                       'positions[0:1]', 'missing', 'destination[0]', 'destination[start]',
+                       'destination[0:1][0]', 'destination[0:1, 0]'):
+            with self.subTest(target=target), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(f'{target} ^= C[start:stop];')
+
+    def test_static_bounds_and_normalized_duplicate_destinations_are_validated(self):
+        for target in ('destination[{1, 1}]', 'destination[{-1, LAST}]', 'destination[-1:7]',
+                       'destination[8:8]', 'destination[-9:-9]', 'destination[0:0:1]',
+                       'destination[3:1]', 'destination[:3]', 'destination[0:]',
+                       'destination[true:1]', 'destination[{YES}]', 'destination[{missing}]'):
+            with self.subTest(target=target), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(f'{target} &= C[start:stop];')
+
+    def test_source_bound_types_names_and_required_endpoints_are_checked(self):
+        for bounds in ('real:stride:stop', 'start:condition:stop', 'start:stride:scalar',
+                       'missing:stop', 'start:one', ':stop', 'start:', ':stride:stop'):
+            with self.subTest(bounds=bounds), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(f'destination |= C[{bounds}];')
+
+    def test_iterator_source_target_and_destination_bound_shadows_are_rejected(self):
+        for statement, iterators in (
+                ('destination ^= C[start:stop];', {'destination': qasm2qcx.ValueType.INT}),
+                ('destination ^= C[start:stop];', {'C': qasm2qcx.ValueType.BIT}),
+                ('destination[LOW:HIGH] ^= C[start:stop];', {'LOW': qasm2qcx.ValueType.INT}),
+                ('destination[{LAST, 0}] ^= C[start:stop];', {'LAST': qasm2qcx.ValueType.UINT})):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(statement, iterators)
+        with self.c._QASM2QCXConverter__iterator_binding('LAST', 999):
+            with self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info('destination[{LAST, 0}] ^= C[start:stop];')
+        info = self.info('destination ^= C[LOW:HIGH];', {'LOW': qasm2qcx.ValueType.INT})
+        self.assertEqual(info.selection.start_type, qasm2qcx.ValueType.INT)
+
+    def test_other_compounds_and_nested_runtime_range_consumers_remain_unsupported(self):
+        for operator in ('<<=', '>>=', '+=', '-=', '*=', '/=', '%=', '**='):
+            with self.subTest(operator=operator), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(f'destination {operator} C[start:stop];')
+        for rhs in ('~C[start:stop]', 'C[start:stop] & "11"', 'rotl(C[start:stop], 1)'):
+            with self.subTest(rhs=rhs), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix + f'destination[0:1] ^= {rhs};')
+
+    def test_empty_loops_validate_without_destination_snapshots_or_source_evaluation(self):
+        c = self.converter(self.prefix + 'for int outer in [1:0] { '
+            'destination &= C[outer:0:stop]; destination[LAST:-2:1] |= flags[outer:1 / 0:stop]; '
+            'one[{0}] ^= flags[positions[outer / 0]:999]; wide[{128, 64, 0}] &= C[outer:stride:stop]; }')
+        self.assertEqual(c._QASM2QCXConverter__qcx_lines, self.c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(c._QASM2QCXConverter__loop_contexts, [])
+
+    def test_empty_loops_check_forward_references_and_invalid_destinations(self):
+        for body in ('destination ^= LATER[outer:stop];', 'later ^= C[outer:stop];',
+                     'destination[LOW:LATE] ^= C[outer:stop];', 'destination ^= C[outer:later_bound];',
+                     'C ^= flags[outer:stop];', 'destination[{0, 0}] ^= C[outer:stop];',
+                     'destination[{outer, 0}] ^= C[outer:stop];',
+                     'for int LAST in [0:1] { destination[LAST:LAST] ^= C[outer:stop]; }'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix + 'for int outer in [1:0] { if (false) {' + body + '} } '
+                               'const int LATE = 1; int later_bound; bit[2] later; const bit[2] LATER = "10";')
+
+    def test_width_resource_limits_and_metadata_state_preservation(self):
+        c = self.c
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+        lines = c._QASM2QCXConverter__qcx_lines.copy()
+        self.info('destination[{LAST, LOW, HIGH}] ^= C[positions[start / 0]:stride:stop];')
+        with patch.object(c, 'QCX_INT_MAX', 7):
+            with self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info('destination ^= C[start:stop];')
+        with patch.object(c, 'MAX_RUNTIME_BIT_RANGE_POSITIONS', 2):
+            self.assertEqual(self.info('destination[{7, 0}] ^= C[start:stop];').width, 2)
+            with self.assertRaisesRegex(qasm2qcx.QASM2QCXError, 'size limit'):
+                self.info('destination[0:7] ^= C[start:stop];')
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+        self.assertEqual(lines, c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+
+    def test_new_lowering_uses_the_validated_static_selection_width(self):
+        c = self.c
+        original = c._QASM2QCXConverter__capture_bit_range_positions
+        with patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions', wraps=original) as capture:
+            c.visit(self.assignment('destination[0:2] ^= C[start:stop];'))
+        self.assertEqual(capture.call_count, 1)
+        self.assertEqual(capture.call_args.kwargs, {'capacity': 3})
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+
+class RuntimeRangeBitwiseRHSLoweringTests(unittest.TestCase):
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    converter = ScalarAngleFoundationTests.converter
+    assignment = RuntimeBitSetAssignmentFoundationTests.assignment
+    prefix = 'bit[8] destination; bit[4] source; const bit[65] C = "' + '10' * 32 + '1"; int start; int stop;'
+
+    def test_original_rhs_result_and_writes_are_ordered_for_each_operator(self):
+        for operator in ('&=', '|=', '^='):
+            c = self.converter(self.prefix)
+            capture = c._QASM2QCXConverter__capture_bit_range_positions
+            with patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions', wraps=capture) as captured:
+                c.visit(self.assignment(f'destination[{{7, 1, 5}}] {operator} source[start:stop];'))
+            self.assertEqual(captured.call_count, 1)
+            self.assertEqual(captured.call_args.kwargs, {'capacity': 3})
+            lines = c._QASM2QCXConverter__qcx_lines
+            name = c._QASM2QCXConverter__capitalize_variable_name('destination')
+            reads = [i for i, line in enumerate(lines) if line.startswith('LET QASM2QCX_RANGE_BITWISE_ORIGINAL_') and f' := {name}:' in line]
+            self.assertEqual([lines[i].split(f'{name}:')[1] for i in reads], ['7', '1', '5'])
+            check = next(i for i, line in enumerate(lines) if line.startswith('ASSERT ') and line.endswith(' == 3'))
+            rhs = next(i for i, line in enumerate(lines) if line.startswith('LET QASM2QCX_RANGE_COPY_SOURCE_'))
+            operation = next(i for i, line in enumerate(lines) if f' {operator} QASM2QCX_RANGE_COPY_SOURCE_' in line)
+            writes = [i for i, line in enumerate(lines) if line.startswith(f'LET {name}:')]
+            self.assertLess(max(reads), check)
+            self.assertLess(check, rhs)
+            self.assertLess(rhs, operation)
+            self.assertLess(operation, min(writes))
+            self.assertEqual(len(writes), 3)
+            self.assertTrue(all(' := QASM2QCX_RANGE_BITWISE_ORIGINAL_' in lines[i] for i in writes))
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+            ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_original_snapshot_precedes_even_bound_evaluation(self):
+        c = self.converter(self.prefix)
+        capture = c._QASM2QCXConverter__capture_bit_range_positions
+        def checked(*args, **kwargs):
+            lines = c._QASM2QCXConverter__qcx_lines
+            self.assertTrue(any('_ORIGINAL ' in line for line in lines))
+            self.assertFalse(any('_SNAPSHOT' in line for line in lines))
+            return capture(*args, **kwargs)
+        with patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions', side_effect=checked):
+            c.visit(self.assignment('destination ^= source[start:stop];'))
+
+    def test_whole_snapshot_code_size_is_independent_of_register_width(self):
+        sizes = []
+        for width in (4, 129):
+            c = self.converter(f'bit[{width}] destination; bit[{width}] source; int start; int stop;')
+            c.visit(self.assignment('destination &= source[start:stop];'))
+            lines = c._QASM2QCXConverter__qcx_lines
+            sizes.append(len(lines))
+            arrays = [line for line in lines if line.startswith('VAR QASM2QCX_') and line.endswith(f' INT {width}')]
+            self.assertEqual(len(arrays), 3)
+        self.assertEqual(sizes[0], sizes[1])
+
+    def test_singleton_uses_containing_storage_and_wide_constant_table_is_prepared_once(self):
+        for target, operand in (('one', 'ONE7'), ('one[{-1}]', 'ONE7'), ('destination[{7}]', 'DESTINATION2047:7')):
+            c = self.converter(self.prefix + 'bit[1] one;')
+            prepare = c._QASM2QCXConverter__prepare_constant_bit_lookup
+            with patch.object(c, '_QASM2QCXConverter__prepare_constant_bit_lookup', wraps=prepare) as prepared:
+                c.visit(self.assignment(f'{target} |= C[start:stop];'))
+            self.assertEqual(prepared.call_count, 1)
+            lines = c._QASM2QCXConverter__qcx_lines
+            self.assertTrue(any(line.startswith(f'LET {operand} := QASM2QCX_RANGE_BITWISE_ORIGINAL_') for line in lines))
+            first = next(i for i, line in enumerate(lines) if line.startswith(('LET ', '@', 'ASSERT ', 'JUMP')))
+            self.assertTrue(all(i < first for i, line in enumerate(lines) if line.startswith('VAR QASM2QCX_')))
+
+    def test_storage_and_preflight_output_limits_precede_snapshots(self):
+        for option, value, message in (('MAX_RUNTIME_BIT_RANGE_POSITIONS', 2, 'storage limit'),
+                                       ('MAX_LOOP_OUTPUT_LINES', 1, 'output limit')):
+            c = self.converter(self.prefix)
+            before = c._QASM2QCXConverter__qcx_lines.copy()
+            with patch.object(c, option, value), patch.object(c, '_QASM2QCXConverter__snapshot_bit_range_destination') as snapshot:
+                with self.assertRaisesRegex(qasm2qcx.QASM2QCXError, message):
+                    c.visit(self.assignment('destination ^= source[start:stop];'))
+                snapshot.assert_not_called()
+            self.assertEqual(before, c._QASM2QCXConverter__qcx_lines)
+
+    def test_full_output_limit_fails_after_computation_before_user_writes(self):
+        node = self.assignment('destination[{7, 1, 5}] ^= C[start:stop];')
+        baseline = self.converter(self.prefix)
+        baseline.visit(node)
+        c = self.converter(self.prefix)
+        limit = len(baseline._QASM2QCXConverter__qcx_lines) - 1
+        with patch.object(c, 'MAX_LOOP_OUTPUT_LINES', limit):
+            with self.assertRaisesRegex(qasm2qcx.QASM2QCXError, 'output limit'):
+                c.visit(node)
+        lines = c._QASM2QCXConverter__qcx_lines
+        self.assertTrue(any(' ^= QASM2QCX_RANGE_COPY_SOURCE_' in line for line in lines))
+        name = c._QASM2QCXConverter__capitalize_variable_name('destination')
+        self.assertFalse(any(line.startswith(f'LET {name}:') for line in lines))
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_success_and_snapshot_capture_lookup_failures_restore_caller_state(self):
+        for method in (None, '__snapshot_bit_range_destination', '__capture_bit_range_positions', '__copy_prepared_constant_bit'):
+            c = self.converter(self.prefix)
+            caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+            fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+            before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+            def fail(*args, **kwargs):
+                c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.INT)
+                raise RuntimeError('snapshot failure')
+            node = self.assignment('destination[{7, 1, 5}] ^= C[start:stop];')
+            if method:
+                with patch.object(c, '_QASM2QCXConverter' + method, side_effect=fail):
+                    with self.assertRaisesRegex(RuntimeError, 'snapshot failure'):
+                        c.visit(node)
+                name = c._QASM2QCXConverter__capitalize_variable_name('destination')
+                self.assertFalse(any(line.startswith(f'LET {name}:') for line in c._QASM2QCXConverter__qcx_lines))
+            else:
+                c.visit(node)
+            self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+
+
+class RuntimeRangeBitwiseRHSControlFlowTests(unittest.TestCase):
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    converter = ScalarAngleFoundationTests.converter
+    assignment = RuntimeBitSetAssignmentFoundationTests.assignment
+    prefix = RuntimeRangeBitwiseRHSLoweringTests.prefix + 'const int LAST = 7; bit[1] one;'
+
+    def assert_clean(self, c):
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(c._QASM2QCXConverter__loop_contexts, [])
+        self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, {})
+        ForLoopControlLoweringTests.assert_resolved_jumps(c._QASM2QCXConverter__qcx_lines)
+
+    def test_original_snapshots_rhs_and_writes_stay_inside_runtime_bodies(self):
+        for body in ('if (start < stop) { destination ^= C[start:stop]; }',
+                     'while (start < stop) { destination[7:-2:1] &= source[start:stop]; start += 1; }',
+                     'for int i in [start:stop] { if (i == 1) { continue; } '
+                     'destination[{7, 1}] |= source[i:i + 1]; if (i == 2) { break; } }'):
+            with self.subTest(body=body):
+                c = self.converter(self.prefix + body)
+                lines = c._QASM2QCXConverter__qcx_lines
+                condition = next(i for i, line in enumerate(lines) if line.startswith('JUMPIF '))
+                original = next(i for i, line in enumerate(lines)
+                                if line.startswith('LET QASM2QCX_RANGE_BITWISE_ORIGINAL_'))
+                source = next(i for i, line in enumerate(lines)
+                              if line.startswith('LET QASM2QCX_RANGE_COPY_SOURCE_'))
+                result = next(i for i, line in enumerate(lines) if line.endswith('_BITWISE'))
+                name = c._QASM2QCXConverter__capitalize_variable_name('destination')
+                writes = [i for i, line in enumerate(lines) if line.startswith(f'LET {name}:')]
+                self.assertLess(condition, original)
+                self.assertLess(original, source)
+                self.assertLess(source, result)
+                self.assertLess(result, min(writes))
+                self.assert_clean(c)
+
+    def test_expanded_bodies_hoist_storage_and_use_unique_snapshot_labels(self):
+        for loop in ('for int i in [0:1]', 'for int i in {start, stop}'):
+            c = self.converter(self.prefix + loop +
+                ' { destination[{7, 1}] ^= C[i:i + 1]; one &= source[i:i]; }')
+            lines = list(c)
+            first = next(i for i, line in enumerate(lines) if line.startswith(('LET ', 'JUMPIF ', '@')))
+            self.assertTrue(all(i < first for i, line in enumerate(lines) if line.startswith('VAR ')))
+            snapshots = [line for line in lines if line.startswith('@QASM2QCX_RANGE_COPY_')
+                         and line.endswith('_SNAPSHOT')]
+            self.assertEqual(len(snapshots), 4)
+            self.assertEqual(len(set(snapshots)), 4)
+            self.assert_clean(c)
+
+    def test_empty_outer_loop_elides_all_snapshots_and_runtime_bound_evaluation(self):
+        c = self.converter(self.prefix + 'for int outer in [1:0] { '
+            'destination[{LAST, 1}] ^= C[outer:1 / 0:stop]; '
+            'while (true) { one |= source[outer:0:stop]; break; } '
+            'for int i in [start:stop] { destination &= C[i:0:stop]; } }')
+        self.assertEqual(c._QASM2QCXConverter__qcx_lines,
+                         self.converter(self.prefix)._QASM2QCXConverter__qcx_lines)
+        self.assert_clean(c)
+
+    def test_skipped_nested_bodies_still_check_names_types_and_static_destinations(self):
+        for body in ('destination ^= C[outer:true:stop];',
+                     'for int destination in {start, stop} { destination &= source[outer:stop]; }',
+                     'for int C in [0:1] { destination |= C[outer:stop]; }',
+                     'for int LAST in [start:stop] { destination[{LAST, 1}] ^= C[outer:stop]; }',
+                     'C &= source[outer:stop];', 'destination ^= later[outer:stop];',
+                     'destination[{LATE, 1}] |= C[outer:stop];', 'later ^= source[outer:stop];'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix + 'for int outer in [1:0] { if (false) { ' + body +
+                               ' } } const int LATE = 7; bit[8] later;')
+
+    def test_nested_scopes_restore_static_destination_constants_and_bound_names(self):
+        c = self.converter(self.prefix + 'for int LAST in [start:stop] { '
+            'destination[0:1] ^= C[LAST:LAST + 1]; } '
+            'for int source in {start, stop} { destination[{LAST, 1}] &= C[source:source + 1]; } '
+            'destination[{LAST, 1}] |= source[start:stop];')
+        info = c._QASM2QCXConverter__runtime_bit_range_copy_info(
+            self.assignment('destination[{LAST, 1}] ^= C[start:stop];'))
+        self.assertEqual(info.destination_indices, (7, 1))
+        self.assert_clean(c)
+
+    def test_nested_failures_restore_expression_fields_caller_storage_and_capture_cache(self):
+        for method in ('__snapshot_bit_range_destination', '__capture_bit_range_positions',
+                       '__copy_prepared_constant_bit'):
+            c = self.converter(self.prefix)
+            caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.BIT)
+            expression = self.assignment('one = "1";').rvalue
+            outer = {id(expression): (expression, (caller,))}
+            c._QASM2QCXConverter__captured_bit_register_values.update(outer)
+            fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+            before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+            emit = c._QASM2QCXConverter__emit_runtime_bit_range_copy
+            def checked_emit(info):
+                entry = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+                try:
+                    return emit(info)
+                finally:
+                    self.assertEqual(entry, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+            original = getattr(c, '_QASM2QCXConverter' + method)
+            def fail(*args, **kwargs):
+                original(*args, **kwargs)
+                raise RuntimeError('nested bitwise failure')
+            node = self.program('while (start < stop) { for int i in [start:stop] { '
+                                'destination[{7, 1}] ^= C[i:i + 1]; } start += 1; }').statements[0]
+            with patch.object(c, '_QASM2QCXConverter' + method, side_effect=fail), \
+                    patch.object(c, '_QASM2QCXConverter__emit_runtime_bit_range_copy', side_effect=checked_emit):
+                with self.assertRaisesRegex(RuntimeError, 'nested bitwise failure'):
+                    c.visit(node)
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+            self.assertEqual(c._QASM2QCXConverter__loop_contexts, [])
+            self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, outer)
+            self.assertEqual((before[0], before[4]),
+                             (c._QASM2QCXConverter__expression_kind, c._QASM2QCXConverter__evaluate_constant))
+            name = c._QASM2QCXConverter__capitalize_variable_name('destination')
+            self.assertFalse(any(line.startswith(f'LET {name}:') for line in c._QASM2QCXConverter__qcx_lines))
+
+    def test_expanded_loop_output_failure_releases_scoped_snapshots(self):
+        node = self.program('for int i in {start, stop} { destination[{7, 1}] ^= C[i:i + 1]; }').statements[0]
+        baseline = self.converter(self.prefix)
+        baseline.visit(node)
+        c = self.converter(self.prefix)
+        with patch.object(c, 'MAX_LOOP_OUTPUT_LINES', len(baseline._QASM2QCXConverter__qcx_lines) - 1):
+            with self.assertRaisesRegex(qasm2qcx.QASM2QCXError, 'exceeds'):
+                c.visit(node)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(c._QASM2QCXConverter__loop_contexts, [])
+        self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, {})
 
 
 class RuntimeRangeToRangeCopyLoweringTests(unittest.TestCase):
