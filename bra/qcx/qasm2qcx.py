@@ -9104,8 +9104,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__is_initialization_process:
             return
 
-        if self.__runtime_bit_range_copy_info(statement) is not None:
-            raise UnsupportedOpenQASMError('runtime bit-register range copy lowering')
+        bit_range_copy = self.__runtime_bit_range_copy_info(statement)
+        if bit_range_copy is not None:
+            self.__emit_runtime_bit_range_copy(bit_range_copy)
+            return
         angle_bits = self.__angle_bit_assignment_info(statement)
         if angle_bits is not None:
             self.__emit_angle_bit_assignment(angle_bits.selection, statement.rvalue, angle_bits.binary_operator)
@@ -9281,6 +9283,61 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 for index, value in zip(indices, snapshot):
                     operand = target if selection.source_width == 1 else f'{target}:{index}'
                     self.__qcx_lines.append(f'LET {operand} := {value}')
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
+    def __emit_runtime_bit_range_copy(self, info: _RuntimeBitRangeCopyInfo) -> None:
+        if len(self.__qcx_lines) + 8 > self.MAX_LOOP_OUTPUT_LINES:
+            raise InvalidBitOperandException('Runtime range copy exceeds QCX output limit')
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        previous_temporaries = self.__declared_temporary_variables.copy()
+        label = f'QASM2QCX_RANGE_COPY_{self.__array_index}'
+        self.__array_index += 1
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            selection = info.selection
+            # Bound private storage by the known destination width. Excess
+            # entries, empty ranges and bad indices fail before any source read.
+            positions, count = self.__capture_bit_range_positions(
+                selection.bounds, selection.source_width, label, capacity=info.width)
+            self.__qcx_lines.append(f'ASSERT {count} == {info.width}')
+            snapshot = self.__add_temporary_int_array(info.width, 'RANGE_COPY_SOURCE')
+            index = self.__add_new_temporary_variable(ValueType.INT)
+            position = self.__add_new_temporary_variable(ValueType.INT)
+            constant = (self.__constant_bit_register(selection.source_name)
+                        if selection.source_name in self.__const_bit_register_values else None)
+            words = self.__prepare_constant_bit_lookup(constant) if constant is not None else None
+            self.__qcx_lines.extend([
+                f'LET {index} := 0', f'@{label}_SNAPSHOT',
+                f'LET {position} := {positions}:{index}',
+            ])
+            if words is None:
+                source = self.__capitalize_variable_name(selection.source_name)
+                operand = source if selection.source_width == 1 else f'{source}:{position}'
+                self.__qcx_lines.append(f'LET {snapshot}:{index} := {operand}')
+            else:
+                self.__copy_prepared_constant_bit(words, position, f'{snapshot}:{index}')
+            # Reads may repeat a normalized source position. Snapshot the
+            # complete selection in its original order before writing, so
+            # self-copies and overlapping source/destination storage are safe.
+            self.__qcx_lines.extend([
+                f'LET {index} += 1', f'JUMPIF {label}_SNAPSHOT {index} < {count}',
+            ])
+            if len(self.__qcx_lines) + 5 > self.MAX_LOOP_OUTPUT_LINES:
+                raise InvalidBitOperandException('Runtime range copy exceeds QCX output limit')
+            target = self.__capitalize_variable_name(info.destination_name)
+            operand = target if info.width == 1 else f'{target}:{index}'
+            self.__qcx_lines.extend([
+                f'LET {index} := 0', f'@{label}_WRITE',
+                f'LET {operand} := {snapshot}:{index}',
+                f'LET {index} += 1', f'JUMPIF {label}_WRITE {index} < {count}',
+            ])
+            self.__hoist_temporary_declarations(previous_temporaries)
         finally:
             (self.__expression_kind, self.__value, self.__value_type,
              self.__value_kind, self.__evaluate_constant) = previous
