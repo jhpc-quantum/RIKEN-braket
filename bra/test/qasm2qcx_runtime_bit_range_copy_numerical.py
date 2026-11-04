@@ -3,6 +3,7 @@
 
 import argparse
 import pathlib
+import re
 import resource
 import unittest
 
@@ -219,6 +220,16 @@ class BackendTests(unittest.TestCase):
         expected = (1 / math.sqrt(2), cmath.exp(1j * 5 * math.pi / 8) / math.sqrt(2))
         for fused in (False, True):
             BackendAuditTests.check(self, self.program(source, fused=fused), expected)
+
+    def test_documented_runtime_range_copy_example(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- runtime-bit-range-copy-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        source = examples[0].removeprefix('OPENQASM 3.0;')
+        self.check_initializers(source + '\nbool same = result == "111" && flags == "01010101" '
+                                '&& repeated == "10101" && one == "0";',
+                                (), (), ('same', 'one', 'start', 'stride', 'stop', 'reverse'), (1, 0, -1, 2, 3, -1))
 
     def test_bad_ranges_and_lengths_fail_before_any_source_read_or_destination_write(self):
         cases = (
