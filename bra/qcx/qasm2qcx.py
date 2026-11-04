@@ -9155,8 +9155,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         bit_range_copy = self.__runtime_bit_range_copy_info(statement)
         if bit_range_copy is not None:
             if isinstance(bit_range_copy, _RuntimeBitRangeToRangeCopyInfo):
-                raise UnsupportedOpenQASMError('runtime range-to-range copy lowering')
-            self.__emit_runtime_bit_range_copy(bit_range_copy)
+                self.__emit_runtime_bit_range_to_range_copy(bit_range_copy)
+            else:
+                self.__emit_runtime_bit_range_copy(bit_range_copy)
             return
         angle_bits = self.__angle_bit_assignment_info(statement)
         if angle_bits is not None:
@@ -9333,6 +9334,63 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 for index, value in zip(indices, snapshot):
                     operand = target if selection.source_width == 1 else f'{target}:{index}'
                     self.__qcx_lines.append(f'LET {operand} := {value}')
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
+    def __emit_runtime_bit_range_to_range_copy(self, info: _RuntimeBitRangeToRangeCopyInfo) -> None:
+        write_lines = 6
+        if len(self.__qcx_lines) + write_lines > self.MAX_LOOP_OUTPUT_LINES:
+            raise InvalidBitOperandException('Runtime range-to-range copy exceeds QCX output limit')
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        previous_temporaries = self.__declared_temporary_variables.copy()
+        label = f'QASM2QCX_RANGE_TO_RANGE_COPY_{self.__array_index}'
+        self.__array_index += 1
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            destination_positions, destination_count = self.__capture_bit_range_positions(
+                info.destination.bounds, info.destination.source_width, label + '_DESTINATION', capacity=info.capacity)
+            self.__check_distinct_bit_range_positions(
+                destination_positions, destination_count, info.destination.source_width, label + '_DESTINATION')
+            if len(self.__qcx_lines) + write_lines > self.MAX_LOOP_OUTPUT_LINES:
+                raise InvalidBitOperandException('Runtime range-to-range copy exceeds QCX output limit')
+            source_positions, source_count = self.__capture_bit_range_positions(
+                info.source.bounds, info.source.source_width, label + '_SOURCE', capacity=info.capacity)
+            self.__qcx_lines.append(f'ASSERT {source_count} == {destination_count}')
+            snapshot = self.__add_temporary_int_array(info.capacity, 'RANGE_COPY_SOURCE')
+            index = self.__add_new_temporary_variable(ValueType.INT)
+            position = self.__add_new_temporary_variable(ValueType.INT)
+            constant = (self.__constant_bit_register(info.source.source_name)
+                        if info.source.source_name in self.__const_bit_register_values else None)
+            words = self.__prepare_constant_bit_lookup(constant) if constant is not None else None
+            self.__qcx_lines.extend([
+                f'LET {index} := 0', f'@{label}_SNAPSHOT', f'LET {position} := {source_positions}:{index}',
+            ])
+            if words is None:
+                source = self.__capitalize_variable_name(info.source.source_name)
+                operand = source if info.source.source_width == 1 else f'{source}:{position}'
+                self.__qcx_lines.append(f'LET {snapshot}:{index} := {operand}')
+            else:
+                self.__copy_prepared_constant_bit(words, position, f'{snapshot}:{index}')
+            # Repeated source positions are valid. Finish all reads before
+            # touching the destination, including overlapping self-copies.
+            self.__qcx_lines.extend([
+                f'LET {index} += 1', f'JUMPIF {label}_SNAPSHOT {index} < {source_count}',
+            ])
+            if len(self.__qcx_lines) + write_lines > self.MAX_LOOP_OUTPUT_LINES:
+                raise InvalidBitOperandException('Runtime range-to-range copy exceeds QCX output limit')
+            target = self.__capitalize_variable_name(info.destination.source_name)
+            operand = target if info.destination.source_width == 1 else f'{target}:{position}'
+            self.__qcx_lines.extend([
+                f'LET {index} := 0', f'@{label}_WRITE', f'LET {position} := {destination_positions}:{index}',
+                f'LET {operand} := {snapshot}:{index}', f'LET {index} += 1',
+                f'JUMPIF {label}_WRITE {index} < {destination_count}',
+            ])
+            self.__hoist_temporary_declarations(previous_temporaries)
         finally:
             (self.__expression_kind, self.__value, self.__value_type,
              self.__value_kind, self.__evaluate_constant) = previous
