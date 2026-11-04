@@ -4,6 +4,7 @@
 import argparse
 import operator
 import pathlib
+import re
 import resource
 import unittest
 
@@ -270,6 +271,15 @@ class BackendTests(unittest.TestCase):
             expected = (1 / math.sqrt(2), cmath.exp(1j * value * math.pi / 8) / math.sqrt(2))
             for fused in (False, True):
                 BackendAuditTests.check(self, self.program(source, fused=fused), expected)
+
+    def test_documented_runtime_range_bitwise_rhs_example(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- runtime-range-bitwise-rhs-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        source = examples[0].removeprefix('OPENQASM 3.0;')
+        self.check_initializers(source + '\nbool same = result == "0011" && flags == "11101100" && one == "0";',
+                                (), (), ('same', 'one', 'start', 'step', 'stop', 'index'), (1, 0, 7, -2, 1, -1))
 
     def test_invalid_ranges_fail_before_rhs_reads_or_writes(self):
         cases = (('0', '0', '1'), ('1', '1', '0'), ('-5', '1', '-4'),
