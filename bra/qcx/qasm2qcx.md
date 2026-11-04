@@ -140,7 +140,7 @@ The converter currently covers:
   measurement destinations;
 - runtime index-set and range measurement destinations with static qubit-register sources;
 - copies from runtime ranges on mutable or constant bit registers into whole
-  mutable registers, static selections, or runtime index-set destinations of known width;
+  mutable registers, static selections, or runtime index-set/range destinations;
 - plain and bitwise compound assignments into runtime bit-register ranges with
   known-width register RHS values;
 - shift compound assignments into runtime bit-register ranges using their
@@ -2391,9 +2391,8 @@ unsupported. Runtime ranges also retain their separate
 ### Copies from runtime bit-register ranges
 
 Plain `=` assignment can copy a runtime-dependent range from a named mutable or
-constant `bit[N]` register into a whole mutable `bit[k]` register or a static
-range/discrete-set selection or runtime discrete-set selection on a named mutable
-bit register:
+constant `bit[N]` register into a whole mutable `bit[k]` register or a static or
+runtime range/discrete-set selection on a named mutable bit register:
 
 ```qasm
 result = flags[start:stop];
@@ -2404,10 +2403,14 @@ result[{5, 1, 3}] = flags[start:step:stop];
 result[{i, j, k}] = flags[start:step:stop];
 result[{7, index, 0}] = C[start:stop];
 result[{index}] = flags[first:first];
+result[dstart:dstop] = flags[sstart:sstop];
+result[dstart:dstep:dstop] = C[sstart:sstep:sstop];
 ```
 
-The destination register width or selection length `k` must be known during
-conversion, and the complete RHS must be the range selection. A range is
+The complete RHS must be the range selection. Whole registers, static selections,
+and runtime index sets supply a required entry count `k` known during conversion.
+For runtime range destinations, both selected counts are determined during
+execution and must match, as described below. A range is
 runtime-dependent when a bound or step
 uses runtime storage or an enclosing iterator. Start, step, and stop may
 independently use supported INT/UINT expressions; both bounds are required and
@@ -2429,16 +2432,16 @@ one-bit register destinations, while scalar `result[4]` is rejected.
 Destination ranges and discrete sets follow their declared selection order:
 source entry zero maps to the first selected destination, entry one to the
 second, and so on. Descending/nonunit ranges, reordered sets, and negative
-destination indices are supported. Destination ranges require compile-time
-integer expressions; discrete sets may also use supported runtime INT/UINT
-expressions. Negative indices are normalized against the containing register
+destination indices are supported. Both ranges and discrete sets may use
+supported runtime INT/UINT expressions. Negative indices are normalized against the containing register
 width. Entirely static destinations reject empty selections, invalid indices,
 and duplicate normalized positions during conversion, including in skipped bodies.
 Rejecting duplicate destinations is converter policy; the specification does
 not explicitly resolve conflicting writes through repeated indices. Unselected
 destination bits are preserved. Active integer loop iterators may supply runtime
-set entries, including when they shadow constants or their loops are unrolled.
-They cannot supply indices for a static destination range.
+range bounds/steps or set entries, including when they shadow constants or their
+loops are unrolled. Iterator-dependent selections remain runtime selections;
+the iterators themselves remain read-only.
 
 When any destination set entry depends on runtime storage or an enclosing
 iterator, every entry is retained until execution, including constant entries.
@@ -2557,13 +2560,74 @@ stop = 3;
 result[{i, 0, 3, j, 4}] = C[start:stop];   // Repeated source positions; result is "01111110".
 ```
 
+Runtime range destinations use the same destination-before-source policy, but
+capture both selected counts at execution time:
+
+1. Capture destination start, step, and stop once, in that order. Validate its
+   selected positions and reject zero steps, empty selections, capacity overflow,
+   and duplicate normalized destinations before source-bound evaluation.
+2. Capture source start, step, and stop once, in that order. Validate its selected
+   positions and nonempty count within capacity, then require its count to equal
+   the captured destination count.
+3. Snapshot every selected source bit, retaining repeated source positions.
+4. Write to the captured destination positions in selection order.
+
+Both ranges use inclusive raw integer progressions before negative-index
+normalization, and both require explicit start/stop bounds. The default step is
+one. Each operand may independently use a supported INT/UINT expression;
+descending/nonunit ranges and full-width native operands retain the existing
+range rules. An unselected stop bound need not itself be a valid bit index.
+Bounds that read the destination observe its original values and are never
+re-evaluated during writing. Unselected bits and completed earlier copies remain
+unchanged if a later capture, range check, count check, or source read fails.
+Source and destination registers may overlap, including a complete self-reversal.
+Captures refresh on every reached visit; skipped paths and empty enclosing loops
+still validate names, types, mutability, and scopes without evaluating runtime
+values or inventing iterator values.
+
+<!-- runtime-range-to-range-copy-example -->
+```qasm
+OPENQASM 3.0;
+bit[8] flags = "10101010";
+bit[8] result = "11001100";
+int dstart = 5;
+int dstep = -2;
+int dstop = 1;
+int sstart = 1;
+uint sstep = 2;
+int sstop = 6;
+result[dstart:dstep:dstop] = flags[sstart:sstep:sstop]; // Three bits; result is "11101110".
+const bit[4] C = "1010";
+dstart = 0;
+dstep = 1;
+dstop = 4;
+sstart = -1;
+sstep = 1;
+sstop = 3;
+result[dstart:dstep:dstop] = C[sstart:sstep:sstop]; // Repeated source bit; result is "11110101".
+dstart = 7;
+dstep = -1;
+dstop = 0;
+sstart = 0;
+sstop = 7;
+result[dstart:dstep:dstop] = result[sstart:sstep:sstop]; // Self-reversal: "10101111".
+bit[1] one = "0";
+dstart = -1;
+dstep = 1;
+dstop = -1;
+sstart = -1;
+sstop = -1;
+one[dstart:dstop] = result[sstart:sstop]; // One-bit register result is "1".
+```
+
 Mutable sources use their existing QCX element storage, including scalar
 storage for `bit[1]`. Singleton destinations retain the containing register's
 storage: `one[0:0]` on `bit[1] one` uses scalar storage, whereas `result[4:4]`
 on a larger register writes its selected element. Constant sources use the
 private native UINT-word
-lookup, preserving full and partial words beyond native UINT width. Private
-position and snapshot tables each have exactly `k` entries. Reached selections
+lookup, preserving full and partial words beyond native UINT width. With a
+known destination count `k`, private source-position and snapshot tables each
+have exactly `k` entries. Reached selections
 longer than `k` fail before exceeding that capacity, and shorter selections fail
 the count check. Source and containing destination widths must fit QCX INT;
 `k` must also
@@ -2571,10 +2635,28 @@ fit the runtime range-position storage limit (currently 1000000). Copies do not
 require distinct source indices or a `2*N` position table. Static destination
 expansion is bounded before materializing the position list. Source reads and
 whole-register writes use runtime loops with code size independent of `k`.
-Selected destinations emit one write per position. Runtime sets keep their
+Static selections and runtime index sets emit one write per position. Runtime
+sets keep their
 captured INT addresses reserved throughout the copy, with `k*(k-1)/2` pairwise
 duplicate checks rather than a native-word bitmap. This supports destinations
-beyond native UINT width. Constant lookup initialization grows with its native
+beyond native UINT width.
+
+When both ranges are runtime-dependent, three private INT buffers hold destination
+positions, source positions, and source snapshots. Each has capacity
+`min(D, L)`, where `D` is the containing destination register width and `L` is
+the existing runtime range-position limit (currently 1000000). A successful
+destination has distinct positions and therefore at most `D` entries, even when
+the source contains negative aliases or has a different containing width.
+Selections exceeding capacity fail on reached paths before any destination
+write. Short copies on registers wider than `L` remain supported. Both containing
+widths and counts must fit QCX INT; neither `2*D` nor `2*N` must fit INT to use
+this copy path. Only the captured entry count is read or written, so shrinking
+selections cannot use stale buffer entries. Duplicate destination checks reuse
+the range-period/GCD helper without a quadratic scan or re-evaluating the step.
+Capture, snapshot, and write loops keep generated copy code independent of the
+buffer capacity. Both position tables remain reserved until writing completes.
+
+Constant lookup initialization grows with its native
 word count. Conversion checks the output budget before destination capture,
 before duplicate checks and source capture, and before any destination write,
 including all writes to selected destinations. Temporary
@@ -2582,8 +2664,7 @@ declarations are hoisted outside
 loops; storage is released on success and failed lowering while preserving
 caller-owned temporaries. No new bra instruction or build option is required.
 
-Declaration initializers, runtime range destinations for these copies,
-compound assignments, nested
+Declaration initializers, scalar destinations, compound assignments, nested
 runtime ranges in bitwise/shift expressions, comparisons, casts or function
 calls, computed sources, aliases, and further indexing of selection results
 remain unsupported. Existing static range and fixed-width runtime set expressions
@@ -2700,12 +2781,18 @@ normalizing negative indices. The stop bound need not itself be selected:
 destination register of width `N`. Only selected positions are bounds-checked;
 an unselected stop bound is not an array access.
 
-The RHS must have a register width known during conversion. It may use existing
+The fixed-width RHS subset described here requires a register width known during
+conversion. It may use existing
 whole-register, static/runtime index-set, bitwise, shift, rotation, and supported
 angle-to-bit-register expressions. The selected destination count must equal
 that width at runtime, without padding, truncation, or scalar broadcasting.
 A one-entry range remains a `bit[1]` destination: its RHS must be `"1"`, `"0"`,
 or another one-bit register, rather than scalar `true` or `1`.
+
+Plain `=` may instead copy a complete runtime range RHS through the
+[range-to-range copy subset](#copies-from-runtime-bit-register-ranges) above.
+Both selected counts are then captured and checked at runtime, using its bounded
+storage policy. Compound assignments still require a known-width RHS.
 
 The converter captures start, step, and stop once in that order, before
 evaluating the RHS. It rejects zero steps, empty selections, invalid selected
@@ -7345,6 +7432,24 @@ set copy example above is executed. Unit tests cover metadata without evaluation
 once-only captures, held destination addresses, comparison/output budgets,
 declaration hoisting, labels, and cleanup preserving caller-owned storage and
 snapshot bindings on success and failed lowering.
+Run with `--bra /path/to/bra`, including a UBSan build.
+
+`bra/test/qasm2qcx_runtime_range_to_range_copy_numerical.py` checks independent
+runtime source and destination ranges against Python progression and bit-list
+references. Cases cover mixed INT/UINT operands, descending/nonunit strides,
+negative aliases, singleton storage, wide constants, overlap, repeated source
+positions, preserved unselected bits, and the executable example above.
+Loops exercise changing counts, directions, source values and both position
+tables, live iteration, shadowing, transfers, and differently sized branch copies.
+Measurement-driven ranges feed quantum feedback, and full states check phase
+parameters with and without fusion. Instrumented failures verify destination
+error priority, no partial writes, and preservation of earlier successful copies,
+including later capacity failures. Small storage limits allow short selections
+on wide registers and reject oversized reached selections before reads/writes.
+Unit tests cover six once-only operand captures, destination-only duplicate
+checks, matching counts before reads, three bounded buffers, constant-size loop
+code, declaration hoisting, labels, output budgets, and scope/temporary cleanup
+preserving caller-owned storage and snapshot bindings on success and failure.
 Run with `--bra /path/to/bra`, including a UBSan build.
 
 `bra/test/qasm2qcx_runtime_bit_range_assignment_numerical.py` checks plain range
