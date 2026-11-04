@@ -427,6 +427,11 @@ class _RuntimeBitRangeToRangeCopyInfo:
     destination: _RuntimeBitRangeSelection
     source: _RuntimeBitRangeSelection
     capacity: int
+    operator: str = '='
+
+    @property
+    def binary_operator(self) -> str | None:
+        return None if self.operator == '=' else self.operator[:-1]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -7378,15 +7383,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         target = statement.lvalue
         destination_range = self.__runtime_bit_range_destination(target, iterators)
         if destination_range is not None:
-            if operator != '=':
-                raise UnsupportedOpenQASMError('runtime range RHS bitwise assignment requires a static destination')
             # A successful destination is distinct, so its count cannot exceed
             # its containing width. Reuse this bounded capacity for both ranges
             # and the source snapshot without guessing either runtime count.
             capacity = min(destination_range.source_width, self.MAX_RUNTIME_BIT_RANGE_POSITIONS)
             if not 1 <= capacity <= self.QCX_INT_MAX:
                 raise InvalidBitOperandException('Runtime range copy capacity must fit QCX INT indexing')
-            return _RuntimeBitRangeToRangeCopyInfo(destination_range, selection, capacity)
+            return _RuntimeBitRangeToRangeCopyInfo(destination_range, selection, capacity, operator)
         if not isinstance(target, (ast.Identifier, ast.IndexedIdentifier)):
             raise UnsupportedOpenQASMError('runtime range copy requires a named bit-register destination')
         name = target.name if isinstance(target, ast.Identifier) else target.name.name
@@ -7409,8 +7412,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise InvalidBitOperandException('Runtime range copy requires a register selection, not a scalar bit')
             runtime_destination = self.__runtime_bit_set_selection(target, iterators, destination=True)
             if runtime_destination is not None:
-                if operator != '=':
-                    raise UnsupportedOpenQASMError('runtime range RHS bitwise assignment requires a static destination')
                 # Retain every occurrence and type, including constants in a
                 # mixed set. Bounds, arithmetic and duplicates are checked only
                 # when the destination is captured on a reached execution path.
@@ -9351,6 +9352,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__release_temporary_variable(temporary)
 
     def __emit_runtime_bit_range_to_range_copy(self, info: _RuntimeBitRangeToRangeCopyInfo) -> None:
+        if info.binary_operator is not None:
+            raise UnsupportedOpenQASMError('runtime-selected range RHS bitwise assignment lowering')
         write_lines = 6
         if len(self.__qcx_lines) + write_lines > self.MAX_LOOP_OUTPUT_LINES:
             raise InvalidBitOperandException('Runtime range-to-range copy exceeds QCX output limit')
@@ -9424,6 +9427,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return original
 
     def __emit_runtime_bit_range_copy(self, info: _RuntimeBitRangeCopyInfo) -> None:
+        if info.runtime_destination is not None and info.binary_operator is not None:
+            raise UnsupportedOpenQASMError('runtime-selected range RHS bitwise assignment lowering')
         bitwise = info.binary_operator is not None
         if bitwise and not 1 <= info.width <= self.MAX_RUNTIME_BIT_RANGE_POSITIONS:
             raise InvalidBitOperandException('Runtime range bitwise snapshot exceeds storage limit')
