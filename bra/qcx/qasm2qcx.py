@@ -406,11 +406,14 @@ class _RuntimeBitRangeCopyInfo:
     selection: _RuntimeBitRangeSelection
     destination_name: str
     destination_width: int
-    # None denotes a whole register without materializing all its positions.
+    # A whole register has neither static positions nor a runtime set.
     destination_indices: tuple[int, ...] | None = None
+    runtime_destination: _RuntimeBitSetSelection | None = None
 
     @property
     def width(self) -> int:
+        if self.runtime_destination is not None:
+            return self.runtime_destination.width
         return self.destination_width if self.destination_indices is None else len(self.destination_indices)
 
 
@@ -7375,21 +7378,29 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if not 1 <= destination_width <= self.QCX_INT_MAX:
             raise InvalidBitOperandException('Runtime range copy destination width must fit QCX INT indexing')
         indices = None
+        runtime_destination = None
         if isinstance(target, ast.IndexedIdentifier):
             if not self.__is_register_bit_selection(target):
                 raise InvalidBitOperandException('Runtime range copy requires a register selection, not a scalar bit')
-            # Resolve destination constants in declaration scope, never with
-            # invented values for active iterators or skipped runtime bounds.
-            # Bound expansion before allocating a potentially huge index tuple.
-            destination = self.__static_bit_selection(
-                target, iterators, destination=True,
-                max_indices=min(self.QCX_INT_MAX, self.MAX_RUNTIME_BIT_RANGE_POSITIONS))
-            indices = destination.indices
-            if not destination.is_register or not 1 <= len(indices) <= self.QCX_INT_MAX:
-                raise InvalidBitOperandException('Runtime range copy selection width must fit QCX INT indexing')
+            runtime_destination = self.__runtime_bit_set_selection(target, iterators, destination=True)
+            if runtime_destination is not None:
+                # Retain every occurrence and type, including constants in a
+                # mixed set. Bounds, arithmetic and duplicates are checked only
+                # when the destination is captured on a reached execution path.
+                if not 1 <= runtime_destination.width <= self.MAX_RUNTIME_BIT_RANGE_POSITIONS:
+                    raise InvalidBitOperandException('Runtime range copy selection exceeds storage limit')
+            else:
+                # Resolve static destinations without inventing iterator values
+                # and bound expansion before materializing their position list.
+                destination = self.__static_bit_selection(
+                    target, iterators, destination=True,
+                    max_indices=min(self.QCX_INT_MAX, self.MAX_RUNTIME_BIT_RANGE_POSITIONS))
+                indices = destination.indices
+                if not destination.is_register or not 1 <= len(indices) <= self.QCX_INT_MAX:
+                    raise InvalidBitOperandException('Runtime range copy selection width must fit QCX INT indexing')
         # Source aliases may repeat. Only the runtime count must equal width;
         # copies need no 2*source_width position capacity or distinctness test.
-        return _RuntimeBitRangeCopyInfo(selection, name, destination_width, indices)
+        return _RuntimeBitRangeCopyInfo(selection, name, destination_width, indices, runtime_destination)
 
     def __runtime_bit_range_destination(
             self, target: ast.Identifier | ast.IndexedIdentifier,
@@ -9310,8 +9321,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__release_temporary_variable(temporary)
 
     def __emit_runtime_bit_range_copy(self, info: _RuntimeBitRangeCopyInfo) -> None:
-        write_lines = 5 if info.destination_indices is None else info.width
-        if len(self.__qcx_lines) + max(8, write_lines) > self.MAX_LOOP_OUTPUT_LINES:
+        runtime_destination = info.runtime_destination
+        write_lines = (5 if runtime_destination is None and info.destination_indices is None else info.width)
+        comparisons = info.width * (info.width - 1) // 2 if runtime_destination is not None else 0
+        if len(self.__qcx_lines) + comparisons + max(8, write_lines) > self.MAX_LOOP_OUTPUT_LINES:
             raise InvalidBitOperandException('Runtime range copy exceeds QCX output limit')
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
@@ -9321,6 +9334,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__array_index += 1
         try:
             self.__expression_kind = ExpressionKind.ARITHMETIC
+            destinations = info.destination_indices
+            if runtime_destination is not None:
+                # Reserve all captured addresses throughout source evaluation.
+                # Check destination failures before evaluating source bounds.
+                destinations = tuple(self.__capture_array_index(expression, info.destination_width)
+                                     for expression in runtime_destination.indices)
+                if len(self.__qcx_lines) + comparisons + write_lines > self.MAX_LOOP_OUTPUT_LINES:
+                    raise InvalidBitOperandException('Runtime range copy exceeds QCX output limit')
+                self.__check_distinct_bit_indices(destinations)
             selection = info.selection
             # Bound private storage by the known destination width. Excess
             # entries, empty ranges and bad indices fail before any source read.
@@ -9352,7 +9374,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if len(self.__qcx_lines) + write_lines > self.MAX_LOOP_OUTPUT_LINES:
                 raise InvalidBitOperandException('Runtime range copy exceeds QCX output limit')
             target = self.__capitalize_variable_name(info.destination_name)
-            if info.destination_indices is None:
+            if destinations is None:
                 operand = target if info.destination_width == 1 else f'{target}:{index}'
                 self.__qcx_lines.extend([
                     f'LET {index} := 0', f'@{label}_WRITE',
@@ -9360,10 +9382,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     f'LET {index} += 1', f'JUMPIF {label}_WRITE {index} < {count}',
                 ])
             else:
-                # Static positions require no runtime destination lookup.
-                # Use the containing width, not the selection length, to
-                # distinguish bit[1] storage from a slice of a larger register.
-                for offset, destination in enumerate(info.destination_indices):
+                # Both static positions and captured set indices can be used
+                # directly. Singleton slices retain their containing storage.
+                for offset, destination in enumerate(destinations):
                     operand = target if info.destination_width == 1 else f'{target}:{destination}'
                     self.__qcx_lines.append(f'LET {operand} := {snapshot}:{offset}')
             self.__hoist_temporary_declarations(previous_temporaries)
