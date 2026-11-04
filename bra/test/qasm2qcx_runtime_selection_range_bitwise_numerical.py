@@ -4,6 +4,7 @@
 import argparse
 import operator
 import pathlib
+import re
 import resource
 import unittest
 from unittest.mock import patch
@@ -321,6 +322,15 @@ class BackendTests(unittest.TestCase):
                 expected = (1 / math.sqrt(2), cmath.exp(1j * value * math.pi / 8) / math.sqrt(2))
                 for fused in (False, True):
                     BackendAuditTests.check(self, self.program(source, fused=fused), expected)
+
+    def test_documented_runtime_selection_range_bitwise_example(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- runtime-selection-range-bitwise-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        source = examples[0].removeprefix('OPENQASM 3.0;')
+        self.check_initializers(source + '\nbool same = flags == "11111111" && one == "1";',
+                                (), (), ('same', 'set_result', 'range_result', 'one'), (1, 1, 1, 1))
 
     def assert_failure(self, source, error, original_reads):
         lines = self.program(source)
