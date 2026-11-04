@@ -77,6 +77,149 @@ class BackendTests(unittest.TestCase):
                 f'result = flags[start:stride:stop]; bool same = result == "{expected}";',
                 (), (), ('same', 'stride', 'stop'), (1, step, stop))
 
+    def test_loop_families_recapture_positions_and_restore_iterator_names(self):
+        for loop, index in (
+                ('for int i in [0:3]', 'i'), ('for int i in [first:last]', 'i'),
+                ('for int i in [ufirst:ulast]', 'i'), ('for int i in {0, 1, 2, 3}', 'i'),
+                ('for int i in {first, first + 1, last - 1, last}', 'i'),
+                ('for int i in indices', 'i'), ('for uint i in unsigned_indices', 'i'),
+                ('for bit i in flags', 'int(i)'), ('for bit i in C', 'int(i)')):
+            for source in ('flags', 'C'):
+                self.check_initializers('const bit[4] C = "1010"; bit[4] flags = "1010"; bit[1] result; '
+                    'int first = 0; int last = 3; uint ufirst = 0; uint ulast = 3; int i = -1; int total = 0; '
+                    'array[int, 4] indices = {0, 1, 2, 3}; array[uint, 4] unsigned_indices = {0, 1, 2, 3}; '
+                    + loop + f' {{ result = {source}[{index}:{index}]; total += int(result[0]); }} '
+                    'bool same = result == "1"; bool unchanged = flags == "1010";',
+                    (), (), ('same', 'unchanged', 'total', 'i'), (1, 1, 2, -1))
+        # Changing the source of a live bit iterator must affect later visits.
+        self.check_initializers('const bit[4] C = "1111"; bit[4] flags = "0001"; '
+            'int start = 0; int stop = 3; int total = 0; '
+            'for bit b in flags { total += int(b); flags = C[start:stop]; } '
+            'bool same = flags == "1111";', (), (), ('same', 'total'), (1, 4))
+
+    def test_while_reentry_refreshes_direction_source_values_and_repeated_indices(self):
+        for constant in (False, True):
+            self.check_initializers(('const ' if constant else '') + 'bit[4] flags = "1010"; '
+                'bit[4] result; int start = 0; int stop = 3; int stride = 1; int i = 0; int total = 0; '
+                'while (i < 4) { result = flags[start:stride:stop]; total += int(result[0]); '
+                'start = 3 - start; stop = 3 - stop; stride = -stride; i += 1; } '
+                'bool same = result == "0101";', (), (), ('same', 'i', 'total', 'stride'), (1, 4, 2, 1))
+            self.check_initializers(('const ' if constant else '') + 'bit[4] flags = "1010"; '
+                'bit[8] result; int start = -4; int stop = 3; int stride = 1; int i = 0; '
+                'while (i < 3) { result = flags[start:stride:stop]; '
+                'start = -1 - start; stop = -1 - stop; stride = -stride; i += 1; } '
+                'bool same = result == "10101010";', (), (), ('same', 'i'), (1, 3))
+        self.check_initializers('bit[4] flags = "1001"; bit[2] result; int start = 0; int stop = 1; int i = 0; '
+            'while (i < 4) { result = flags[start:stop]; flags ^= "0011"; i += 1; } '
+            'bool same = result == "10"; bool restored = flags == "1001";',
+            (), (), ('same', 'restored', 'i'), (1, 1, 4))
+        self.check_initializers('bit[4] flags = "1010"; bit[1] result; array[int, 2] bounds = {0, 0}; int i = 0; '
+            'while (i < 4) { result = flags[bounds[0]:bounds[1]]; bounds[0] += 1; bounds[1] += 1; i += 1; } '
+            'bool same = result == "1";', (), (), ('same', 'i'), (1, 4))
+        self.check_initializers('bit[4] flags = "1010"; bit[2] result; '
+            'int start = 0; int stop = 1; int stride = 1; int i = 0; '
+            'while (i < 2) { result = flags[start:stride:stop]; '
+            'start = -1; stride = 4; stop = 3; i += 1; } '
+            'bool same = result == "11";', (), (), ('same', 'i'), (1, 2))
+
+    def test_nested_break_continue_and_shadowed_constants_restore_outer_bindings(self):
+        self.check_initializers('const int I = 3; const bit[4] C = "1010"; bit[1] result; '
+            'int first = 0; int last = 2; int start = -1; int visits = 0; int total = 0; '
+            'for int I in [first:last] { for int start in [0:3] { '
+            'if (start == 0) { continue; } result = C[start:start]; visits += 1; '
+            'total += int(result[0]); break; } } '
+            'for int C in {0, 1} {} result = C[I:I]; int restored = I; bool same = result == "1";',
+            (), (), ('same', 'visits', 'total', 'restored', 'start'), (1, 3, 3, 3, -1))
+        self.check_initializers('bit[4] flags = "1010"; bit[1] result; int i = 0; int total = 0; '
+            'while (i < 4) { i += 1; if (i == 2) { continue; } '
+            'result = flags[i - 1:i - 1]; total += int(result[0]); if (i == 3) { break; } } '
+            'bool same = result == "0";', (), (), ('same', 'total', 'i'), (1, 0, 3))
+        # Both arms reuse temporary names, but each reached copy must use
+        # its own source, positions and count on every new visit.
+        self.check_initializers('const bit[4] C = "1001"; bit[4] flags = "0110"; bit[2] result; '
+            'int i = 0; int start = 0; int stop = 1; int total = 0; '
+            'while (i < 4) { if (i % 2 == 0) { result = C[start:stop]; } '
+            'else { result = flags[start:stop]; } total += int(result[0]); i += 1; } '
+            'bool same = result == "10";', (), (), ('same', 'total'), (1, 2))
+
+    def test_skipped_invalid_ranges_do_not_read_sources_or_modify_destinations(self):
+        bounds = ('start:0:stop', 'bad:stop', 'start:1 / zero:stop', 'start:start',
+                  'start:stop + 1', 'bounds[bad]:stop', 'start:-1:stop', 'start:stride:stop')
+        wrappers = ('if (false) {{ {} }}', 'while (false) {{ {} }}',
+                    'for int outer in [1:0] {{ {} }}',
+                    'for int outer in [0:1] {{ if (outer < 0) {{ {} }} }}',
+                    'for int outer in [first:last] {{ if (outer < 0) {{ {} }} }}',
+                    'while (visits < 2) {{ visits += 1; continue; {} }}',
+                    'while (true) {{ break; {} }}')
+        for constant in (False, True):
+            for selector in bounds:
+                for wrapper in wrappers:
+                    self.check_initializers(('const ' if constant else '') + 'bit[4] flags = "1010"; '
+                        'bit[2] result = "11"; int start = 0; int stop = 1; int stride = 0; '
+                        'int zero = 0; int bad = 4; int first = 0; int last = 1; int visits = 0; '
+                        'array[int, 2] bounds = {0, 1}; ' + wrapper.format(f'result = flags[{selector}];') +
+                        'bool same = result == "11"; bool unchanged = flags == "1010";',
+                        (), (), ('same', 'unchanged'), (1, 1))
+
+    def test_measurements_select_ranges_and_copied_bits_control_quantum_feedback(self):
+        for anti in (0, 1):
+            for _ in range(16):
+                self.check_initializers('include "stdgates.inc"; qubit[2] q; reset q; h q[0]; cx q[0], q[1]; '
+                    + ('x q[1]; ' if anti else '') +
+                    'bit[2] measured = measure q; bit[2] copied; bit[1] selected; '
+                    'int start = 0; int stop = 1; int stride = 1; '
+                    'if (measured[0]) { start = 1; stop = 0; stride = -1; } '
+                    'copied = measured[start:stride:stop]; selected = measured[start:start]; '
+                    'bool ordered = copied[0] == measured[start] && copied[1] == measured[stop]; '
+                    f'bool correlation = (copied[0] != copied[1]) == bool({anti}); '
+                    'bool chosen = selected[0] == copied[0]; '
+                    'if (selected[0]) { if (start == 0) { x q[0]; } else { x q[1]; } } '
+                    'bit[2] observed = measure q; '
+                    'bool feedback = !observed[start] && observed[stop] == measured[stop];',
+                    (), (), ('ordered', 'correlation', 'chosen', 'feedback'), (1, 1, 1, 1))
+
+    def test_later_iteration_failures_precede_new_source_reads_and_writes(self):
+        for selector, update, error in (
+                ('start:stride:stop', 'stop = 0;', 'assertion failed'),
+                ('start:stride:stop', 'stop = 2;', 'assertion failed'),
+                ('start:stride:stop', 'stride = 0;', 'assertion failed'),
+                ('start:stride:stop', 'start = -5; stop = -4;', 'assertion failed'),
+                ('start:stride:stop', 'start = 3; stop = 4;', 'assertion failed'),
+                ('start:stride / divisor:stop', 'divisor = 0;', 'division by zero')):
+            lines = self.program('bit[4] flags = "1010"; bit[2] result = "11"; '
+                'int start = 0; int stop = 1; int stride = 1; int divisor = 1; int i = 0; '
+                f'while (i < 2) {{ result = flags[{selector}]; i += 1; {update} }}')
+            write_end = next(i for i, line in enumerate(lines)
+                             if line.startswith('JUMPIF QASM2QCX_RANGE_COPY_') and '_WRITE ' in line)
+            instrumented = []
+            for i, line in enumerate(lines):
+                if line.startswith('LET QASM2QCX_RANGE_COPY_SOURCE_'):
+                    instrumented.append('PRINTLN 12345')
+                if line.startswith('LET RESULT63:QASM2QCX_'):
+                    instrumented.append('PRINTLN 67890')
+                instrumented.append(line)
+                if i == write_end:
+                    instrumented.append('PRINTLN RESULT63:1 RESULT63:0')
+            result = self.execute(instrumented)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(error, result.stderr)
+            self.assertNotIn('runtime error:', result.stderr)
+            self.assertEqual([''.join(line.split()) for line in result.stdout.splitlines()],
+                             ['12345', '12345', '67890', '67890', '10'])
+            type(self).checked += 1
+
+    def test_copied_registers_feed_phase_gates_and_fusion(self):
+        import cmath
+        import math
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        source = ('include "stdgates.inc"; qubit q; h q; bit[4] flags = "1010"; '
+                  'int start = 3; int stop = 0; int stride = -1; int visits = 0; '
+                  'while (visits < 1) { flags = flags[start:stride:stop]; visits += 1; } '
+                  'p(angle[4](flags)) q;')
+        expected = (1 / math.sqrt(2), cmath.exp(1j * 5 * math.pi / 8) / math.sqrt(2))
+        for fused in (False, True):
+            BackendAuditTests.check(self, self.program(source, fused=fused), expected)
+
     def test_bad_ranges_and_lengths_fail_before_any_source_read_or_destination_write(self):
         cases = (
             ('int start = 0; int stop = 3; int step = 0;', 'start:step:stop', 4, 'assertion failed'),
