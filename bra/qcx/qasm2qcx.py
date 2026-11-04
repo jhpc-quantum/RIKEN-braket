@@ -9310,9 +9310,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__release_temporary_variable(temporary)
 
     def __emit_runtime_bit_range_copy(self, info: _RuntimeBitRangeCopyInfo) -> None:
-        if info.destination_indices is not None:
-            raise UnsupportedOpenQASMError('runtime range copy into static selection lowering')
-        if len(self.__qcx_lines) + 8 > self.MAX_LOOP_OUTPUT_LINES:
+        write_lines = 5 if info.destination_indices is None else info.width
+        if len(self.__qcx_lines) + max(8, write_lines) > self.MAX_LOOP_OUTPUT_LINES:
             raise InvalidBitOperandException('Runtime range copy exceeds QCX output limit')
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
@@ -9350,15 +9349,23 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__qcx_lines.extend([
                 f'LET {index} += 1', f'JUMPIF {label}_SNAPSHOT {index} < {count}',
             ])
-            if len(self.__qcx_lines) + 5 > self.MAX_LOOP_OUTPUT_LINES:
+            if len(self.__qcx_lines) + write_lines > self.MAX_LOOP_OUTPUT_LINES:
                 raise InvalidBitOperandException('Runtime range copy exceeds QCX output limit')
             target = self.__capitalize_variable_name(info.destination_name)
-            operand = target if info.width == 1 else f'{target}:{index}'
-            self.__qcx_lines.extend([
-                f'LET {index} := 0', f'@{label}_WRITE',
-                f'LET {operand} := {snapshot}:{index}',
-                f'LET {index} += 1', f'JUMPIF {label}_WRITE {index} < {count}',
-            ])
+            if info.destination_indices is None:
+                operand = target if info.destination_width == 1 else f'{target}:{index}'
+                self.__qcx_lines.extend([
+                    f'LET {index} := 0', f'@{label}_WRITE',
+                    f'LET {operand} := {snapshot}:{index}',
+                    f'LET {index} += 1', f'JUMPIF {label}_WRITE {index} < {count}',
+                ])
+            else:
+                # Static positions require no runtime destination lookup.
+                # Use the containing width, not the selection length, to
+                # distinguish bit[1] storage from a slice of a larger register.
+                for offset, destination in enumerate(info.destination_indices):
+                    operand = target if info.destination_width == 1 else f'{target}:{destination}'
+                    self.__qcx_lines.append(f'LET {operand} := {snapshot}:{offset}')
             self.__hoist_temporary_declarations(previous_temporaries)
         finally:
             (self.__expression_kind, self.__value, self.__value_type,
