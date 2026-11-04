@@ -9352,10 +9352,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__release_temporary_variable(temporary)
 
     def __emit_runtime_bit_range_to_range_copy(self, info: _RuntimeBitRangeToRangeCopyInfo) -> None:
-        if info.binary_operator is not None:
-            raise UnsupportedOpenQASMError('runtime-selected range RHS bitwise assignment lowering')
+        bitwise = info.binary_operator is not None
         write_lines = 6
-        if len(self.__qcx_lines) + write_lines > self.MAX_LOOP_OUTPUT_LINES:
+        original_lines = 6 if bitwise else 0
+        if len(self.__qcx_lines) + original_lines + write_lines > self.MAX_LOOP_OUTPUT_LINES:
             raise InvalidBitOperandException('Runtime range-to-range copy exceeds QCX output limit')
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
@@ -9369,8 +9369,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 info.destination.bounds, info.destination.source_width, label + '_DESTINATION', capacity=info.capacity)
             self.__check_distinct_bit_range_positions(
                 destination_positions, destination_count, info.destination.source_width, label + '_DESTINATION')
-            if len(self.__qcx_lines) + write_lines > self.MAX_LOOP_OUTPUT_LINES:
+            if len(self.__qcx_lines) + original_lines + write_lines > self.MAX_LOOP_OUTPUT_LINES:
                 raise InvalidBitOperandException('Runtime range-to-range copy exceeds QCX output limit')
+            original = (self.__snapshot_runtime_range_destination(
+                info, destination_positions, destination_count, label) if bitwise else None)
             source_positions, source_count = self.__capture_bit_range_positions(
                 info.source.bounds, info.source.source_width, label + '_SOURCE', capacity=info.capacity)
             self.__qcx_lines.append(f'ASSERT {source_count} == {destination_count}')
@@ -9394,6 +9396,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__qcx_lines.extend([
                 f'LET {index} += 1', f'JUMPIF {label}_SNAPSHOT {index} < {source_count}',
             ])
+            if bitwise:
+                self.__combine_bit_range_snapshots(original, snapshot, info.operator, index, source_count, label)
+                snapshot = original
             if len(self.__qcx_lines) + write_lines > self.MAX_LOOP_OUTPUT_LINES:
                 raise InvalidBitOperandException('Runtime range-to-range copy exceeds QCX output limit')
             target = self.__capitalize_variable_name(info.destination.source_name)
@@ -9410,10 +9415,37 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             for temporary in self.__used_temporary_variables - previous_used:
                 self.__release_temporary_variable(temporary)
 
-    def __snapshot_bit_range_destination(self, info: _RuntimeBitRangeCopyInfo, label: str) -> str:
+    def __snapshot_runtime_range_destination(
+            self, info: _RuntimeBitRangeToRangeCopyInfo, positions: str, count: str, label: str) -> str:
+        original = self.__add_temporary_int_array(info.capacity, 'RANGE_BITWISE_ORIGINAL')
+        index = self.__add_new_temporary_variable(ValueType.INT)
+        position = self.__add_new_temporary_variable(ValueType.INT)
+        target = self.__capitalize_variable_name(info.destination.source_name)
+        operand = target if info.destination.source_width == 1 else f'{target}:{position}'
+        self.__qcx_lines.extend([
+            f'LET {index} := 0', f'@{label}_ORIGINAL', f'LET {position} := {positions}:{index}',
+            f'LET {original}:{index} := {operand}', f'LET {index} += 1',
+            f'JUMPIF {label}_ORIGINAL {index} < {count}',
+        ])
+        return original
+
+    def __combine_bit_range_snapshots(
+            self, original: str, source: str, operator: str, index: str, count: str, label: str) -> None:
+        # Retain both operand snapshots until the complete result is computed;
+        # the original-value buffer becomes the private result buffer.
+        self.__qcx_lines.extend([
+            f'LET {index} := 0', f'@{label}_BITWISE',
+            f'LET {original}:{index} {operator} {source}:{index}',
+            f'LET {index} += 1', f'JUMPIF {label}_BITWISE {index} < {count}',
+        ])
+
+    def __snapshot_bit_range_destination(
+            self, info: _RuntimeBitRangeCopyInfo, label: str,
+            indices: tuple[int | str, ...] | None = None) -> str:
         original = self.__add_temporary_int_array(info.width, 'RANGE_BITWISE_ORIGINAL')
         target = self.__capitalize_variable_name(info.destination_name)
-        if info.destination_indices is None:
+        destinations = info.destination_indices if indices is None else indices
+        if destinations is None:
             index = self.__add_new_temporary_variable(ValueType.INT)
             operand = target if info.destination_width == 1 else f'{target}:{index}'
             self.__qcx_lines.extend([
@@ -9421,21 +9453,20 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 f'LET {index} += 1', f'JUMPIF {label}_ORIGINAL {index} < {info.width}',
             ])
         else:
-            for offset, position in enumerate(info.destination_indices):
+            for offset, position in enumerate(destinations):
                 operand = target if info.destination_width == 1 else f'{target}:{position}'
                 self.__qcx_lines.append(f'LET {original}:{offset} := {operand}')
         return original
 
     def __emit_runtime_bit_range_copy(self, info: _RuntimeBitRangeCopyInfo) -> None:
-        if info.runtime_destination is not None and info.binary_operator is not None:
-            raise UnsupportedOpenQASMError('runtime-selected range RHS bitwise assignment lowering')
         bitwise = info.binary_operator is not None
         if bitwise and not 1 <= info.width <= self.MAX_RUNTIME_BIT_RANGE_POSITIONS:
             raise InvalidBitOperandException('Runtime range bitwise snapshot exceeds storage limit')
         runtime_destination = info.runtime_destination
         write_lines = (5 if runtime_destination is None and info.destination_indices is None else info.width)
         comparisons = info.width * (info.width - 1) // 2 if runtime_destination is not None else 0
-        original_lines = (5 if info.destination_indices is None else info.width) if bitwise else 0
+        original_lines = (5 if runtime_destination is None and info.destination_indices is None
+                          else info.width) if bitwise else 0
         if len(self.__qcx_lines) + comparisons + max(8, write_lines + original_lines) > self.MAX_LOOP_OUTPUT_LINES:
             raise InvalidBitOperandException('Runtime range copy exceeds QCX output limit')
         previous = (self.__expression_kind, self.__value, self.__value_type,
@@ -9446,18 +9477,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__array_index += 1
         try:
             self.__expression_kind = ExpressionKind.ARITHMETIC
-            # Compound assignments read their original destination before any
-            # RHS evaluation. Keep this private snapshot reserved until writes.
-            original = self.__snapshot_bit_range_destination(info, label) if bitwise else None
             destinations = info.destination_indices
             if runtime_destination is not None:
                 # Reserve all captured addresses throughout source evaluation.
                 # Check destination failures before evaluating source bounds.
                 destinations = tuple(self.__capture_array_index(expression, info.destination_width)
                                      for expression in runtime_destination.indices)
-                if len(self.__qcx_lines) + comparisons + write_lines > self.MAX_LOOP_OUTPUT_LINES:
+                if len(self.__qcx_lines) + comparisons + original_lines + write_lines > self.MAX_LOOP_OUTPUT_LINES:
                     raise InvalidBitOperandException('Runtime range copy exceeds QCX output limit')
                 self.__check_distinct_bit_indices(destinations)
+            # Resolve and validate destination addresses before reading their
+            # original values. Keep those values reserved throughout the RHS.
+            original = (self.__snapshot_bit_range_destination(info, label, destinations) if bitwise else None)
             selection = info.selection
             # Bound private storage by the known destination width. Excess
             # entries, empty ranges and bad indices fail before any source read.
@@ -9487,13 +9518,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 f'LET {index} += 1', f'JUMPIF {label}_SNAPSHOT {index} < {count}',
             ])
             if bitwise:
-                # Compute every result in the original-value buffer, retaining
-                # the complete RHS snapshot and leaving user storage untouched.
-                self.__qcx_lines.extend([
-                    f'LET {index} := 0', f'@{label}_BITWISE',
-                    f'LET {original}:{index} {info.operator} {snapshot}:{index}',
-                    f'LET {index} += 1', f'JUMPIF {label}_BITWISE {index} < {count}',
-                ])
+                self.__combine_bit_range_snapshots(original, snapshot, info.operator, index, count, label)
                 snapshot = original
             if len(self.__qcx_lines) + write_lines > self.MAX_LOOP_OUTPUT_LINES:
                 raise InvalidBitOperandException('Runtime range copy exceeds QCX output limit')
