@@ -406,11 +406,14 @@ class _RuntimeBitRangeCopyInfo:
     selection: _RuntimeBitRangeSelection
     destination_name: str
     destination_width: int
-    # None denotes a whole register without materializing all its positions.
+    # A whole register has neither static positions nor a runtime set.
     destination_indices: tuple[int, ...] | None = None
+    runtime_destination: _RuntimeBitSetSelection | None = None
 
     @property
     def width(self) -> int:
+        if self.runtime_destination is not None:
+            return self.runtime_destination.width
         return self.destination_width if self.destination_indices is None else len(self.destination_indices)
 
 
@@ -7375,21 +7378,29 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if not 1 <= destination_width <= self.QCX_INT_MAX:
             raise InvalidBitOperandException('Runtime range copy destination width must fit QCX INT indexing')
         indices = None
+        runtime_destination = None
         if isinstance(target, ast.IndexedIdentifier):
             if not self.__is_register_bit_selection(target):
                 raise InvalidBitOperandException('Runtime range copy requires a register selection, not a scalar bit')
-            # Resolve destination constants in declaration scope, never with
-            # invented values for active iterators or skipped runtime bounds.
-            # Bound expansion before allocating a potentially huge index tuple.
-            destination = self.__static_bit_selection(
-                target, iterators, destination=True,
-                max_indices=min(self.QCX_INT_MAX, self.MAX_RUNTIME_BIT_RANGE_POSITIONS))
-            indices = destination.indices
-            if not destination.is_register or not 1 <= len(indices) <= self.QCX_INT_MAX:
-                raise InvalidBitOperandException('Runtime range copy selection width must fit QCX INT indexing')
+            runtime_destination = self.__runtime_bit_set_selection(target, iterators, destination=True)
+            if runtime_destination is not None:
+                # Retain every occurrence and type, including constants in a
+                # mixed set. Bounds, arithmetic and duplicates are checked only
+                # when the destination is captured on a reached execution path.
+                if not 1 <= runtime_destination.width <= self.MAX_RUNTIME_BIT_RANGE_POSITIONS:
+                    raise InvalidBitOperandException('Runtime range copy selection exceeds storage limit')
+            else:
+                # Resolve static destinations without inventing iterator values
+                # and bound expansion before materializing their position list.
+                destination = self.__static_bit_selection(
+                    target, iterators, destination=True,
+                    max_indices=min(self.QCX_INT_MAX, self.MAX_RUNTIME_BIT_RANGE_POSITIONS))
+                indices = destination.indices
+                if not destination.is_register or not 1 <= len(indices) <= self.QCX_INT_MAX:
+                    raise InvalidBitOperandException('Runtime range copy selection width must fit QCX INT indexing')
         # Source aliases may repeat. Only the runtime count must equal width;
         # copies need no 2*source_width position capacity or distinctness test.
-        return _RuntimeBitRangeCopyInfo(selection, name, destination_width, indices)
+        return _RuntimeBitRangeCopyInfo(selection, name, destination_width, indices, runtime_destination)
 
     def __runtime_bit_range_destination(
             self, target: ast.Identifier | ast.IndexedIdentifier,
@@ -9310,6 +9321,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__release_temporary_variable(temporary)
 
     def __emit_runtime_bit_range_copy(self, info: _RuntimeBitRangeCopyInfo) -> None:
+        if info.runtime_destination is not None:
+            raise UnsupportedOpenQASMError('runtime range copy into runtime index-set lowering')
         write_lines = 5 if info.destination_indices is None else info.width
         if len(self.__qcx_lines) + max(8, write_lines) > self.MAX_LOOP_OUTPUT_LINES:
             raise InvalidBitOperandException('Runtime range copy exceeds QCX output limit')
