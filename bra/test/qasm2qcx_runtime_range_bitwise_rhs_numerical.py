@@ -89,6 +89,188 @@ class BackendTests(unittest.TestCase):
                         f'{target} {symbol} source[index:index]; bool same = one == "{function(1, 1)}";',
                         (), (), ('same',), (1,))
 
+    def test_loop_families_refresh_original_and_rhs_snapshots(self):
+        loops = (('for int i in [0:3]', 'i', (0, 1, 2, 3)),
+                 ('for int i in [first:last]', 'i', (0, 1, 2, 3)),
+                 ('for int i in [ufirst:ulast]', 'i', (0, 1, 2, 3)),
+                 ('for int i in [first:stride:last]', 'i', (0, 1, 2, 3)),
+                 ('for int i in {0, 1, 2, 3}', 'i', (0, 1, 2, 3)),
+                 ('for int i in {first, first + 1, last - 1, last}', 'i', (0, 1, 2, 3)),
+                 ('for int i in indices', 'i', (0, 1, 2, 3)),
+                 ('for uint i in unsigned_indices', 'i', (0, 1, 2, 3)),
+                 ('for bit i in flags', 'int(i)', (0, 1, 0, 1)),
+                 ('for bit i in C', 'int(i)', (0, 1, 0, 1)))
+        source_bits = [0, 1, 0, 0, 1, 1, 0, 1]
+        for loop, index, visits in loops:
+            for constant in (False, True):
+                for selector, positions, before in (('', tuple(range(4)), '1100'),
+                                                     ('[7:-2:1]', (7, 5, 3, 1), '11001100'),
+                                                     ('[{7,1,5,3}]', (7, 1, 5, 3), '11001100')):
+                    for symbol, function in self.operations:
+                        expected = list(map(int, reversed(before)))
+                        total = 0
+                        for start in visits:
+                            for destination, bit in zip(positions, source_bits[start:start + 4]):
+                                expected[destination] = function(expected[destination], bit)
+                            total += expected[positions[0]]
+                        after = ''.join(map(str, reversed(expected)))
+                        self.check_initializers(('const ' if constant else '') + 'bit[8] source = "10110010"; '
+                            f'bit[{len(before)}] result = "{before}"; bit[4] flags = "1010"; const bit[4] C = "1010"; '
+                            'array[int,4] indices = {0,1,2,3}; array[uint,4] unsigned_indices = {0,1,2,3}; '
+                            'int first = 0; int last = 3; uint ufirst = 0; uint ulast = 3; int stride = 1; '
+                            'int i = -9; int total = 0; ' + loop +
+                            f' {{ result{selector} {symbol} source[{index}:{index} + 3]; total += int(result[{positions[0]}]); }} '
+                            f'bool same = result == "{after}"; bool unchanged = source == "10110010";',
+                            (), (), ('same', 'unchanged', 'total', 'i'), (1, 1, total, -9))
+
+    def test_while_reentry_changes_source_direction_and_repeated_positions(self):
+        for constant in (False, True):
+            for symbol, function in self.operations:
+                for selector, positions in (('[5:-2:1]', (5, 3, 1)), ('[{1,7,3}]', (1, 7, 3))):
+                    source_bits = [0, 1, 0, 1]
+                    expected = list(map(int, reversed('11001100')))
+                    for raw in ((0, 1, 2), (3, 2, 1), (-1, 1, 3)):
+                        for destination, index in zip(positions, raw):
+                            expected[destination] = function(expected[destination], source_bits[index % 4])
+                        if not constant:
+                            source_bits = [bit ^ 1 for bit in source_bits]
+                    after = ''.join(map(str, reversed(expected)))
+                    self.check_initializers(('const ' if constant else '') + 'bit[4] source = "1010"; '
+                        'bit[8] result = "11001100"; int i = 0; int start = 0; int step = 1; int stop = 2; '
+                        f'while (i < 3) {{ result{selector} {symbol} source[start:step:stop]; '
+                        + ('' if constant else 'source ^= "1111"; ') +
+                        'if (i == 0) { start = 3; step = -1; stop = 1; } '
+                        'else { start = -1; step = 2; stop = 3; } i += 1; } '
+                        f'bool same = result == "{after}";', (), (), ('same', 'i'), (1, 3))
+
+    def test_reached_branches_refresh_overlapping_self_references(self):
+        for pattern in range(16):
+            for symbol, function in self.operations:
+                expected = [(pattern >> i) & 1 for i in range(4)]
+                for iteration in range(4):
+                    original = expected.copy()
+                    positions = (3, 2, 1, 0) if iteration % 2 == 0 else (0, 1, 2, 3)
+                    operation = function if iteration % 2 == 0 else operator.xor
+                    expected = [operation(a, original[b]) for a, b in zip(original, positions)]
+                after = ''.join(map(str, reversed(expected)))
+                self.check_initializers(f'bit[4] flags = "{pattern:04b}"; '
+                    'int start = 3; int step = -1; int stop = 0; int i = 0; '
+                    f'while (i < 4) {{ if (i % 2 == 0) {{ flags {symbol} flags[start:step:stop]; }} '
+                    'else { flags[0:3] ^= flags[start:step:stop]; } '
+                    'start = 3 - start; stop = 3 - stop; step = -step; i += 1; } '
+                    f'bool same = flags == "{after}";', (), (), ('same', 'i'), (1, 4))
+
+    def test_nested_transfers_and_shadowing_restore_names(self):
+        for symbol, function in self.operations:
+            expected = [0, 0, 1, 1, 0, 0, 1, 1]
+            total = 0
+            source = [0, 1, 0, 1]
+            for _ in range(3):
+                for i in (1, 2):
+                    expected[7] = function(expected[7], source[i])
+                    expected[1] = function(expected[1], source[i + 1])
+                    total += expected[7]
+            after = ''.join(map(str, reversed(expected)))
+            self.check_initializers('const int LAST = 7; const bit[4] C = "1010"; bit[8] result = "11001100"; '
+                'int first = 0; int last = 2; int i = -1; int visits = 0; int total = 0; '
+                'for int LAST in [first:last] { for int i in [0:3] { '
+                f'if (i == 0) {{ continue; }} result[{{7,1}}] {symbol} C[i:i + 1]; '
+                'visits += 1; total += int(result[7]); if (i == 2) { break; } } } '
+                f'bool same = result == "{after}"; int restored = LAST;',
+                (), (), ('same', 'visits', 'total', 'restored', 'i'), (1, 6, total, 7, -1))
+
+    def test_skipped_invalid_ranges_never_evaluate_bounds(self):
+        bounds = ('start:0:stop', 'bad:stop', 'start:1 / zero:stop', 'start:start',
+                  'start:stop + 1', 'bounds[bad]:stop')
+        wrappers = ('if (false) {{ {} }}', 'while (false) {{ {} }}', 'for int outer in [1:0] {{ {} }}',
+                    'for int outer in [first:last] {{ if (outer < 0) {{ {} }} }}',
+                    'while (visits < 2) {{ visits += 1; continue; {} }}', 'while (true) {{ break; {} }}')
+        for constant in (False, True):
+            for target, before in (('result', '10'), ('result[{7,1}]', '11001100')):
+                for symbol, _ in self.operations:
+                    for expression in bounds:
+                        for wrapper in wrappers:
+                            self.check_initializers(('const ' if constant else '') + 'bit[4] source = "1010"; '
+                                f'bit[{len(before)}] result = "{before}"; '
+                                'int start = 0; int stop = 1; int bad = 4; int zero = 0; '
+                                'int first = 0; int last = 1; int visits = 0; array[int,2] bounds = {0,1}; '
+                                + wrapper.format(f'{target} {symbol} source[{expression}];') +
+                                f'bool same = result == "{before}";', (), (), ('same',), (1,))
+
+    def test_measured_sources_and_bitwise_results_drive_feedback(self):
+        for anti in (0, 1):
+            for symbol, _ in self.operations:
+                # With original bits 1 and 0, AND, OR and XOR each have a
+                # separately checkable relationship to the two measured bits.
+                expected = {'&=': ('measured[start]', 'false'),
+                            '|=': ('true', 'measured[stop]'),
+                            '^=': ('!measured[start]', 'measured[stop]')}[symbol]
+                for _ in range(8):
+                    self.check_initializers('include "stdgates.inc"; qubit[2] q; reset q; h q[0]; cx q[0], q[1]; '
+                        + ('x q[1]; ' if anti else '') +
+                        'bit[2] measured = measure q; bit[8] result = "11001100"; '
+                        'int start = 0; int stop = 1; int step = 1; '
+                        'if (measured[0]) { start = 1; stop = 0; step = -1; } '
+                        f'result[{{7,1}}] {symbol} measured[start:step:stop]; '
+                        f'bool ordered = bool(result[7]) == ({expected[0]}) && bool(result[1]) == ({expected[1]}); '
+                        'bool unchanged = (result & "01111101") == "01001100"; '
+                        'if (result[1]) { if (stop == 0) { x q[0]; } else { x q[1]; } } bit[2] observed = measure q; '
+                        'bool feedback = bool(observed[stop]) == (bool(measured[stop]) != bool(result[1])) '
+                        '&& observed[start] == measured[start];',
+                        (), (), ('ordered', 'unchanged', 'feedback'), (1, 1, 1))
+
+    def test_later_failures_precede_new_rhs_reads_and_user_writes(self):
+        cases = (('start:step:stop', 'step = 0;', 'assertion failed'),
+                 ('start:step:stop', 'stop = 0;', 'assertion failed'),
+                 ('start:step:stop', 'stop = 2;', 'assertion failed'),
+                 ('start:step:stop', 'start = 3; stop = 4;', 'assertion failed'),
+                 ('start:step / divisor:stop', 'divisor = 0;', 'division by zero'))
+        for constant in (False, True):
+            for symbol, function in self.operations:
+                for expression, update, error in cases:
+                    after = list(map(int, reversed('11001100')))
+                    after[7] = function(after[7], 0)
+                    after[1] = function(after[1], 1)
+                    text = ''.join(map(str, reversed(after)))
+                    lines = self.program(('const ' if constant else '') + 'bit[4] source = "1010"; '
+                        'bit[8] result = "11001100"; int start = 0; int stop = 1; int step = 1; '
+                        'int divisor = 1; int i = 0; while (i < 2) { '
+                        f'result[{{7,1}}] {symbol} source[{expression}]; i += 1; {update} }}')
+                    writes = [i for i, line in enumerate(lines) if line.startswith('LET RESULT63:')
+                              and ' := QASM2QCX_RANGE_BITWISE_ORIGINAL_' in line]
+                    self.assertEqual(len(writes), 2)
+                    instrumented = []
+                    for i, line in enumerate(lines):
+                        if line.startswith('LET QASM2QCX_RANGE_COPY_SOURCE_'):
+                            instrumented.append('PRINTLN 12345')
+                        if i in writes:
+                            instrumented.append('PRINTLN 67890')
+                        instrumented.append(line)
+                        if i == writes[-1]:
+                            instrumented.append('PRINTLN ' + ' '.join(f'RESULT63:{bit}' for bit in reversed(range(8))))
+                    result = self.execute(instrumented)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(error, result.stderr)
+                    self.assertNotIn('runtime error:', result.stderr)
+                    self.assertEqual([''.join(line.split()) for line in result.stdout.splitlines()],
+                                     ['12345', '12345', '67890', '67890', text])
+                    type(self).checked += 1
+
+    def test_bitwise_results_feed_angle_phase_parameters_and_fusion(self):
+        import cmath
+        import math
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        for symbol, function in self.operations:
+            value = function(12, 10)
+            source = ('include "stdgates.inc"; qubit q; h q; '
+                      'const bit[4] C = "1010"; bit[4] result = "1100"; '
+                      'int start = 0; int stop = 3; int visits = 0; '
+                      f'while (visits < 1) {{ result {symbol} C[start:stop]; visits += 1; }} '
+                      'p(angle[4](result)) q;')
+            expected = (1 / math.sqrt(2), cmath.exp(1j * value * math.pi / 8) / math.sqrt(2))
+            for fused in (False, True):
+                BackendAuditTests.check(self, self.program(source, fused=fused), expected)
+
     def test_invalid_ranges_fail_before_rhs_reads_or_writes(self):
         cases = (('0', '0', '1'), ('1', '1', '0'), ('-5', '1', '-4'),
                  ('3', '1', '4'), ('0', '1', '0'), ('0', '1', '2'))
