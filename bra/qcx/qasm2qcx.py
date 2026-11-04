@@ -418,6 +418,13 @@ class _RuntimeBitRangeCopyInfo:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeBitRangeToRangeCopyInfo:
+    destination: _RuntimeBitRangeSelection
+    source: _RuntimeBitRangeSelection
+    capacity: int
+
+
+@dataclasses.dataclass(frozen=True)
 class _RuntimeBitRangeAssignmentInfo:
     selection: _RuntimeBitRangeSelection
     rhs_width: int
@@ -7355,13 +7362,23 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __runtime_bit_range_copy_info(
             self, statement: ast.ClassicalAssignment,
-            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangeCopyInfo | None:
+            iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> _RuntimeBitRangeCopyInfo | _RuntimeBitRangeToRangeCopyInfo | None:
         selection = self.__runtime_bit_range_source(statement.rvalue, iterators)
         if selection is None:
             return None
         if statement.op.name != '=':
             raise UnsupportedOpenQASMError('runtime bit-register range copy requires plain assignment')
         target = statement.lvalue
+        destination_range = self.__runtime_bit_range_destination(target, iterators)
+        if destination_range is not None:
+            # A successful destination is distinct, so its count cannot exceed
+            # its containing width. Reuse this bounded capacity for both ranges
+            # and the source snapshot without guessing either runtime count.
+            capacity = min(destination_range.source_width, self.MAX_RUNTIME_BIT_RANGE_POSITIONS)
+            if not 1 <= capacity <= self.QCX_INT_MAX:
+                raise InvalidBitOperandException('Runtime range copy capacity must fit QCX INT indexing')
+            return _RuntimeBitRangeToRangeCopyInfo(destination_range, selection, capacity)
         if not isinstance(target, (ast.Identifier, ast.IndexedIdentifier)):
             raise UnsupportedOpenQASMError('runtime range copy requires a named bit-register destination')
         name = target.name if isinstance(target, ast.Identifier) else target.name.name
@@ -9137,6 +9154,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         bit_range_copy = self.__runtime_bit_range_copy_info(statement)
         if bit_range_copy is not None:
+            if isinstance(bit_range_copy, _RuntimeBitRangeToRangeCopyInfo):
+                raise UnsupportedOpenQASMError('runtime range-to-range copy lowering')
             self.__emit_runtime_bit_range_copy(bit_range_copy)
             return
         angle_bits = self.__angle_bit_assignment_info(statement)
