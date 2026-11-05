@@ -214,17 +214,6 @@ class _UnsignedIntegerType:
 
 
 @dataclasses.dataclass(frozen=True)
-class _UIntBitCastInfo:
-    result_type: ValueType
-    uint_type: _UnsignedIntegerType
-    runtime: bool
-
-    @property
-    def width(self) -> int:
-        return self.uint_type.width
-
-
-@dataclasses.dataclass(frozen=True)
 class _AngleType:
     width: int
     is_sized: bool
@@ -317,6 +306,18 @@ class _RuntimeBitRangeSelection:
     start_type: ValueType
     step_type: ValueType
     stop_type: ValueType
+
+
+@dataclasses.dataclass(frozen=True)
+class _UIntBitCastInfo:
+    result_type: ValueType
+    uint_type: _UnsignedIntegerType
+    runtime: bool
+    range_selection: _RuntimeBitRangeSelection | None = None
+
+    @property
+    def width(self) -> int:
+        return self.uint_type.width
 
 
 _BitSelectionLoop = (
@@ -5313,6 +5314,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __validate_bitwise_indices(
             self, expression: ast.Expression, iterators: dict[str, ValueType]) -> None:
+        if isinstance(expression, ast.Cast) and isinstance(expression.type, ast.UintType):
+            info = self.__uint_bit_cast_info(expression, iterators)
+            if info is not None and info.range_selection is not None:
+                return  # The cast checks range types; its count is checked at runtime.
         if (self.__angle_bit_selection(expression, iterators) is not None
                 or self.__runtime_bit_set_selection(expression, iterators) is not None):
             return
@@ -7793,16 +7798,24 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # Infer bit patterns and UINT widths without executing the operand or
         # consulting mutable expression-result caches. Numeric casts and the
         # existing angle/bit conversions retain their separate paths.
+        range_selection = None
         if isinstance(expression.type, ast.UintType):
-            # Bound static selection expansion before generic width inference
-            # can materialize a range that cannot fit any native UINT cast.
-            self.__validate_uint_bit_register_source(expression.argument, iterators)
-            source_width = self.__bit_register_expression_width(expression.argument, iterators)
-            if source_width is None:
-                return None
+            range_selection = self.__runtime_bit_range_source(expression.argument, iterators)
+            if range_selection is None:
+                # Bound static selection expansion before generic width inference
+                # can materialize a range that cannot fit any native UINT cast.
+                self.__validate_uint_bit_register_source(expression.argument, iterators)
+                source_width = self.__bit_register_expression_width(expression.argument, iterators)
+                if source_width is None:
+                    return None
+            else:
+                # A direct range has no inferred register width. Preserve its
+                # operands until capture checks the count against the target.
+                source_width = None
             uint_type = self.__unsigned_integer_type(expression.type, iterators)
             target_width = uint_type.width
-            runtime = self.__register_expression_runtime(expression.argument, iterators)
+            runtime = (True if range_selection is not None
+                       else self.__register_expression_runtime(expression.argument, iterators))
             result_type = ValueType.UINT
         elif isinstance(expression.type, ast.BitType) and expression.type.size is not None:
             source_type, uint_type, runtime = self.__integer_operand_info(expression.argument, iterators)
@@ -7814,7 +7827,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             result_type = ValueType.BIT_REGISTER
         else:
             return None
-        if source_width != target_width:
+        if source_width is not None and source_width != target_width:
             raise InvalidBitOperandException(
                 f'UINT/bit-register cast requires equal widths, got {source_width} and {target_width}')
         # Register width inference and scalar type lookup alone do not always
@@ -7827,14 +7840,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                         raise NoVariableNameException(name)
                 elif name in self.__classical_source_types:
                     self.__type_of(self.__capitalize_variable_name(name))
-        return _UIntBitCastInfo(result_type, uint_type, runtime)
+        return _UIntBitCastInfo(result_type, uint_type, runtime, range_selection)
 
     def __validate_uint_bit_register_source(
             self, expression: ast.Expression,
             iterators: set[str] | dict[str, ValueType] | None) -> None:
         # Runtime bit-register sets have a fixed width; their index values are
-        # captured by the existing snapshot reader. Runtime ranges and dynamic
-        # angle-bit selections remain outside this cast subset.
+        # captured by the existing snapshot reader. Direct runtime ranges are
+        # checked separately; nested ranges and dynamic angle-bit selections
+        # remain outside this register-expression subset.
         if isinstance(expression, ast.IndexExpression):
             selection = self.__angle_bit_selection(expression, iterators)
             if selection is not None:
@@ -7890,6 +7904,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise InvalidBitOperandException('UINT/bit-register cast exceeds QCX output limit')
 
     def __visit_runtime_bit_to_uint_cast(self, expression: ast.Cast, info: _UIntBitCastInfo) -> None:
+        if info.range_selection is not None:
+            # Range metadata is available before its snapshot lowering is added.
+            raise UnsupportedOpenQASMError('runtime bit-range UINT cast lowering')
         self.__check_uint_bit_cast_output(1)
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
