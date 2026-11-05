@@ -26101,8 +26101,8 @@ class RuntimeBitSetUIntCastFoundationTests(unittest.TestCase):
                 with self.subTest(entries=entries), self.assertRaises(qasm2qcx.QASM2QCXError):
                     self.info(f'uint[4](wide[{{{entries}}}])')
 
-    def test_nested_runtime_ranges_and_angle_bit_selections_stay_excluded(self):
-        for operand in ('~wide[index:count]', 'rotl(wide[index:count],1)',
+    def test_runtime_range_rotations_and_angle_bit_selections_stay_excluded(self):
+        for operand in ('rotl(wide[index:count],1)',
                         'a[index]', 'a[{index}]', 'a[index:count]',
                         '~a[{index,0,1,2}]', 'bit[4](angle[4](a[{index,0,1,2}]))'):
             with self.subTest(operand=operand), self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -26272,9 +26272,8 @@ class RuntimeBitRangeUIntCastFoundationTests(unittest.TestCase):
             with self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.info(source)
 
-    def test_nested_raw_ranges_and_other_source_forms_remain_excluded(self):
-        for operand in ('~wide[index:count]', 'wide[index:count] ^ B',
-                        'wide[index:count] << 1', 'rotl(wide[index:count],1)',
+    def test_other_raw_range_expressions_and_source_forms_remain_excluded(self):
+        for operand in ('wide[index:count] ^ B', 'rotl(wide[index:count],1)',
                         'bit[4](angle[4](wide[index:count]))', '(b ^ B)[index:count]',
                         'wide[index:count][0:3]', 'scalar[index:count]', 'u[index:count]',
                         'positions[index:count]', 'a[index:count]', 'wide[:count]', 'wide[index:]'):
@@ -26331,6 +26330,211 @@ class RuntimeBitRangeUIntCastFoundationTests(unittest.TestCase):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.NoConstantExpressionException):
                 self.converter(self.prefix + f'const uint[4] BAD = uint[4]({source}[index:count]);')
 
+
+
+class RuntimeRangeUnaryShiftUIntCastFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    expression = ScalarAngleArithmeticFoundationTests.expression
+    prefix = RuntimeBitRangeUIntCastFoundationTests.prefix
+
+    def setUp(self):
+        self.c = self.converter(self.prefix)
+
+    def info(self, source, iterators=None):
+        return self.c._QASM2QCXConverter__uint_bit_cast_info(self.expression(source), iterators)
+
+    def test_frozen_metadata_retains_inner_to_outer_operations_and_original_ast_nodes(self):
+        expression = self.expression('uint[4](~((~wide[index:count] << u) >> (count / 0)))')
+        info = self.c._QASM2QCXConverter__uint_bit_cast_info(expression)
+        outer = expression.argument
+        right = outer.expression
+        left = right.lhs
+        inner = left.lhs
+        self.assertEqual((info.result_type, info.uint_type, info.runtime),
+                         (qasm2qcx.ValueType.UINT, qasm2qcx._UnsignedIntegerType(4, True), True))
+        self.assertIs(info.range_selection.bounds, inner.expression.index[0])
+        self.assertEqual([operation.expression for operation in info.range_operations], [inner, left, right, outer])
+        self.assertEqual([operation.count_type for operation in info.range_operations],
+                         [None, qasm2qcx.ValueType.UINT, qasm2qcx.ValueType.INT, None])
+        self.assertIs(info.range_operations[1].expression.rhs, left.rhs)
+        with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+            info.range_operations = ()
+        with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+            info.range_operations[1].count_type = qasm2qcx.ValueType.FLOAT
+
+    def test_all_native_widths_and_unsized_uint_avoid_runtime_range_width_inference(self):
+        c = self.c
+        with patch.object(c, '_QASM2QCXConverter__bit_register_expression_width',
+                          side_effect=AssertionError('must not infer a runtime range width')):
+            for width in range(1, c.QCX_UINT_WIDTH + 1):
+                info = self.info(f'uint[{width}](~large[index:count] << u)')
+                self.assertEqual(info.width, width)
+                self.assertEqual([operation.expression.op.name for operation in info.range_operations], ['~', '<<'])
+            self.assertEqual(self.info('uint(~large[index:count] >> u)').uint_type,
+                             qasm2qcx._UnsignedIntegerType(c.QCX_UINT_WIDTH, False))
+        huge = self.converter(f'bit[{c.QCX_INT_MAX}] huge; int first; int last;')
+        info = huge._QASM2QCXConverter__uint_bit_cast_info(self.expression('uint[1](~huge[first:last] << 0)'))
+        self.assertEqual(info.range_selection.source_width, c.QCX_INT_MAX)
+        self.assertEqual(info.width, 1)
+
+    def test_operation_order_and_repeated_shift_count_occurrences_are_preserved(self):
+        for operand, operators in (('~~wide[index:count]', ['~', '~']),
+                                    ('~(C[index:count] << index)', ['<<', '~']),
+                                    ('(~C[index:count]) << index', ['~', '<<']),
+                                    ('(wide[index:count] >> count) << count', ['>>', '<<']),
+                                    ('~((~wide[index:count] >> count) << count)', ['~', '>>', '<<', '~'])):
+            with self.subTest(operand=operand):
+                info = self.info(f'uint[4]({operand})')
+                self.assertEqual([operation.expression.op.name for operation in info.range_operations], operators)
+        info = self.info('uint[4]((wide[index:count] << count) >> count)')
+        self.assertEqual(len(info.range_operations), 2)
+        self.assertIsNot(info.range_operations[0].expression.rhs, info.range_operations[1].expression.rhs)
+
+    def test_range_and_count_domains_are_deferred_without_simplifying_away_operations(self):
+        for operand in ('~wide[index:0:999]', 'wide[index / 0:count] << 0',
+                        '(wide[index:count] << -1) >> (1 / 0)',
+                        'C[-999:index:999] >> positions[index / 0]',
+                        '~(wide[index:count] << 999999999999999999999999)',
+                        'wide[index:count] << uint[4](~C[index:index])'):
+            with self.subTest(operand=operand):
+                info = self.info(f'uint[4]({operand})')
+                self.assertTrue(info.runtime)
+                self.assertEqual(info.width, 4)
+                self.assertTrue(info.range_operations)
+
+    def test_every_shift_count_requires_a_supported_scalar_integer_type(self):
+        for count in ('real', 'condition', 'scalar', 'one', 'b', 'a', 'missing',
+                      'unknown(index)', 'positions[true]', 'sin(real)'):
+            for operand in (f'wide[index:count] << {count}',
+                            f'(wide[index:count] << -1) >> {count}',
+                            f'(C[index:count] >> {count}) << (1 / 0)'):
+                with self.subTest(operand=operand), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    self.info(f'uint[4]({operand})')
+        for count, value_type in (('index', qasm2qcx.ValueType.INT), ('u', qasm2qcx.ValueType.UINT),
+                                  ('positions[index / 0]', qasm2qcx.ValueType.INT),
+                                  ('popcount(b)', qasm2qcx.ValueType.UINT)):
+            self.assertEqual(self.info(f'uint[4](wide[index:count] >> {count})').range_operations[0].count_type, value_type)
+
+    def test_source_visibility_shift_count_visibility_and_iterator_scopes_are_checked(self):
+        for operand, name in (('~C[index:count]', 'C'), ('~wide[index:count]', 'wide'),
+                              ('C[index:count] << LOW', 'LOW'), ('C[index:count] << u', 'u')):
+            c = self.converter(self.prefix)
+            if name in ('C', 'LOW'):
+                c._QASM2QCXConverter__declared_constant_variables.remove(name)
+            else:
+                storage = c._QASM2QCXConverter__capitalize_variable_name(name)
+                types = (c._QASM2QCXConverter__bit_variable_name_size_map if name == 'wide'
+                         else c._QASM2QCXConverter__uint_variable_name_size_map)
+                types.pop(storage)
+            with self.subTest(name=name), self.assertRaises(qasm2qcx.QASM2QCXError):
+                c._QASM2QCXConverter__uint_bit_cast_info(self.expression(f'uint[4]({operand})'))
+        with self.c._QASM2QCXConverter__iterator_binding('LOW', 999):
+            info = self.info('uint[4](~C[LOW:HIGH] >> LOW)', {'LOW': qasm2qcx.ValueType.INT})
+            self.assertIsNotNone(info.range_selection)
+            self.assertEqual(info.range_operations[-1].count_type, qasm2qcx.ValueType.INT)
+        with self.c._QASM2QCXConverter__iterator_binding('C', 0):
+            with self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info('uint[4](~C[index:count])')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.info('uint[4](C[index:count] << LOW)', {'LOW': qasm2qcx.ValueType.BIT})
+
+    def test_target_widths_remain_constant_and_native_bounded(self):
+        for width in ('1 - 1', '0 - 1', str(self.c.QCX_UINT_WIDTH + 1), 'index', 'true', 'real', '1 / 0'):
+            with self.subTest(width=width), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(f'uint[{width}](~wide[index:count] << u)')
+        self.assertEqual(self.info('uint[N](~wide[index:count])').width, 4)
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.info('uint[N](~wide[index:count])', {'N': qasm2qcx.ValueType.INT})
+
+    def test_static_and_direct_range_casts_and_scalar_numeric_casts_keep_their_paths(self):
+        for source in ('uint[4](~B)', 'uint[4](~C[0:3] << u)', 'uint[4](~wide[{index,0,1,2}])',
+                       'uint[4](C[index:count])', 'bit[4](u)'):
+            self.assertEqual(self.info(source).range_operations, ())
+        for source in ('uint[4](~index)', 'uint[4](u << index)', 'uint[4](~uint[4](wide[index:count]))'):
+            self.assertIsNone(self.info(source))
+            self.c._QASM2QCXConverter__loop_expression_info(self.expression(source))
+        for source in ('uint[4](~C[0:2])', 'uint[4](C[0:4] << 0)'):
+            with self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(source)
+
+    def test_other_register_operators_functions_and_source_forms_remain_excluded(self):
+        for operand in ('~(wide[index:count] ^ B)', '(~wide[index:count]) & B',
+                        '(wide[index:count] | C[index:count]) << u', 'B << wide[index:count]',
+                        'rotl(wide[index:count],count)', '~rotr(wide[index:count],count)',
+                        '-wide[index:count]', '!wide[index:count]',
+                        '~bit[4](angle[4](wide[index:count]))', '~a[index:count]',
+                        '~(b ^ B)[index:count]', '~wide[:count]', '~wide[index:]',
+                        '~scalar[index:count]', '~wide[index:count][0:3]'):
+            with self.subTest(operand=operand), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(f'uint[4]({operand})')
+        for source in ('~wide[index:count]', 'wide[index:count] << u'):
+            with self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.c._QASM2QCXConverter__bit_register_expression_width(self.expression(source))
+
+    def test_scalar_contexts_and_uint_to_bit_round_trips_preserve_target_width(self):
+        for source, result in (('uint[4](~wide[index:count] << u)', qasm2qcx.ValueType.UINT),
+                               ('uint[4](~C[index:count]) + U', qasm2qcx.ValueType.UINT),
+                               ('~uint[4](wide[index:count] >> u)', qasm2qcx.ValueType.UINT),
+                               ('bool(uint[4](~wide[index:count]))', qasm2qcx.ValueType.BOOL),
+                               ('bit[4](uint[4](~wide[index:count]))', qasm2qcx.ValueType.BIT_REGISTER)):
+            with self.subTest(source=source):
+                self.assertEqual(self.c._QASM2QCXConverter__loop_expression_info(self.expression(source)), (result, True))
+        with self.assertRaisesRegex(qasm2qcx.QASM2QCXError, 'equal widths'):
+            self.info('bit[3](uint[4](~wide[index:count]))')
+
+    def test_empty_bodies_validate_chains_without_emitting_checks_or_allocating_storage(self):
+        c = self.converter(self.prefix + 'for int outer in [1:0] { '
+            'u = uint[4](~wide[outer:0:999] << -1); '
+            'b = bit[4](uint[4](~(C[outer / 0:count] >> positions[index / 0]))); '
+            'if (bool(uint[4](~wide[outer:count]))) { u += uint[4](wide[outer:count] << outer); } '
+            'for int i in [uint[1](~C[outer:count]):uint[2](wide[outer:count] << -1)] { } }')
+        self.assertEqual(c._QASM2QCXConverter__qcx_lines, self.c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(c._QASM2QCXConverter__loop_contexts, [])
+        for body in ('u = uint[4](~wide[outer:count] << real);',
+                     'u = uint[4](~later[outer:count]);', 'u = uint[4](C[outer:count] << LATER);',
+                     'b = bit[3](uint[4](~wide[outer:count]));',
+                     'for int N in [0:1] { u = uint[N](~wide[outer:count]); }'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix + 'for int outer in [1:0] { if (false) { ' + body +
+                               ' } } bit[4] later; const int LATER = 1;')
+
+    def test_metadata_preserves_fields_output_caches_and_caller_owned_storage(self):
+        c = self.c
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        expression = self.expression('bit[4](u)')
+        captured = {id(expression): (expression, (caller,))}
+        c._QASM2QCXConverter__captured_bit_register_values.update(captured)
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+        lines = c._QASM2QCXConverter__qcx_lines.copy()
+        caches = (c._QASM2QCXConverter__uint_expression_types.copy(), c._QASM2QCXConverter__angle_expression_types.copy())
+        for source in ('uint[4](~wide[index:0:999] << -1)', 'uint[4](C[index:count] >> (1 / 0))'):
+            self.info(source)
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.info('uint[4](~wide[index:count] << real)')
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+        self.assertEqual(lines, c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(caches, (c._QASM2QCXConverter__uint_expression_types, c._QASM2QCXConverter__angle_expression_types))
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, captured)
+
+    def test_constant_initializers_reject_runtime_chains_and_new_execution_is_guarded(self):
+        for source in ('wide', 'C'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.NoConstantExpressionException):
+                self.converter(self.prefix + f'const uint[4] BAD = uint[4](~{source}[index:count]);')
+        c = self.c
+        c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+        lines = c._QASM2QCXConverter__qcx_lines.copy()
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'runtime range complement/shift UINT cast lowering'):
+            c.visit(self.expression('uint[4](~wide[index:count] << count)'))
+        self.assertEqual(lines, c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
 
 
 class UIntBitCastLoweringTests(unittest.TestCase):
