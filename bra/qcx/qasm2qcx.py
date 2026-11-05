@@ -7944,9 +7944,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise InvalidBitOperandException('UINT/bit-register cast exceeds QCX output limit')
 
     def __visit_runtime_bit_to_uint_cast(self, expression: ast.Cast, info: _UIntBitCastInfo) -> None:
-        if info.range_operations:
-            # Metadata is validated before operation-chain lowering is added.
-            raise UnsupportedOpenQASMError('runtime range complement/shift UINT cast lowering')
         self.__check_uint_bit_cast_output(1)
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
@@ -7954,7 +7951,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         keep = None
         try:
             self.__expression_kind = ExpressionKind.ARITHMETIC
-            source = (self.__runtime_bit_range_value(info.range_selection, info.width)
+            source = (self.__runtime_bit_range_cast_value(expression.argument, info)
                       if info.range_selection is not None
                       else self.__bit_register_expression_value(expression.argument))
             with source as values:
@@ -8959,6 +8956,41 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             (self.__expression_kind, self.__value, self.__value_type,
              self.__value_kind, self.__evaluate_constant) = previous
             temporaries = owned if owned is not None else self.__used_temporary_variables - previous_used
+            for temporary in temporaries:
+                self.__release_temporary_variable(temporary)
+
+    @contextlib.contextmanager
+    def __runtime_bit_range_cast_value(
+            self, expression: ast.Expression, info: _UIntBitCastInfo) -> Iterator[tuple[str | int, ...]]:
+        previous_used = self.__used_temporary_variables.copy()
+        owned = None
+        try:
+            with self.__runtime_bit_range_value(info.range_selection, info.width) as snapshot:
+                if not info.range_operations:
+                    owned = self.__used_temporary_variables - previous_used
+                    yield snapshot
+                    return
+                operation = info.range_operations[0].expression
+                leaf = operation.expression if isinstance(operation, ast.UnaryExpression) else operation.lhs
+                # Bind this occurrence only. Count expressions, including nested
+                # casts selecting the same source, keep their own evaluations.
+                previous = self.__captured_bit_register_values.get(id(leaf))
+                self.__captured_bit_register_values[id(leaf)] = (leaf, snapshot)
+                try:
+                    with self.__bit_register_expression_value(expression) as values:
+                        self.__check_uint_bit_cast_output()
+                        owned = self.__used_temporary_variables - previous_used
+                        yield values
+                finally:
+                    if previous is None:
+                        self.__captured_bit_register_values.pop(id(leaf), None)
+                    else:
+                        self.__captured_bit_register_values[id(leaf)] = previous
+        finally:
+            # Helpers normally release their storage. Also clean up partially
+            # allocated intermediates on failure, preserving consumer results.
+            temporaries = (self.__used_temporary_variables - previous_used if owned is None
+                           else self.__used_temporary_variables & owned)
             for temporary in temporaries:
                 self.__release_temporary_variable(temporary)
 
