@@ -5112,6 +5112,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                      | set(self.__const_complex_variable_name_values_map)
                      | set(self.__const_bool_variable_values_map)
                      | set(self.__const_bit_variable_values_map)
+                     | set(self.__const_bit_register_values)
                      | set(self.__const_angle_values))
         runtime_range = False
         runtime_step = False
