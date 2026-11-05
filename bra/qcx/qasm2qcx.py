@@ -214,6 +214,17 @@ class _UnsignedIntegerType:
 
 
 @dataclasses.dataclass(frozen=True)
+class _UIntBitCastInfo:
+    result_type: ValueType
+    uint_type: _UnsignedIntegerType
+    runtime: bool
+
+    @property
+    def width(self) -> int:
+        return self.uint_type.width
+
+
+@dataclasses.dataclass(frozen=True)
 class _AngleType:
     width: int
     is_sized: bool
@@ -1165,6 +1176,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if selection is not None:
             return selection.width
         if isinstance(expression, ast.Cast) and isinstance(expression.type, ast.BitType) and expression.type.size is not None:
+            uint_info = self.__uint_bit_cast_info(expression, iterators)
+            if uint_info is not None:
+                return uint_info.width
             info = self.__angle_bit_cast_info(expression, iterators)
             if info is not None:
                 return info[1]
@@ -1738,6 +1752,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if value_type != ValueType.UINT:
             return value_type, None, runtime
         if isinstance(expression, ast.Identifier):
+            if (iterators is not None and expression.name in iterators
+                    and not any(expression.name in scope for scope in self.__loop_bindings)):
+                # A type-only iterator entry cannot reveal its effective
+                # width; never borrow a shadowed declaration's UINT width.
+                raise UnsupportedOpenQASMError('UINT iterator requires width metadata')
             uint_type = self.__identifier_uint_type(expression.name)
             if uint_type is None:
                 raise UninitializedValueException
@@ -4181,6 +4200,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                         for target, source in enumerate(selection.indices))
                     if self.__evaluate_constant else 0)
         if isinstance(expression, ast.Cast):
+            uint_info = self.__uint_bit_cast_info(expression)
+            if uint_info is not None and uint_info.result_type == ValueType.BIT_REGISTER:
+                self.__visit_constant_uint_bit_cast(expression, uint_info)
+                return int(self.__value)
             info = self.__angle_bit_cast_info(expression)
             if info is not None and info[0] == ValueType.BIT_REGISTER:
                 self.__visit_constant_angle_bit_cast(expression, info)
@@ -4692,6 +4715,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __loop_cast_info(
             self, expression: ast.Cast, iterators: set[str] | dict[str, ValueType] | None
             ) -> tuple[ValueType, bool]:
+        uint_info = self.__uint_bit_cast_info(expression, iterators)
+        if uint_info is not None:
+            return uint_info.result_type, uint_info.runtime
         info = self.__angle_bit_cast_info(expression, iterators)
         if info is not None:
             return info[0], info[2]
@@ -4699,7 +4725,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__unsigned_integer_type(expression.type, iterators)
         operand_type, runtime = self.__loop_expression_info(expression.argument, iterators)
         if operand_type == ValueType.BIT_REGISTER:
-            # Supported same-width angle casts were resolved above. Register
+            # Supported same-width reinterpretations were resolved above. Register
             # values must not fall through scalar numeric/Boolean cast typing.
             raise UnsupportedOpenQASMError('bit-register cast outside supported angle conversion')
         target_type = self.__source_value_type(expression.type)
@@ -4805,6 +4831,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if selection is not None:
             return selection.runtime
         if isinstance(expression, ast.Cast):
+            uint_info = self.__uint_bit_cast_info(expression, iterators)
+            if uint_info is not None:
+                return uint_info.runtime
             info = self.__angle_bit_cast_info(expression, iterators)
             if info is not None:
                 return info[2]
@@ -5083,6 +5112,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                      | set(self.__const_complex_variable_name_values_map)
                      | set(self.__const_bool_variable_values_map)
                      | set(self.__const_bit_variable_values_map)
+                     | set(self.__const_bit_register_values)
                      | set(self.__const_angle_values))
         runtime_range = False
         runtime_step = False
@@ -5412,8 +5442,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__validate_angle_assignment(node, iterators)
         # Register values need register-aware contexts, not accidental use as
         # scalar loop bounds, casts, or indices.
-        if isinstance(node, ast.Cast) and self.__angle_bit_cast_info(node, iterators) is not None:
-            # The cast validates its entire source in the appropriate angle
+        if isinstance(node, ast.Cast) and (self.__uint_bit_cast_info(node, iterators) is not None
+                                         or self.__angle_bit_cast_info(node, iterators) is not None):
+            # The cast validates its entire source in the appropriate scalar
             # or register context. A second scalar walk would reject valid
             # register shifts and bitwise expressions in skipped bodies.
             return
@@ -6357,6 +6388,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__expression_kind is None:
             return
 
+        uint_info = self.__uint_bit_cast_info(expression)
+        if uint_info is not None:
+            if uint_info.result_type == ValueType.BIT_REGISTER:
+                raise InvalidBitOperandException('A register cast requires a bit-register expression context')
+            if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                self.__visit_constant_uint_bit_cast(expression, uint_info)
+            else:
+                if self.__expression_kind not in (ExpressionKind.ARITHMETIC, ExpressionKind.CONDITIONAL):
+                    raise UnsupportedOpenQASMError('UINT/bit-register cast outside a value expression')
+                self.__visit_runtime_bit_to_uint_cast(expression, uint_info)
+            return
         info = self.__angle_bit_cast_info(expression)
         if info is not None:
             if info[0] == ValueType.BIT_REGISTER:
@@ -7745,6 +7787,183 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__complex_variable_name_size_map[variable_name] = num_elements
                 self.__qcx_lines.append(f'VAR {variable_name} COMPLEX' + (f' {num_elements}' if num_elements > 1 else ''))
 
+    def __uint_bit_cast_info(
+            self, expression: ast.Cast,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _UIntBitCastInfo | None:
+        # Infer bit patterns and UINT widths without executing the operand or
+        # consulting mutable expression-result caches. Numeric casts and the
+        # existing angle/bit conversions retain their separate paths.
+        if isinstance(expression.type, ast.UintType):
+            # Bound static selection expansion before generic width inference
+            # can materialize a range that cannot fit any native UINT cast.
+            self.__validate_uint_bit_register_source(expression.argument, iterators)
+            source_width = self.__bit_register_expression_width(expression.argument, iterators)
+            if source_width is None:
+                return None
+            uint_type = self.__unsigned_integer_type(expression.type, iterators)
+            target_width = uint_type.width
+            runtime = self.__register_expression_runtime(expression.argument, iterators)
+            result_type = ValueType.UINT
+        elif isinstance(expression.type, ast.BitType) and expression.type.size is not None:
+            source_type, uint_type, runtime = self.__integer_operand_info(expression.argument, iterators)
+            if source_type != ValueType.UINT:
+                return None
+            source_width = uint_type.width
+            target_width = self.__unsigned_integer_type(ast.UintType(expression.type.size), iterators).width
+            self.__validate_bitwise_indices(expression.argument, iterators)
+            result_type = ValueType.BIT_REGISTER
+        else:
+            return None
+        if source_width != target_width:
+            raise InvalidBitOperandException(
+                f'UINT/bit-register cast requires equal widths, got {source_width} and {target_width}')
+        # Register width inference and scalar type lookup alone do not always
+        # enforce source-order visibility. Check names without reading values.
+        if not self.__is_initialization_process:
+            active = set(iterators or ()) | {name for scope in self.__loop_bindings for name in scope}
+            for name in self.__loop_bound_names(expression.argument) - active:
+                if name in self.__constant_source_types:
+                    if name not in self.__declared_constant_variables:
+                        raise NoVariableNameException(name)
+                elif name in self.__classical_source_types:
+                    self.__type_of(self.__capitalize_variable_name(name))
+        return _UIntBitCastInfo(result_type, uint_type, runtime)
+
+    def __validate_uint_bit_register_source(
+            self, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None) -> None:
+        # Runtime-selected bit-register operands remain outside this initial
+        # subset, including selections nested in a register expression.
+        if isinstance(expression, ast.IndexExpression) and self.__is_register_bit_selection(expression):
+            selection = self.__angle_bit_selection(expression, iterators)
+            if selection is not None:
+                if isinstance(selection, (_RuntimeAngleBitSelection, _RuntimeAngleBitSetSelection)):
+                    raise UnsupportedOpenQASMError('runtime-selected UINT/bit-register cast operand')
+            else:
+                self.__static_bit_selection(expression, iterators, max_indices=self.QCX_UINT_WIDTH)
+        elif isinstance(expression, ast.UnaryExpression) and expression.op.name == '~':
+            self.__validate_uint_bit_register_source(expression.expression, iterators)
+        elif isinstance(expression, ast.BinaryExpression) and expression.op.name in ('&', '|', '^', '<<', '>>'):
+            self.__validate_uint_bit_register_source(expression.lhs, iterators)
+            if expression.op.name not in ('<<', '>>'):
+                self.__validate_uint_bit_register_source(expression.rhs, iterators)
+        elif (isinstance(expression, ast.FunctionCall) and expression.name.name in ('rotl', 'rotr')
+              and expression.arguments):
+            self.__validate_uint_bit_register_source(expression.arguments[0], iterators)
+        elif isinstance(expression, ast.Cast) and isinstance(expression.type, (ast.BitType, ast.AngleType)):
+            self.__validate_uint_bit_register_source(expression.argument, iterators)
+
+    def __visit_constant_uint_bit_cast(self, expression: ast.Cast, info: _UIntBitCastInfo) -> None:
+        if info.runtime:
+            raise NoConstantExpressionException
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        try:
+            if info.result_type == ValueType.UINT:
+                value = self.__constant_bit_register_value(expression.argument, info.width)
+            else:
+                self.visit(expression.argument)
+                if self.__value_kind != ValueKind.LITERAL or self.__value_type != ValueType.UINT:
+                    raise NoConstantExpressionException
+                value = int(self.__value)
+            self.__value = value if self.__evaluate_constant else 0
+            self.__value_type, self.__value_kind = info.result_type, ValueKind.LITERAL
+            if info.result_type == ValueType.UINT:
+                self.__uint_expression_types[id(expression)] = (expression, info.uint_type)
+        except Exception:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            raise
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
+    def __check_uint_bit_cast_output(self, extra: int = 0) -> None:
+        if len(self.__qcx_lines) + extra > self.MAX_LOOP_OUTPUT_LINES:
+            raise InvalidBitOperandException('UINT/bit-register cast exceeds QCX output limit')
+
+    def __visit_runtime_bit_to_uint_cast(self, expression: ast.Cast, info: _UIntBitCastInfo) -> None:
+        self.__check_uint_bit_cast_output(1)
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        keep = None
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            with self.__bit_register_expression_value(expression.argument) as values:
+                literal = sum(value << index for index, value in enumerate(values) if isinstance(value, int))
+                if all(isinstance(value, int) for value in values):
+                    result, kind = literal, ValueKind.LITERAL
+                else:
+                    result = self.__add_new_temporary_variable(ValueType.UINT, info.uint_type)
+                    self.__qcx_lines.append(f'LET {result} := {literal}')
+                    scratch = None
+                    for index, value in enumerate(values):
+                        if isinstance(value, int):
+                            continue
+                        if scratch is None:
+                            scratch = self.__add_new_temporary_variable(ValueType.UINT)
+                        self.__qcx_lines.append(f'LET {scratch} := :UINT:{value}')
+                        if index:
+                            self.__qcx_lines.append(f'LET {scratch} <<= {index}')
+                        self.__qcx_lines.append(f'LET {result} |= {scratch}')
+                    kind = ValueKind.TEMPORARY
+            self.__check_uint_bit_cast_output()
+            self.__expression_kind = previous[0]
+            self.__value, self.__value_type, self.__value_kind = result, ValueType.UINT, kind
+            self.__uint_expression_types[id(expression)] = (expression, info.uint_type)
+            keep = result if kind == ValueKind.TEMPORARY else None
+        except Exception:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            raise
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                if temporary != keep:
+                    self.__release_temporary_variable(temporary)
+
+    @contextlib.contextmanager
+    def __uint_to_bit_register_value(
+            self, expression: ast.Cast, info: _UIntBitCastInfo) -> Iterator[tuple[str | int, ...]]:
+        self.__check_uint_bit_cast_output(1)
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        owned = None
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            self.visit(expression.argument)
+            if self.__value_type != ValueType.UINT or self.__value_kind not in (
+                    ValueKind.LITERAL, ValueKind.LVALUE, ValueKind.TEMPORARY):
+                raise UninitializedValueException
+            if self.__value_kind == ValueKind.LITERAL:
+                bits = int(self.__value)
+                values = tuple((bits >> index) & 1 for index in range(info.width))
+            else:
+                snapshot = self.__add_new_temporary_variable(ValueType.UINT, info.uint_type)
+                self.__qcx_lines.append(f'LET {snapshot} := {self.__value}')
+                scratch = self.__add_new_temporary_variable(ValueType.UINT)
+                values = []
+                for index in range(info.width):
+                    bit = self.__add_new_temporary_variable(ValueType.BIT)
+                    self.__qcx_lines.append(f'LET {scratch} := {snapshot}')
+                    if index:
+                        self.__qcx_lines.append(f'LET {scratch} >>= {index}')
+                    self.__qcx_lines.extend([f'LET {scratch} &= 1', f'LET {bit} := :INT:{scratch}'])
+                    values.append(bit)
+                values = tuple(values)
+            self.__check_uint_bit_cast_output()
+            owned = self.__used_temporary_variables - previous_used
+            yield values
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            # A consumer may allocate its own result during yield. Its storage
+            # is not owned by this operand snapshot or its extracted bits.
+            for temporary in owned if owned is not None else self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
     def __angle_bit_cast_info(
             self, expression: ast.Cast,
             iterators: set[str] | dict[str, ValueType] | None = None
@@ -8696,6 +8915,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 yield values
             return
         if isinstance(expression, ast.Cast):
+            uint_info = self.__uint_bit_cast_info(expression)
+            if uint_info is not None and uint_info.result_type == ValueType.BIT_REGISTER:
+                with self.__uint_to_bit_register_value(expression, uint_info) as values:
+                    yield values
+                return
             info = self.__angle_bit_cast_info(expression)
             if info is not None and info[0] == ValueType.BIT_REGISTER:
                 with self.__angle_to_bit_register_value(expression) as values:
