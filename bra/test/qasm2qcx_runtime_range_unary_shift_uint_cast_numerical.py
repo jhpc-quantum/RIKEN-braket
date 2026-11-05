@@ -18,6 +18,15 @@ class BackendTests(unittest.TestCase):
     program = casts.BackendTests.program
     check_exact = casts.BackendTests.check_exact
 
+    def test_documented_complement_and_shift_chain_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-range-unary-shift-uint-cast-example -->'
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        source = source.replace('OPENQASM 3.0;', '', 1)
+        self.check_exact(source, (('from_constant', None), ('inverted', None), ('left', None), ('after', None),
+                                 ('before', None), ('truncated', None), ('flags', 8), ('ones', None)),
+                         (4, 10, 10, 5, 4, 3, 197, 15))
+
     def test_all_native_widths_keep_each_intermediate_within_the_selection(self):
         native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
         size = native + 3

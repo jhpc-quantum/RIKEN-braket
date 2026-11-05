@@ -1887,8 +1887,8 @@ Named constant registers also support `for bit` iteration as described below.
 Their runtime-dependent ranges can be [copied into registers or selections](#copies-from-runtime-bit-register-ranges)
 or used as [bitwise compound-assignment RHS values](#runtime-range-rhs-bitwise-assignments).
 Same-width [UINT casts](#casts-between-uint-values-and-bit-registers) also
-accept constant registers, static selections, runtime index sets, and direct
-runtime ranges. Other runtime-dependent constant-register range expressions,
+accept constant registers, static selections, runtime index sets, and runtime
+ranges, including their supported complement/shift chains. Other runtime-dependent constant-register range expressions,
 aliases, concatenation, whole-array constants, and general block-local
 declarations remain unsupported.
 
@@ -2020,10 +2020,10 @@ rotation, and cast expressions. Selection order determines bit significance;
 repeated source positions are retained. A selection from a register wider than
 `W` is supported when its selected width is within `W`. Static selection
 expansion is bounded by `W` before width inference materializes its positions.
-Direct runtime range operands are supported as described below. Runtime ranges
-nested inside register expressions, runtime angle-bit selections, indexing or
-iterating over computed register values, and aliases remain outside this cast
-subset.
+Runtime ranges are supported directly and under complement/shift chains inside
+UINT casts, as described below. Runtime ranges in other register expressions,
+runtime angle-bit selections, indexing or iterating over computed register
+values, and aliases remain outside this cast subset.
 
 For `uint[n](flags[{i, j, ...}])`, the set's entry count must equal `n` and
 fit within `W`; unsized `uint` requires exactly `W` entries. Each index must
@@ -2059,15 +2059,40 @@ All positions are captured and checked, then the count is checked against the
 target width, then all selected bits are snapshotted before UINT packing or
 any destination writes. Position and result storage are bounded by the target
 width; a longer selection fails when it exceeds that capacity. Constant sources
-reuse the existing native UINT-word lookup machinery. Raw range advancement preserves native INT/UINT operands without signed
-overflow or narrowing full-width UINT values.
+reuse the existing native UINT-word lookup machinery. Raw range advancement
+preserves native INT/UINT operands without signed overflow or narrowing
+full-width UINT values.
 
-The range must be the direct register operand of the UINT cast. For example,
-`~uint[4](flags[start:stop])` complements a supported scalar UINT result, whereas
-`uint[4](~flags[start:stop])` remains unsupported because its register operand
-contains a runtime range. Similarly, the UINT result may supply supported
-arithmetic, indices, loop bounds, or an enclosing `bit[n]` cast without adding
-general variable-width register expressions.
+Within the UINT cast, a runtime range may also be wrapped in unary complement
+(`~`) and left/right shifts (`<<`, `>>`), including nested combinations:
+
+```qasm
+uint[4] inverted = uint[4](~flags[start:stop]);
+uint[4] shifted = uint[4](flags[start:step:stop] << count);
+uint[4] chain = uint[4](~((flags[start:stop] << left_count) >> right_count));
+```
+
+The target width supplies the required count throughout the chain. Each
+operation preserves that width; shifted-out bits are discarded and vacated
+positions contain zero. In particular, `(range << a) >> b` cannot recover bits
+lost in its first shift, and `~(range << a)` can differ from `(~range) << a`.
+Both sized and unsized UINT targets follow the width rules above.
+
+The converter first captures and validates the range and snapshots all selected
+bits, then applies operations from the innermost expression outward. Each
+shift-count occurrence is evaluated once after its left operand, even when
+multiple counts use identical source text. Counts may use supported INT/UINT
+expressions; negative counts fail when reached, and counts at least the selected
+width produce zero. An earlier zero result does not suppress later shift-count
+arithmetic or checks. Nested UINT casts in counts perform their own range
+captures, including when they access the same named register.
+
+Only the complement/shift chain around one range is supported in this context.
+Binary register operations (`&`, `|`, `^`), rotations, other register functions,
+angle-bit ranges, aliases, and further indexing of range results remain outside
+this subset. The resulting scalar UINT may supply supported arithmetic,
+indices, loop bounds, or an enclosing `bit[n]` cast. General variable-width
+register expressions outside the UINT-cast context remain unsupported.
 
 UINT operands may use supported scalar expressions, including indexed UINT
 array elements and matching-width UINT array iterators. The source width is
@@ -2143,6 +2168,31 @@ stop = 7;
 uint[4] fresh = uint[4](flags[start:step:stop]);           // 12; packed is still 5.
 int negative = -1;
 uint[5] repeated = uint[5](flags[negative:3]);            // 11: "01011".
+```
+
+This example distinguishes complement placement and intermediate truncation:
+
+<!-- runtime-range-unary-shift-uint-cast-example -->
+```qasm
+OPENQASM 3.0;
+const bit[8] PATTERN = "10110010";
+bit[8] flags = "11001001";
+int start = 7;
+int step = -2;
+int stop = 1;
+int distance = 1;
+uint[4] from_constant = uint[4](~PATTERN[start:step:stop]); // 4: complement of "1011".
+uint[4] inverted = uint[4](~flags[start:step:stop]);       // 10: complement of "0101".
+uint[4] left = uint[4](flags[start:step:stop] << distance); // 10.
+uint[4] after = uint[4](~(flags[start:step:stop] << distance)); // 5.
+uint[4] before = uint[4]((~flags[start:step:stop]) << distance); // 4.
+uint[4] truncated = uint[4]((PATTERN[start:step:stop] << distance) >> distance); // 3, not 11.
+flags[0:3] = bit[4](uint[4](~(flags[start:step:stop] << distance))); // "11000101".
+start = 0;
+step = 1;
+stop = 3;
+distance = 4;
+uint[4] ones = uint[4](~(flags[start:step:stop] << distance)); // 15; after is still 5.
 ```
 
 Sources are evaluated once per cast. Runtime packing uses existing QCX UINT
@@ -2578,9 +2628,10 @@ results. No new bra instruction or build option is required.
 
 Runtime ranges support [plain and bitwise compound assignments](#runtime-bit-register-range-assignments).
 They also support [copies into registers or selections](#copies-from-runtime-bit-register-ranges),
-where the destination supplies the required width. Direct
+where the destination supplies the required width. Explicit
 [UINT casts](#casts-between-uint-values-and-bit-registers) also accept runtime
-range operands, with the target UINT width supplying the required count.
+ranges directly or under complement/shift chains, with the target UINT width
+supplying the required count.
 Other runtime range expressions with variable result widths, computed register sources,
 aliases, concatenation,
 further indexing of selection results, and ordered register comparisons remain
@@ -2863,10 +2914,11 @@ declarations are hoisted outside
 loops; storage is released on success and failed lowering while preserving
 caller-owned temporaries. No new bra instruction or build option is required.
 
-Uncast runtime ranges remain unsupported in declaration initializers, scalar
-destinations, general bitwise/shift expressions, comparisons, and function calls.
-Direct [UINT casts](#casts-between-uint-values-and-bit-registers) provide a
-separate scalar conversion path. Computed sources, aliases, and further
+Outside the supported UINT-cast context, runtime ranges remain unsupported in
+declaration initializers, scalar destinations, general bitwise/shift expressions,
+comparisons, and function calls.
+Explicit [UINT casts](#casts-between-uint-values-and-bit-registers) provide a
+separate scalar conversion path for direct ranges and complement/shift chains. Computed sources, aliases, and further
 indexing of selection results remain unsupported.
 Bitwise compound assignments with runtime range RHS values have the separate
 destination subsets below. Existing static range and fixed-width runtime set
@@ -6932,7 +6984,7 @@ The current prototype does not reliably support:
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
 - scalar-bit shifts, runtime bit-register range expressions outside the supported
-  iteration, copy, direct UINT cast, and bitwise compound-assignment RHS subsets,
+  iteration, copy, UINT cast, and bitwise compound-assignment RHS subsets,
   runtime bit-register range arithmetic compound assignments,
   ordered bit-register comparisons, whole-array bitwise operations, direct
   Boolean bitwise operations, or classical functions other than the
@@ -7620,6 +7672,21 @@ count-check ordering, bounded capture capacity, unsigned packing, snapshot
 ownership, output/allocation failures, and cleanup preserving caller state.
 Run with `--bra /path/to/bra`, including a UBSan build.
 
+`bra/test/qasm2qcx_runtime_range_unary_shift_uint_cast_numerical.py` checks
+runtime range complement/shift chains inside UINT casts at every native width.
+It covers complement placement, truncation at each intermediate step, literal
+and runtime counts, native endpoints, oversized counts, negative aliases,
+strides, wide constant sources, unsized targets, and overlapping assignments.
+Integration cases cover scalar/register/array consumers, nested casts in bounds
+and counts, loop capture and iterator scopes, fresh runtime operands, skipped
+failures, measurement feedback, broadcast gates, and normal/fused execution.
+Reached failures verify range-before-count checking and preservation of prior
+successful assignments. The chain example above is executed. Unit tests also
+verify operation order and occurrence identity, once-only captures/counts,
+snapshot ownership and binding restoration, output limits, and cleanup after
+allocation or consumer failures. Run with `--bra /path/to/bra`, including a
+UBSan build.
+
 `bra/test/qasm2qcx_integer_array_numerical.py` verifies declarations and runtime
 initializers, static, runtime, and negative element indices, compound assignments,
 live reads versus set snapshots, dimension-constant shadowing, repeated entry,
@@ -8126,6 +8193,7 @@ python3 bra/test/qasm2qcx_uint_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_uint_bit_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_bit_set_uint_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_bit_range_uint_cast_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_range_unary_shift_uint_cast_numerical.py --bra bra/bin/bra
 ```
 
 For an MPI-enabled `bra` executable, run the distributed control-value driver
