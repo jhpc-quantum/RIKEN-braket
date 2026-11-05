@@ -26,6 +26,14 @@ class BackendTests(unittest.TestCase):
     program = casts.BackendTests.program
     check_exact = casts.BackendTests.check_exact
 
+    def test_documented_runtime_range_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-bit-range-uint-cast-example -->'
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        source = source.replace('OPENQASM 3.0;', '', 1)
+        self.check_exact(source, (('from_constant', None), ('packed', None), ('back', 4),
+                                 ('flags', 8), ('fresh', None), ('repeated', None)), (11, 5, 5, 197, 12, 11))
+
     def test_all_native_widths_ascending_descending_and_source_preservation(self):
         native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
         size = native + 3
