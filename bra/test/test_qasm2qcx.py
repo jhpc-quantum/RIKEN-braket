@@ -27469,6 +27469,115 @@ class RuntimeBitRangeUIntCastIntegrationTests(unittest.TestCase):
         self.assert_clean(c)
 
 
+class RuntimeRangeUnaryShiftUIntCastIntegrationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    expression = ScalarAngleArithmeticFoundationTests.expression
+    prefix = RuntimeRangeUnaryShiftUIntCastFoundationTests.prefix
+    assert_clean = UIntBitCastIntegrationTests.assert_clean
+
+    def test_scalar_register_and_array_consumers_preserve_widths(self):
+        c = self.converter(self.prefix +
+            'array[uint[4],2] out = {uint[4](~wide[index:count]), uint[4](C[index:count] << u)}; '
+            'u += uint[4](~(wide[index:count] >> count)); '
+            'out[uint[1](~one[index:index])] = uint[4](C[index:count] << u); '
+            'b = bit[4](uint[4](~wide[index:count]) ^ uint[4](~C[index:count])); '
+            'angle[4] phase = angle[4](bit[4](uint[4](~(wide[index:count] << u)))); '
+            'count = int(uint[4](~wide[index:count]));')
+        c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        expression = self.expression('uint[4](~wide[index:count]) + uint[4](C[index:count] >> u)')
+        c.visit(expression)
+        self.assertEqual(c._QASM2QCXConverter__uint_expression_type(expression), qasm2qcx._UnsignedIntegerType(4, True))
+        c._QASM2QCXConverter__release_temporary_variable(c._QASM2QCXConverter__value)
+        self.assert_clean(c)
+
+    def test_nested_casts_in_counts_capture_each_range_separately(self):
+        c = self.converter(self.prefix)
+        expression = self.expression('uint[4](~(wide[index:count] << uint[1](~wide[index:index])))')
+        c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        capture = c._QASM2QCXConverter__capture_bit_range_positions
+        with patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions', wraps=capture) as selected:
+            c.visit(expression)
+        self.assertEqual([call.kwargs['capacity'] for call in selected.call_args_list], [4, 1])
+        self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, {})
+        c._QASM2QCXConverter__release_temporary_variable(c._QASM2QCXConverter__value)
+        self.assert_clean(c)
+
+    def test_runtime_and_expanded_control_flow_hoists_storage_and_resolves_jumps(self):
+        body = 'u = uint[4](~C[index:count] << index); b = bit[4](uint[4](~(wide[index:count] >> u)));'
+        wrappers = ('if (index < count) {{ {} }}', 'while (index < count) {{ {} index += 1; }}',
+                    'for int i in [index:count] {{ {} }}',
+                    'for int index in [0:2] {{ if (index == 1) {{ continue; }} {} }}',
+                    'for int index in {{index,count}} {{ {} }}', 'for uint[4] index in values {{ {} }}')
+        existing = {line for line in self.converter(self.prefix) if line.startswith('VAR QASM2QCX_')}
+        for wrapper in wrappers:
+            with self.subTest(wrapper=wrapper):
+                c = self.converter(self.prefix + wrapper.format(body))
+                self.assert_clean(c)
+                lines = list(c)
+                ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+                first = next(i for i, line in enumerate(lines) if line.startswith(('LET ', '@', 'ASSERT ', 'JUMP')))
+                self.assertTrue(all(i < first for i, line in enumerate(lines)
+                                    if line.startswith('VAR QASM2QCX_') and line not in existing))
+
+    def test_nested_loop_bounds_and_sets_validate_with_active_iterator_scopes(self):
+        for interval in ('0:1', '1:0'):
+            c = self.converter(self.prefix + f'for int outer in [{interval}] {{ '
+                'for int i in [uint[1](~C[outer:outer]):uint[2](C[outer:count] << outer)] { u += uint[4](i); } '
+                'for int i in {uint[1](~C[outer:outer]),uint[2](~wide[outer:count])} { u += uint[4](i); } }')
+            self.assert_clean(c)
+
+    def test_skipped_paths_validate_types_visibility_and_widths_without_domains(self):
+        for body in ('u = uint[4](~wide[outer:count] << real);', 'u = uint[4](~later[outer:count]);',
+                     'u = uint[4](~C[outer:count] >> LATER);',
+                     'b = bit[3](uint[4](~wide[outer:count]));',
+                     'for int N in [0:1] { u = uint[N](~wide[outer:count]); }',
+                     'for int C in [0:1] { u = uint[4](~C[outer:count]); }',
+                     'for bit u in b { index = int(uint[4](wide[outer:count] << u)); }',
+                     'if (uint[4](~wide[outer:count])) { }'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix + 'for int outer in [1:0] { if (false) { ' + body +
+                               ' } } bit[4] later; const int LATER = 1;')
+        c = self.converter(self.prefix +
+            'bool left = false && bool(uint[4](~wide[index:0:999] << -1)); '
+            'bool right = true || bool(uint[4](C[index:count] >> positions[index / 0])); '
+            'while (false) { u = uint[4](~(wide[index:count] << (1 / 0))); }')
+        self.assert_clean(c)
+
+    def test_nested_operation_failure_restores_loop_scopes_and_caller_bindings(self):
+        c = self.converter(self.prefix)
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        expression = self.expression('bit[4](u)')
+        outer = {id(expression): (expression, (caller,))}
+        c._QASM2QCXConverter__captured_bit_register_values.update(outer)
+        shift = c._QASM2QCXConverter__shift_bit_register_value
+        @qasm2qcx.contextlib.contextmanager
+        def failed(*args):
+            with shift(*args):
+                raise RuntimeError('nested shift failed')
+                yield
+        node = self.program('while (index < count) { for int i in [index:count] { '
+                            'u = uint[4](~(wide[i:count] << u)); } }').statements[0]
+        with patch.object(c, '_QASM2QCXConverter__shift_bit_register_value', side_effect=failed):
+            with self.assertRaisesRegex(RuntimeError, 'nested shift failed'):
+                c.visit(node)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, outer)
+        self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(c._QASM2QCXConverter__loop_contexts, [])
+
+    def test_measurement_feedback_and_broadcast_parameters_release_snapshots(self):
+        c = self.converter('include "stdgates.inc"; qubit[2] q; bit[2] measured; int first = 1; int last = 0; '
+            'int distance = 0; measured = measure q; uint[2] value = uint[2](~(measured[first:-1:last] >> distance)); '
+            'if (bool(value)) { x q[0]; }')
+        capture = c._QASM2QCXConverter__capture_bit_range_positions
+        node = self.program('p(angle[2](bit[2](uint[2](~measured[first:-1:last])))) q;').statements[0]
+        with patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions', wraps=capture) as selected:
+            c.visit(node)
+        self.assertEqual(selected.call_count, 1)
+        self.assert_clean(c)
+
+
 class AngleBitCastFoundationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)
