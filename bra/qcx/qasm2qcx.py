@@ -7904,9 +7904,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise InvalidBitOperandException('UINT/bit-register cast exceeds QCX output limit')
 
     def __visit_runtime_bit_to_uint_cast(self, expression: ast.Cast, info: _UIntBitCastInfo) -> None:
-        if info.range_selection is not None:
-            # Range metadata is available before its snapshot lowering is added.
-            raise UnsupportedOpenQASMError('runtime bit-range UINT cast lowering')
         self.__check_uint_bit_cast_output(1)
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
@@ -7914,7 +7911,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         keep = None
         try:
             self.__expression_kind = ExpressionKind.ARITHMETIC
-            with self.__bit_register_expression_value(expression.argument) as values:
+            source = (self.__runtime_bit_range_value(info.range_selection, info.width)
+                      if info.range_selection is not None
+                      else self.__bit_register_expression_value(expression.argument))
+            with source as values:
                 literal = sum(value << index for index, value in enumerate(values) if isinstance(value, int))
                 if all(isinstance(value, int) for value in values):
                     result, kind = literal, ValueKind.LITERAL
@@ -8910,6 +8910,51 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise InvalidBitOperandException('Runtime bit selection exceeds QCX output limit')
             # Only release this access's storage after yield: its consumer may
             # allocate a result that must remain live beyond this context.
+            owned = self.__used_temporary_variables - previous_used
+            yield tuple(values)
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            temporaries = owned if owned is not None else self.__used_temporary_variables - previous_used
+            for temporary in temporaries:
+                self.__release_temporary_variable(temporary)
+
+    @contextlib.contextmanager
+    def __runtime_bit_range_value(
+            self, selection: _RuntimeBitRangeSelection, width: int) -> Iterator[tuple[str, ...]]:
+        self.__check_uint_bit_cast_output(2 * width + 1)
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        owned = None
+        label = f'QASM2QCX_RANGE_UINT_{self.__array_index}'
+        self.__array_index += 1
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            # The target width bounds storage independently of the source and
+            # raw range length. Validate all positions and the exact count
+            # before preparing a lookup table or reading any selected bits.
+            positions, count = self.__capture_bit_range_positions(
+                selection.bounds, selection.source_width, label, capacity=width)
+            self.__qcx_lines.append(f'ASSERT {count} == {width}')
+            constant = (self.__constant_bit_register(selection.source_name)
+                        if selection.source_name in self.__const_bit_register_values else None)
+            words = self.__prepare_constant_bit_lookup(constant) if constant is not None else None
+            source = self.__capitalize_variable_name(selection.source_name)
+            position = self.__add_new_temporary_variable(ValueType.INT)
+            values = []
+            for offset in range(width):
+                self.__qcx_lines.append(f'LET {position} := {positions}:{offset}')
+                bit = self.__add_new_temporary_variable(ValueType.BIT)
+                if words is None:
+                    operand = source if selection.source_width == 1 else f'{source}:{position}'
+                    self.__qcx_lines.append(f'LET {bit} := {operand}')
+                else:
+                    self.__copy_prepared_constant_bit(words, position, bit)
+                values.append(bit)
+            self.__check_uint_bit_cast_output()
+            # The UINT result is allocated by the consumer during yield and
+            # must survive release of this snapshot's private storage.
             owned = self.__used_temporary_variables - previous_used
             yield tuple(values)
         finally:
