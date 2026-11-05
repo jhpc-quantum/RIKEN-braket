@@ -7832,15 +7832,21 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __validate_uint_bit_register_source(
             self, expression: ast.Expression,
             iterators: set[str] | dict[str, ValueType] | None) -> None:
-        # Runtime-selected bit-register operands remain outside this initial
-        # subset, including selections nested in a register expression.
-        if isinstance(expression, ast.IndexExpression) and self.__is_register_bit_selection(expression):
+        # Runtime bit-register sets have a fixed width; their index values are
+        # captured by the existing snapshot reader. Runtime ranges and dynamic
+        # angle-bit selections remain outside this cast subset.
+        if isinstance(expression, ast.IndexExpression):
             selection = self.__angle_bit_selection(expression, iterators)
             if selection is not None:
                 if isinstance(selection, (_RuntimeAngleBitSelection, _RuntimeAngleBitSetSelection)):
                     raise UnsupportedOpenQASMError('runtime-selected UINT/bit-register cast operand')
-            else:
-                self.__static_bit_selection(expression, iterators, max_indices=self.QCX_UINT_WIDTH)
+            elif self.__is_register_bit_selection(expression):
+                runtime_selection = self.__runtime_bit_set_selection(expression, iterators)
+                if runtime_selection is not None:
+                    if runtime_selection.width > self.QCX_UINT_WIDTH:
+                        raise InvalidBitOperandException('Runtime set UINT cast width exceeds native QCX UINT width')
+                else:
+                    self.__static_bit_selection(expression, iterators, max_indices=self.QCX_UINT_WIDTH)
         elif isinstance(expression, ast.UnaryExpression) and expression.op.name == '~':
             self.__validate_uint_bit_register_source(expression.expression, iterators)
         elif isinstance(expression, ast.BinaryExpression) and expression.op.name in ('&', '|', '^', '<<', '>>'):
