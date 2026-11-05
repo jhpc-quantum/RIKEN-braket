@@ -25915,6 +25915,25 @@ class UIntBitCastFoundationTests(unittest.TestCase):
         with self.assertRaises(qasm2qcx.QASM2QCXError):
             self.info('uint[4](wide[LOW:HIGH])', {'LOW': qasm2qcx.ValueType.INT})
 
+    def test_large_static_selections_are_bounded_before_generic_width_inference(self):
+        size = self.c.QCX_INT_MAX
+        c = self.converter(f'bit[{size}] huge;')
+        width = c._QASM2QCXConverter__bit_register_expression_width
+        for operand in (f'huge[0:{size - 1}]', f'~huge[0:{size - 1}]',
+                        f'rotl(huge[0:{size - 1}], 1)', f'bit[4](angle[4](huge[0:{size - 1}]))'):
+            with self.subTest(operand=operand), patch.object(
+                    c, '_QASM2QCXConverter__bit_register_expression_width', wraps=width) as inference:
+                with self.assertRaisesRegex(qasm2qcx.QASM2QCXError, 'size limit'):
+                    c._QASM2QCXConverter__uint_bit_cast_info(self.expression(f'uint[4]({operand})'))
+                inference.assert_not_called()
+        # The bounded register walk must not inspect register operands hidden
+        # in scalar Boolean/popcount expressions used by ordinary numeric casts.
+        for operand in ('bool(wide[{index,0,1,2}] == b)', 'popcount(wide[{index,0,1,2}])',
+                        'int(popcount(wide[{index,0,1,2}]))'):
+            self.assertIsNone(self.info(f'uint[4]({operand})'))
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.info('uint[4](rotl())')
+
     def test_existing_numeric_scalar_bit_and_angle_casts_keep_their_separate_paths(self):
         for source in ('uint[4](1)', 'uint[4](u)', 'uint[1](scalar)', 'bit(condition)', 'bit(scalar)',
                        'angle[4](B)', 'bit[4](a)'):

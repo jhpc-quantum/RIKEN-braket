@@ -82,6 +82,7 @@ The converter currently covers:
 - scalar `int`, `uint`, `float`, and `complex` arithmetic;
 - native unsigned storage and modulo-width arithmetic for scalar `uint` and
   supported `uint[n]` widths;
+- explicit same-width casts between UINT values and bit-register expressions;
 - integer remainder expressions and compound assignments using `%` and `%=`;
 - scalar integer exponentiation (`**`, `**=`), with nonnegative exponents,
   modular UINT results, and checked native INT results;
@@ -282,9 +283,10 @@ be bit strings, named registers, supported static selections, or supported
 register bitwise, shift, and rotation expressions. Angle sources can use
 supported angle expressions. Register results work in register initializers,
 assignments, static selection destinations, bitwise operations, equality
-comparisons, and register functions. A register cast does not enable scalar
-arithmetic or general numeric casts. Indexing a cast result directly remains
-unsupported; assign it to a named register first. Scalar `bit` and `bit[1]`
+comparisons, and register functions. Register results require a separate
+[explicit UINT cast](#casts-between-uint-values-and-bit-registers) for integer
+arithmetic; direct numeric casts from angles remain unsupported. Indexing a cast
+result directly remains unsupported; assign it to a named register first. Scalar `bit` and `bit[1]`
 remain distinct; these casts require the register form.
 
 Sources are evaluated once and preserved. Runtime lowering packs or extracts
@@ -1636,10 +1638,11 @@ valid. No new bra instruction is required.
 Types, names, widths, and static selections are validated even in empty loops.
 Runtime conversions, distance arithmetic, and copy loops stay on reached paths,
 including under Boolean short-circuiting. Existing arithmetic-overflow rules
-still apply when computing a distance. Computed-result indexing, dynamic bit
-selections, register casts, and register-valued conditions or loop bounds remain
-unsupported; compare register results using `==`/`!=`, or use `popcount` when a
-numeric result is needed.
+still apply when computing a distance. Computed-result indexing and bare
+register-valued conditions or loop bounds remain unsupported. Compare register
+results using `==`/`!=`, use `popcount` to count set bits, or use an
+[explicit same-width UINT cast](#casts-between-uint-values-and-bit-registers)
+to interpret a supported register expression as an integer.
 
 <!-- rotation-example -->
 ```qasm
@@ -1883,9 +1886,10 @@ uint selected = popcount(SELECTED);    // 3
 Named constant registers also support `for bit` iteration as described below.
 Their runtime-dependent ranges can be [copied into registers or selections](#copies-from-runtime-bit-register-ranges)
 or used as [bitwise compound-assignment RHS values](#runtime-range-rhs-bitwise-assignments).
-Other runtime-dependent constant-register range expressions, register casts, aliases,
-concatenation, and whole-array constants remain unsupported. General block-local
-declarations remain unsupported.
+Same-width [UINT casts](#casts-between-uint-values-and-bit-registers) also
+accept constant registers and their static selections. Other runtime-dependent
+constant-register range expressions, aliases, concatenation, and whole-array
+constants and general block-local declarations remain unsupported.
 
 ### Unsigned integers
 
@@ -1980,6 +1984,95 @@ unrepresentable unsigned value as an INT iterator. Negative indices and negative
 steps require signed values: unsigned negation wraps, rather than producing a
 negative value. `for uint` is supported for matching-width UINT arrays, not
 for integer ranges or discrete sets.
+
+### Casts between UINT values and bit registers
+
+`uint[n](bits)` and `bit[n](number)` explicitly reinterpret a pattern between a
+bit-register expression and a scalar UINT value. Both constant folding and
+runtime evaluation preserve every bit, including the highest native UINT bit.
+The first register bit is the least significant bit: the integer value is
+`sum(bit[i] * 2**i)`. These follow the OpenQASM
+[bit-to-integer](https://openqasm.com/language/types.html#casting-from-bit) and
+[integer-to-bit](https://openqasm.com/language/types.html#casting-from-int-uint)
+cast rules.
+
+Source and target widths must match, with `1 <= n <= W` for the native QCX UINT
+width `W`. Unsized `uint(bits)` requires a register of width `W`, and
+`bit[W](number)` accepts a source of unsized `uint` type. Cast widths must be
+positive compile-time integers; runtime values and active iterators cannot
+supply them, even when an iterator is unrolled or shadows a width constant.
+The widths of previously declared variables and arrays remain fixed in their
+declaration scope.
+
+A width mismatch is rejected even if the current value would fit. There is no
+implicit truncation, padding, or resizing. For example, converting a `bit[8]`
+value directly with `uint[4](bits)` is invalid; select four bits explicitly.
+Conversely, to resize a UINT numerically before extracting its pattern, use an
+explicit numeric conversion such as `bit[4](uint[4](number))`. Scalar `bit` and
+`bit[1]` remain distinct: these reinterpretations require the register form;
+existing scalar bit/Boolean numeric conversions retain their separate rules.
+
+Register operands may be bit strings, named mutable or constant registers,
+static range/discrete-set selections, and supported fixed-width bitwise, shift,
+rotation, and cast expressions. Selection order determines bit significance;
+repeated source positions are retained. A selection from a register wider than
+`W` is supported when its selected width is within `W`. Static selection
+expansion is bounded by `W` before width inference materializes its positions. Runtime-selected
+register operands, indexing or iterating over computed register values, and
+aliases remain outside this cast subset.
+
+UINT operands may use supported scalar expressions, including indexed UINT
+array elements and matching-width UINT array iterators. The source width is
+inferred from the complete expression before any conversion: shifts preserve
+the left operand's width, while binary UINT arithmetic promotes widths according
+to the existing UINT rules. For example, `bit[4](u4 + u8)` is invalid because the
+sum has width eight. Narrow UINT arithmetic still wraps at every operation,
+so `bit[4](uint[4](15) + uint[4](1))` produces `"0000"`. Mixed signed/unsigned
+arithmetic can produce INT and then needs an explicit numeric UINT conversion.
+
+Register results work in existing register initializers, assignments, bitwise
+expressions, comparisons, and register functions. UINT results work in existing
+numeric contexts, including arithmetic, conditions with an explicit comparison
+or `bool`, supported indices, integer loop bounds/steps/sets, gate parameters,
+and shift counts. A shift count's integer width need not match the shifted
+register's width:
+
+<!-- uint-bit-cast-example -->
+```qasm
+OPENQASM 3.0;
+const bit[8] PATTERN = "10110010";
+const uint[4] SELECTED = uint[4](PATTERN[7:-2:1]); // 11: selected bits are "1011".
+bit[4] bits = bit[4](SELECTED);
+uint[4] packed = uint[4](bits);                   // 11.
+uint[4] wrapped = uint[4](bit[4](packed + uint[4](7))); // 2, after modulo-16 addition.
+bits[3:-1:0] = bit[4](uint[4](bits));             // Overlap-safe reversal: "1101".
+bit[8] flags = "10001111";
+bit[4] count_bits = "0001";
+flags <<= uint[4](count_bits);                   // Shift by one: "00011110".
+array[uint[4], 2] values = {uint[4](bits), wrapped};
+uint total = 0;
+for uint[4] value in values {
+  total += uint[4](bit[4](value));                // Final total is 15.
+}
+```
+
+Sources are evaluated once per cast. Runtime packing uses existing QCX UINT
+shifts and OR; it does not shift signed INT values. Unpacking snapshots the
+complete UINT before extracting bits, masks each extracted value to one bit,
+and only then converts it to INT storage. All result bits are available before
+any destination write, preserving original values in overlapping assignments.
+Temporary ownership and expression state are restored after evaluation and
+failed lowering; output budgets are checked before returning a runtime result.
+No new bra instruction or build option is required.
+
+Supported branches and loops take fresh values on each visit. Skipped paths,
+logical short-circuiting, and empty loops suppress operand domain checks and
+arithmetic, while names, types, widths, visibility, and static selections remain
+validated. A constant cast requires constant operands; converting mutable
+storage does not make it constant. Reached operand failures, including bounds,
+shift-count, and division failures, occur before destination writes. Signed
+integer/register reinterpretations and widths beyond native UINT remain
+outside this feature.
 
 ### Integer remainder
 
@@ -2157,9 +2250,12 @@ remain tied to declaration scope when iterators shadow size constants, and
 active iterators remain read-only.
 
 Register values are supported in `popcount`, `rotl`/`rotr`, register assignments, and the equality
-comparisons described below; they are not bare conditions. Integer/register casts,
-indexing of computed results, or register expressions as loop bounds or
-iteration collections remain unsupported. Static selection operations are described below.
+comparisons described below; they are not bare conditions. Explicit
+[same-width UINT casts](#casts-between-uint-values-and-bit-registers) interpret
+a supported register pattern as an integer, including for indices or loop
+bounds. Signed integer/register casts, indexing of computed results, and bare
+register expressions as numeric loop bounds remain unsupported. Static selection
+operations are described below.
 Concatenation and aliases remain outside this subset. Existing direct
 bit-register copies and indexed scalar-bit operations retain their behavior.
 
@@ -6734,7 +6830,7 @@ The current prototype does not reliably support:
 - classical arrays beyond the one-dimensional `int`, `uint`, `float`, `bool`,
   `complex`, and `angle` subsets above, zero-length arrays,
   whole-register casts other than the same-width
-  angle/bit-register conversions above, complex-to-Boolean casts,
+  angle/bit-register and UINT/bit-register conversions above, complex-to-Boolean casts,
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
 - scalar-bit shifts, runtime bit-register range expressions outside the supported
@@ -7383,6 +7479,21 @@ and bit indices, measurement destinations, quantum parameters, singleton
 storage, and bounds failures. Unit tests also cover invalid widths, unsupported
 signed-width combinations, constant loop capture limits, and temporary reuse.
 
+`bra/test/qasm2qcx_uint_bit_cast_numerical.py` checks exact UINT/register
+patterns at every native-supported width, exhaustive small widths, native high
+bits, deterministic random patterns, constant/runtime round trips, source
+preservation, static selection order, repeated positions, and wide source
+registers. Integration cases cover narrow intermediate wraparound, width
+promotion, numeric conversions, array initializers and elements, shift counts,
+loop bounds and transfers, typed iterator shadowing, live bit iteration, skipped
+operand errors, measurement feedback, and gate parameters with and without
+fusion. Later-iteration failures preserve earlier successful assignments. The
+example above is executed. Unit tests cover side-effect-free metadata, width
+and type rejection, nested constant-register loop bounds, once-only operand
+capture, unsigned packing, private extraction before writes, temporary ownership,
+output limits, declaration hoisting, and cleanup preserving caller context and
+storage on failure. Run with `--bra /path/to/bra`, including a UBSan build.
+
 `bra/test/qasm2qcx_integer_array_numerical.py` verifies declarations and runtime
 initializers, static, runtime, and negative element indices, compound assignments,
 live reads versus set snapshots, dimension-constant shadowing, repeated entry,
@@ -7886,6 +7997,7 @@ python3 bra/test/qasm2qcx_bit_register_equality_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_bit_selection_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_uint_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_uint_bit_cast_numerical.py --bra bra/bin/bra
 ```
 
 For an MPI-enabled `bra` executable, run the distributed control-value driver

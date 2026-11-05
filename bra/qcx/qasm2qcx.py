@@ -7794,12 +7794,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # consulting mutable expression-result caches. Numeric casts and the
         # existing angle/bit conversions retain their separate paths.
         if isinstance(expression.type, ast.UintType):
+            # Bound static selection expansion before generic width inference
+            # can materialize a range that cannot fit any native UINT cast.
+            self.__validate_uint_bit_register_source(expression.argument, iterators)
             source_width = self.__bit_register_expression_width(expression.argument, iterators)
             if source_width is None:
                 return None
             uint_type = self.__unsigned_integer_type(expression.type, iterators)
             target_width = uint_type.width
-            self.__validate_uint_bit_register_source(expression.argument, iterators)
             runtime = self.__register_expression_runtime(expression.argument, iterators)
             result_type = ValueType.UINT
         elif isinstance(expression.type, ast.BitType) and expression.type.size is not None:
@@ -7839,15 +7841,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     raise UnsupportedOpenQASMError('runtime-selected UINT/bit-register cast operand')
             else:
                 self.__static_bit_selection(expression, iterators, max_indices=self.QCX_UINT_WIDTH)
-        elif isinstance(expression, ast.UnaryExpression):
+        elif isinstance(expression, ast.UnaryExpression) and expression.op.name == '~':
             self.__validate_uint_bit_register_source(expression.expression, iterators)
-        elif isinstance(expression, ast.BinaryExpression):
+        elif isinstance(expression, ast.BinaryExpression) and expression.op.name in ('&', '|', '^', '<<', '>>'):
             self.__validate_uint_bit_register_source(expression.lhs, iterators)
             if expression.op.name not in ('<<', '>>'):
                 self.__validate_uint_bit_register_source(expression.rhs, iterators)
-        elif isinstance(expression, ast.FunctionCall) and expression.name.name in ('rotl', 'rotr'):
+        elif (isinstance(expression, ast.FunctionCall) and expression.name.name in ('rotl', 'rotr')
+              and expression.arguments):
             self.__validate_uint_bit_register_source(expression.arguments[0], iterators)
-        elif isinstance(expression, ast.Cast):
+        elif isinstance(expression, ast.Cast) and isinstance(expression.type, (ast.BitType, ast.AngleType)):
             self.__validate_uint_bit_register_source(expression.argument, iterators)
 
     def __visit_constant_uint_bit_cast(self, expression: ast.Cast, info: _UIntBitCastInfo) -> None:

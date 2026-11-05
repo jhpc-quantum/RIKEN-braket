@@ -4,6 +4,7 @@
 import argparse
 import pathlib
 import random
+import re
 import resource
 import unittest
 
@@ -233,6 +234,14 @@ class BackendTests(unittest.TestCase):
             output = [''.join(line.split()) for line in result.stdout.splitlines()]
             self.assertEqual(output, ['12345'] * len(writes) + [f'{expected:04b}' if len(writes) == 4 else str(expected)])
             type(self).checked += 1
+
+    def test_documented_uint_bit_cast_example(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- uint-bit-cast-example -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        source = examples[0].removeprefix('OPENQASM 3.0;')
+        self.check_exact(source, (('bits', 4), ('packed', None), ('wrapped', None), ('flags', 8), ('count_bits', 4), ('total', None)),
+                         (13, 11, 2, 30, 1, 15))
 
     def test_runtime_failures_precede_destination_writes(self):
         cases = (('uint[4] u = 0; bit[4] bits = "1001"; int count = -1; u = uint[4](bits << count);',
