@@ -2013,13 +2013,26 @@ explicit numeric conversion such as `bit[4](uint[4](number))`. Scalar `bit` and
 existing scalar bit/Boolean numeric conversions retain their separate rules.
 
 Register operands may be bit strings, named mutable or constant registers,
-static range/discrete-set selections, and supported fixed-width bitwise, shift,
+static range/discrete-set selections, runtime discrete-set selections of named
+mutable or constant registers, and supported fixed-width bitwise, shift,
 rotation, and cast expressions. Selection order determines bit significance;
 repeated source positions are retained. A selection from a register wider than
 `W` is supported when its selected width is within `W`. Static selection
-expansion is bounded by `W` before width inference materializes its positions. Runtime-selected
-register operands, indexing or iterating over computed register values, and
-aliases remain outside this cast subset.
+expansion is bounded by `W` before width inference materializes its positions.
+Runtime range operands, runtime angle-bit selections, indexing or iterating over
+computed register values, and aliases remain outside this cast subset.
+
+For `uint[n](flags[{i, j, ...}])`, the set's entry count must equal `n` and
+fit within `W`; unsized `uint` requires exactly `W` entries. Each index must
+have a supported INT or UINT type. Every occurrence is captured in source order,
+including repeated indices and constant entries in a mixed runtime set. Signed
+negative indices count from the end of the source. Checked integer conversion,
+normalization, and bounds checks finish for all entries before selected bits
+are read. The converter then snapshots those bits before packing the UINT,
+without modifying the source. Duplicate source indices are permitted. Runtime
+sets also work inside supported register expressions, such as
+`uint[4](~flags[{i, j, 0, 1}])` and
+`uint[4](rotl(flags[{i, j, 0, 1}], count))`.
 
 UINT operands may use supported scalar expressions, including indexed UINT
 array elements and matching-width UINT array iterators. The source width is
@@ -2056,6 +2069,24 @@ for uint[4] value in values {
 }
 ```
 
+A runtime set can read either a constant or mutable source. Saving the UINT
+retains its value after the index or source changes:
+
+<!-- runtime-bit-set-uint-cast-example -->
+```qasm
+OPENQASM 3.0;
+const bit[8] PATTERN = "10110010";
+bit[8] flags = "11001001";
+int i = 7;
+uint j = 0;
+uint[4] from_constant = uint[4](PATTERN[{i, j, -1, 1}]); // 13: "1101".
+uint[4] packed = uint[4](flags[{i, j, -1, 1}]);          // 7: "0111".
+bit[4] back = bit[4](packed);
+flags[0:3] = bit[4](uint[4](flags[{i, j, -1, 1}]));     // Snapshot before writes: "11000111".
+i = 0;
+uint[4] fresh = uint[4](flags[{i, j, -1, 1}]);           // 15; packed is still 7.
+```
+
 Sources are evaluated once per cast. Runtime packing uses existing QCX UINT
 shifts and OR; it does not shift signed INT values. Unpacking snapshots the
 complete UINT before extracting bits, masks each extracted value to one bit,
@@ -2069,7 +2100,10 @@ Supported branches and loops take fresh values on each visit. Skipped paths,
 logical short-circuiting, and empty loops suppress operand domain checks and
 arithmetic, while names, types, widths, visibility, and static selections remain
 validated. A constant cast requires constant operands; converting mutable
-storage does not make it constant. Reached operand failures, including bounds,
+storage or using runtime indices on a constant register does not make it
+constant. In a mixed runtime set, index domains (including constant entries)
+are checked only when reached; skipped paths still validate every index's
+name and type and the set's width. Reached operand failures, including bounds,
 shift-count, and division failures, occur before destination writes. Signed
 integer/register reinterpretations and widths beyond native UINT remain
 outside this feature.
@@ -7494,6 +7528,19 @@ capture, unsigned packing, private extraction before writes, temporary ownership
 output limits, declaration hoisting, and cleanup preserving caller context and
 storage on failure. Run with `--bra /path/to/bra`, including a UBSan build.
 
+`bra/test/qasm2qcx_runtime_bit_set_uint_cast_numerical.py` checks UINT packing
+from runtime index sets at every native-supported width, singleton and repeated
+positions, negative aliases, INT/UINT indices, and wide mutable/constant sources
+across constant lookup word boundaries. It checks nested casts and indices,
+register expressions, numeric and array consumers, captured loop bounds,
+iterator scopes, skipped errors, measurement feedback, and quantum parameters
+with and without fusion. Reached index failures precede selected reads and
+destination writes, including failures after an earlier successful assignment.
+The runtime-set example above is executed. Unit tests also cover width and
+type validation, skipped-body visibility, snapshot and result ownership,
+allocation/output failures, and restoration of caller state. Run with
+`--bra /path/to/bra`, including a UBSan build.
+
 `bra/test/qasm2qcx_integer_array_numerical.py` verifies declarations and runtime
 initializers, static, runtime, and negative element indices, compound assignments,
 live reads versus set snapshots, dimension-constant shadowing, repeated entry,
@@ -7998,6 +8045,7 @@ python3 bra/test/qasm2qcx_static_bit_selection_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_uint_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_uint_bit_cast_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_bit_set_uint_cast_numerical.py --bra bra/bin/bra
 ```
 
 For an MPI-enabled `bra` executable, run the distributed control-value driver

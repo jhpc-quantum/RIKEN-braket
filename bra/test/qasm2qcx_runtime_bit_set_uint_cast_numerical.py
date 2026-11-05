@@ -17,6 +17,15 @@ class BackendTests(unittest.TestCase):
     program = casts.BackendTests.program
     check_exact = casts.BackendTests.check_exact
 
+    def test_documented_runtime_set_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-bit-set-uint-cast-example -->'
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        # check_exact supplies the OpenQASM header.
+        source = source.replace('OPENQASM 3.0;', '', 1)
+        self.check_exact(source, (('from_constant', None), ('packed', None), ('back', 4),
+                                 ('flags', 8), ('fresh', None)), (13, 7, 7, 199, 15))
+
     def test_every_native_width_preserves_order_repeats_and_high_result_bits(self):
         native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
         for width in range(1, native + 1):
