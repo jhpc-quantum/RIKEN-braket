@@ -27668,6 +27668,167 @@ class RuntimeRangeBitwiseUIntCastLoweringTests(unittest.TestCase):
             self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, {})
 
 
+class RuntimeRangeRotationUIntCastLoweringTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    expression = ScalarAngleArithmeticFoundationTests.expression
+    prefix = RuntimeRangeRotationUIntCastFoundationTests.prefix
+
+    def test_capture_and_distance_evaluation_follow_nested_expression_order_once(self):
+        c = self.converter(self.prefix)
+        expression = self.expression(
+            'uint[4](rotr(rotl(wide[index:count],u) ^ (C[count:index] << index),count))')
+        outer = expression.argument
+        left, right = outer.arguments[0].lhs, outer.arguments[0].rhs
+        capture = c._QASM2QCXConverter__capture_bit_range_positions
+        condition = c._QASM2QCXConverter__condition_operand
+        events = []
+        def captured(bounds, *args, **kwargs):
+            events.append(bounds)
+            return capture(bounds, *args, **kwargs)
+        def operand(node):
+            if any(node is count for count in (left.arguments[1], right.rhs, outer.arguments[1])):
+                events.append(node)
+            return condition(node)
+        c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        with patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions', side_effect=captured), \
+             patch.object(c, '_QASM2QCXConverter__condition_operand', side_effect=operand):
+            c.visit(expression)
+        self.assertEqual(events, [left.arguments[0].index[0], left.arguments[1],
+                                  right.lhs.index[0], right.rhs, outer.arguments[1]])
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {c._QASM2QCXConverter__value})
+        self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, {})
+
+    def test_distance_cast_captures_its_own_range_after_source_snapshot(self):
+        c = self.converter(self.prefix)
+        expression = self.expression('uint[4](rotl(wide[index:count],uint[1](wide[index:index])))')
+        source = expression.argument.arguments[0]
+        distance = expression.argument.arguments[1].argument
+        capture = c._QASM2QCXConverter__capture_bit_range_positions
+        name = c._QASM2QCXConverter__capitalize_variable_name('wide')
+        def captured(bounds, *args, **kwargs):
+            if bounds is distance.index[0]:
+                reads = [line for line in c._QASM2QCXConverter__qcx_lines if f' := {name}:' in line]
+                self.assertEqual(len(reads), 4)
+            return capture(bounds, *args, **kwargs)
+        c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        with patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions', side_effect=captured) as selected:
+            c.visit(expression)
+        self.assertEqual([call.args[0] for call in selected.call_args_list], [source.index[0], distance.index[0]])
+        self.assertEqual([call.kwargs['capacity'] for call in selected.call_args_list], [4, 1])
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {c._QASM2QCXConverter__value})
+
+    def test_source_capture_failure_prevents_distance_evaluation(self):
+        c = self.converter(self.prefix)
+        c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        expression = self.expression('uint[4](rotl(wide[index:count],u))')
+        condition = c._QASM2QCXConverter__condition_operand
+        def operand(node):
+            self.assertIsNot(node, expression.argument.arguments[1])
+            return condition(node)
+        with patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions',
+                          side_effect=RuntimeError('source failed')), \
+             patch.object(c, '_QASM2QCXConverter__condition_operand', side_effect=operand):
+            with self.assertRaisesRegex(RuntimeError, 'source failed'):
+                c.visit(expression)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, {})
+
+    def test_left_distance_failure_prevents_right_capture_and_restores_caller(self):
+        c = self.converter(self.prefix)
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        expression = self.expression('uint[4](rotl(wide[index:count],count) ^ C[count:index])')
+        c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+        condition = c._QASM2QCXConverter__condition_operand
+        capture = c._QASM2QCXConverter__capture_bit_range_positions
+        def operand(node):
+            if node is expression.argument.lhs.arguments[1]:
+                raise RuntimeError('distance failed')
+            return condition(node)
+        with patch.object(c, '_QASM2QCXConverter__condition_operand', side_effect=operand), \
+             patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions', wraps=capture) as selected:
+            with self.assertRaisesRegex(RuntimeError, 'distance failed'):
+                c.visit(expression)
+        self.assertEqual(selected.call_count, 1)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, {})
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+
+    def test_rotation_results_outlive_children_and_preserve_consumer_storage(self):
+        for distance in ('0', '-1', 'count', 'u + uint[4](1)'):
+            for failed_consumer in (False, True):
+                c = self.converter(self.prefix)
+                caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+                expression = self.expression(f'uint[4](rotr(wide[index:count],{distance}))')
+                tree = c._QASM2QCXConverter__uint_bit_cast_info(expression).range_tree
+                leaf = tree.children[0].expression
+                previous = {id(leaf): (leaf, (caller,) * 4)}
+                c._QASM2QCXConverter__captured_bit_register_values.update(previous)
+                fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+                before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+                consumer = None
+                try:
+                    with c._QASM2QCXConverter__runtime_bit_range_tree_value(tree) as bits:
+                        self.assertEqual(len(bits), 4)
+                        storage = {bit.split(':')[0] for bit in bits if isinstance(bit, str)}
+                        self.assertTrue(storage <= c._QASM2QCXConverter__used_temporary_variables)
+                        self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, previous)
+                        consumer = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.BIT)
+                        self.assertNotIn(consumer, storage)
+                        if failed_consumer:
+                            raise RuntimeError('consumer failed')
+                except RuntimeError as error:
+                    self.assertTrue(failed_consumer)
+                    self.assertEqual(str(error), 'consumer failed')
+                self.assertIsNotNone(consumer)
+                self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller, consumer})
+                self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, previous)
+                self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+
+    def test_partial_rotation_allocation_failure_releases_child_and_distance_storage(self):
+        c = self.converter(self.prefix)
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        expression = self.expression('uint[4](rotl(wide[index:count],count + 1))')
+        tree = c._QASM2QCXConverter__uint_bit_cast_info(expression).range_tree
+        rotate = c._QASM2QCXConverter__rotate_bit_register_value
+        allocate = c._QASM2QCXConverter__add_temporary_bit_register
+        def failed(*args, **kwargs):
+            allocate(*args, **kwargs)
+            raise RuntimeError('rotation allocation failed')
+        @qasm2qcx.contextlib.contextmanager
+        def checked(node, bits):
+            with patch.object(c, '_QASM2QCXConverter__add_temporary_bit_register', side_effect=failed):
+                with rotate(node, bits) as result:
+                    yield result
+        with patch.object(c, '_QASM2QCXConverter__rotate_bit_register_value', side_effect=checked):
+            with self.assertRaisesRegex(RuntimeError, 'rotation allocation failed'):
+                with c._QASM2QCXConverter__runtime_bit_range_tree_value(tree):
+                    self.fail('allocation failure must precede yielding the result')
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, {})
+
+    def test_output_limit_failures_restore_caller_state(self):
+        source = 'uint[4](rotr(rotl(wide[index:count],u) ^ C[count:index],count))'
+        baseline = self.converter(self.prefix)
+        baseline._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        baseline.visit(self.expression(source))
+        for limit in (1, len(baseline._QASM2QCXConverter__qcx_lines) - 30,
+                      len(baseline._QASM2QCXConverter__qcx_lines) - 1):
+            c = self.converter(self.prefix)
+            c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+            caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+            fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+            before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+            with self.subTest(limit=limit), patch.object(c, 'MAX_LOOP_OUTPUT_LINES', limit):
+                with self.assertRaisesRegex(qasm2qcx.QASM2QCXError, 'output limit'):
+                    c.visit(self.expression(source))
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, {})
+            self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+
+
 class UIntBitCastIntegrationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)

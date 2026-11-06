@@ -9070,8 +9070,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 return
             with contextlib.ExitStack() as result:
                 with contextlib.ExitStack() as operands:
-                    # Complete the left child, including its shift counts,
-                    # before beginning the right child. Do not pre-capture ranges.
+                    # Complete each register child, including nested shifts
+                    # and rotations, before starting the next child. A parent
+                    # rotation evaluates its distance only after this capture.
                     children = [operands.enter_context(self.__runtime_bit_range_tree_value(child))
                                 for child in tree.children]
                     bindings = []
