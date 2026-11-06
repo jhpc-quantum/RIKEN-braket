@@ -6942,15 +6942,19 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 kind = ValueKind.TEMPORARY
             else:
                 self.__expression_kind = ExpressionKind.ARITHMETIC
-                with self.__bit_register_expression_value(argument) as values:
-                    # A register can be wider than a packed UINT. Count its
-                    # individual bits without shifting or packing the register.
-                    result = self.__add_new_temporary_variable(ValueType.UINT)
-                    literal_count = sum(value for value in values if isinstance(value, int))
-                    self.__qcx_lines.append(f'LET {result} := {literal_count}')
-                    for value in values:
-                        if isinstance(value, str):
-                            self.__qcx_lines.append(f'LET {result} += :UINT:{value}')
+                selection = self.__runtime_bit_range_source(argument)
+                if selection is not None:
+                    result = self.__emit_bit_range_population_count(selection)
+                else:
+                    with self.__bit_register_expression_value(argument) as values:
+                        # A register can be wider than a packed UINT. Count its
+                        # individual bits without shifting or packing the register.
+                        result = self.__add_new_temporary_variable(ValueType.UINT)
+                        literal_count = sum(value for value in values if isinstance(value, int))
+                        self.__qcx_lines.append(f'LET {result} := {literal_count}')
+                        for value in values:
+                            if isinstance(value, str):
+                                self.__qcx_lines.append(f'LET {result} += :UINT:{value}')
                 kind = ValueKind.TEMPORARY
             self.__expression_kind = previous[0]
             self.__value, self.__value_type, self.__value_kind = result, ValueType.UINT, kind
@@ -6965,6 +6969,49 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             for temporary in self.__used_temporary_variables - previous_used:
                 if not keep or kind != ValueKind.TEMPORARY or temporary != result:
                     self.__release_temporary_variable(temporary)
+
+    def __emit_bit_range_population_count(self, selection: _RuntimeBitRangeSelection) -> str:
+        # The enclosing population-count visitor owns all scratch storage and
+        # preserves only the returned accumulator, including after failures.
+        if len(self.__qcx_lines) + 1 > self.MAX_LOOP_OUTPUT_LINES:
+            raise InvalidFunctionCallException('Runtime range popcount exceeds QCX output limit')
+        prefix = f'QASM2QCX_POPCOUNT_{self.__population_count_index}'
+        self.__population_count_index += 1
+        # Capture/check the complete range before reading any source bit or
+        # preparing constant words. No fixed selected width is required.
+        positions, count = self.__capture_bit_range_positions(
+            selection.bounds, selection.source_width, prefix + '_RANGE')
+        constant = (self.__constant_bit_register(selection.source_name)
+                    if selection.source_name in self.__const_bit_register_values else None)
+        words = self.__prepare_constant_bit_lookup(constant) if constant is not None else None
+        result = self.__add_new_temporary_variable(ValueType.UINT)
+        index = self.__add_new_temporary_variable(ValueType.INT)
+        position = self.__add_new_temporary_variable(ValueType.INT)
+        bit = self.__add_new_temporary_variable(ValueType.BIT)
+        self.__qcx_lines.extend([
+            f'LET {result} := 0', f'LET {index} := 0', f'@{prefix}_LOOP',
+            f'JUMPIF {prefix}_DONE {index} >= {count}',
+            f'LET {position} := {positions}:{index}',
+        ])
+        if words is None:
+            source = self.__capitalize_variable_name(selection.source_name)
+            operand = source if selection.source_width == 1 else f'{source}:{position}'
+            self.__qcx_lines.append(f'LET {bit} := {operand}')
+        else:
+            previous_temporaries = self.__declared_temporary_variables.copy()
+            self.__copy_prepared_constant_bit(words, position, bit)
+            # Lookup scratch declarations must execute once, outside the
+            # counting loop. Keep their assignments inside each iteration.
+            self.__hoist_temporary_declarations(previous_temporaries)
+        # The position buffer bounds count within native INT capacity, so
+        # neither this UINT sum nor incrementing index up to count can overflow.
+        self.__qcx_lines.extend([
+            f'LET {result} += :UINT:{bit}', f'LET {index} += 1',
+            f'JUMP {prefix}_LOOP', f'@{prefix}_DONE',
+        ])
+        if len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES:
+            raise InvalidFunctionCallException('Runtime range popcount exceeds QCX output limit')
+        return result
 
     def __emit_uint_population_count(self, argument: ast.Expression, angle_type: _AngleType | None = None) -> str:
         # The enclosing visitor owns all scratch storage and preserves only

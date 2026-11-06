@@ -2792,6 +2792,125 @@ class RuntimeRangePopcountFoundationTests(unittest.TestCase):
             self.converter(self.prefix + 'const uint BAD = popcount(C[start:stop]);')
 
 
+class RuntimeRangePopcountLoweringTests(unittest.TestCase):
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    prefix = RuntimeRangePopcountFoundationTests.prefix
+
+    def test_bounds_are_evaluated_once_in_start_step_stop_order(self):
+        c = self.converter(self.prefix)
+        c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        expression = self.expression('popcount(flags[start + 1:step + 1:stop + 1])')
+        bounds = expression.arguments[0].index[0]
+        operand = c._QASM2QCXConverter__condition_operand
+        events = []
+        def captured(node):
+            if any(node is bound for bound in (bounds.start, bounds.step, bounds.end)):
+                events.append(node)
+            return operand(node)
+        with patch.object(c, '_QASM2QCXConverter__condition_operand', side_effect=captured):
+            c.visit(expression)
+        self.assertEqual(events, [bounds.start, bounds.step, bounds.end])
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {c._QASM2QCXConverter__value})
+        ForLoopControlLoweringTests.assert_resolved_jumps(c._QASM2QCXConverter__qcx_lines)
+
+    def test_range_validation_precedes_mutable_reads_and_constant_word_preparation(self):
+        for source in ('flags', 'C'):
+            c = self.converter(self.prefix)
+            c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+            prepare = c._QASM2QCXConverter__prepare_constant_bit_lookup
+            before = len(c._QASM2QCXConverter__qcx_lines)
+            def prepared(*args):
+                self.assertTrue(c._QASM2QCXConverter__qcx_lines[-1].startswith('ASSERT '))
+                self.assertTrue(c._QASM2QCXConverter__qcx_lines[-1].endswith(' > 0'))
+                return prepare(*args)
+            with patch.object(c, '_QASM2QCXConverter__prepare_constant_bit_lookup', side_effect=prepared) as lookup:
+                c.visit(self.expression(f'popcount({source}[start:stop])'))
+            self.assertEqual(lookup.call_count, int(source == 'C'))
+            lines = c._QASM2QCXConverter__qcx_lines[before:]
+            checked = next(i for i, line in enumerate(lines) if line.startswith('ASSERT ') and line.endswith(' > 0'))
+            if source == 'flags':
+                name = c._QASM2QCXConverter__capitalize_variable_name(source)
+                read = next(i for i, line in enumerate(lines) if f' := {name}:' in line)
+                self.assertLess(checked, read)
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {c._QASM2QCXConverter__value})
+
+    def test_only_native_uint_result_survives_and_caller_state_is_preserved(self):
+        c = self.converter(self.prefix)
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        marker = self.expression('flags')
+        snapshots = {id(marker): (marker, (caller,))}
+        c._QASM2QCXConverter__captured_bit_register_values.update(snapshots)
+        c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONDITIONAL
+        expression = self.expression('popcount(C[start:step:stop])')
+        c.visit(expression)
+        self.assertEqual(c._QASM2QCXConverter__expression_kind, qasm2qcx.ExpressionKind.CONDITIONAL)
+        self.assertEqual(c._QASM2QCXConverter__value_type, qasm2qcx.ValueType.UINT)
+        self.assertEqual(c._QASM2QCXConverter__uint_expression_type(expression),
+                         qasm2qcx._UnsignedIntegerType(c.QCX_UINT_WIDTH, False))
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller, c._QASM2QCXConverter__value})
+        self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, snapshots)
+
+    def test_constant_lookup_scratch_declarations_are_outside_the_counting_loop(self):
+        for source in ('C', 'WIDE'):
+            c = self.converter(self.prefix + 'const bit[129] WIDE = "' + '1' * 129 + '";')
+            c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+            c.visit(self.expression(f'popcount({source}[start:stop])'))
+            lines = c._QASM2QCXConverter__qcx_lines
+            first = lines.index('@QASM2QCX_POPCOUNT_0_LOOP')
+            last = lines.index('@QASM2QCX_POPCOUNT_0_DONE')
+            self.assertFalse(any(line.startswith('VAR ') for line in lines[first:last]))
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {c._QASM2QCXConverter__value})
+
+    def test_partial_capture_and_lookup_failures_restore_fields_and_storage(self):
+        for phase in ('step', 'words', 'extraction'):
+            c = self.converter(self.prefix + 'const bit[129] WIDE = "' + '1' * 129 + '";')
+            caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+            c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+            expression = self.expression('popcount(WIDE[start:step:stop])')
+            fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+            before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+            method = {'step': '__condition_operand', 'words': '__prepare_constant_bit_lookup',
+                      'extraction': '__copy_prepared_constant_bit'}[phase]
+            original = getattr(c, '_QASM2QCXConverter' + method)
+            def failed(*args):
+                if phase == 'step' and args[0] is not expression.arguments[0].index[0].step:
+                    return original(*args)
+                original(*args)
+                raise RuntimeError('injected popcount failure')
+            with self.subTest(phase=phase), patch.object(c, '_QASM2QCXConverter' + method, side_effect=failed):
+                with self.assertRaisesRegex(RuntimeError, 'injected popcount failure'):
+                    c.visit(expression)
+            self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, {})
+
+    def test_position_capacity_is_bounded_without_fixed_bit_register_storage(self):
+        c = self.converter(self.prefix)
+        c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        allocate = c._QASM2QCXConverter__add_temporary_int_array
+        with patch.object(c, 'MAX_RUNTIME_BIT_RANGE_POSITIONS', 3), \
+             patch.object(c, '_QASM2QCXConverter__add_temporary_int_array', wraps=allocate) as arrays, \
+             patch.object(c, '_QASM2QCXConverter__add_temporary_bit_register',
+                          side_effect=AssertionError('popcount must not materialize a register')):
+            c.visit(self.expression('popcount(wide[start:stop])'))
+        self.assertEqual([call.args[0] for call in arrays.call_args_list], [3])
+
+    def test_output_limit_failure_restores_caller_state(self):
+        baseline = self.converter(self.prefix + 'uint count = popcount(C[start:stop]);')
+        for limit in (1, len(baseline._QASM2QCXConverter__qcx_lines) - 5):
+            c = self.converter(self.prefix)
+            caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+            c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+            fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+            before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+            with self.subTest(limit=limit), patch.object(c, 'MAX_LOOP_OUTPUT_LINES', limit):
+                with self.assertRaisesRegex(qasm2qcx.QASM2QCXError, 'output limit'):
+                    c.visit(self.expression('popcount(C[start:stop])'))
+            self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+
+
 class ModConstantTests(unittest.TestCase):
     expression = staticmethod(BuiltinFunctionSignatureTests.expression)
     converter = staticmethod(BuiltinFunctionSignatureTests.converter)
