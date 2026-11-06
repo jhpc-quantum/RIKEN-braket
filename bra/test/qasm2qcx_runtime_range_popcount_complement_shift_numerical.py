@@ -37,6 +37,15 @@ class BackendTests(unittest.TestCase):
     program = casts.BackendTests.program
     check_exact = casts.BackendTests.check_exact
 
+    def test_documented_mixed_complement_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-range-popcount-complement-shift-example -->'
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        source = source.replace('OPENQASM 3.0;', '', 1)
+        self.check_exact(source, tuple((name, None) for name in
+            ('plain', 'before', 'after', 'both', 'even', 'full', 'empty_pattern', 'fresh')),
+            (2, 1, 2, 3, 2, 4, 0, 3))
+
     def check_case(self, size, pattern, constant, first, step, last, counts,
                    parities=((0, 0), (1, 0), (0, 1), (1, 1))):
         positions = range(first, last + (1 if step > 0 else -1), step)
