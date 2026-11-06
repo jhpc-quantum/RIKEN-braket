@@ -6955,10 +6955,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__expression_kind = ExpressionKind.ARITHMETIC
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
-                    if range_info.rotation is not None:
-                        raise UnsupportedOpenQASMError('runtime range popcount rotation lowering')
                     result = self.__emit_bit_range_population_count(
-                        range_info.selection, range_info.complemented, range_info.shift, range_info.outer_complemented)
+                        range_info.selection, range_info.complemented, range_info.shift,
+                        range_info.outer_complemented, range_info.rotation)
                 else:
                     with self.__bit_register_expression_value(argument) as values:
                         # A register can be wider than a packed UINT. Count its
@@ -6986,7 +6985,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __emit_bit_range_population_count(
             self, selection: _RuntimeBitRangeSelection, complemented: bool = False,
-            shift: ast.BinaryExpression | None = None, outer_complemented: bool = False) -> str:
+            shift: ast.BinaryExpression | None = None, outer_complemented: bool = False,
+            rotation: ast.FunctionCall | None = None) -> str:
         # The enclosing population-count visitor owns all scratch storage and
         # preserves only the returned accumulator, including after failures.
         if len(self.__qcx_lines) + 1 > self.MAX_LOOP_OUTPUT_LINES:
@@ -6998,6 +6998,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # preparing constant words. No fixed selected width is required.
         positions, count = self.__capture_bit_range_positions(
             selection.bounds, selection.source_width, prefix + '_RANGE')
+        if rotation is not None:
+            # Rotation only permutes positions, but evaluating its distance
+            # and checking its INT conversion must still happen when reached.
+            value, value_type, kind = self.__condition_operand(rotation.arguments[1])
+            operand, _ = self.__converted_operand(value, value_type, kind, ValueType.INT)
+            distance = self.__add_new_temporary_variable(ValueType.INT)
+            self.__qcx_lines.append(f'LET {distance} := {operand}')
+            # No zeros are introduced: complements commute with rotation.
+            # Reuse unshifted counting with the combined parity, without
+            # normalizing/negating the distance or materializing rotated bits.
+            complemented = complemented != outer_complemented
+            outer_complemented = False
         if shift is not None:
             result = self.__add_new_temporary_variable(ValueType.UINT)
             # An oversized shift contributes only filled zeros, or ones after
