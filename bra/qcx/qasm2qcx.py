@@ -309,6 +309,12 @@ class _RuntimeBitRangeSelection:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeBitRangePopcountInfo:
+    selection: _RuntimeBitRangeSelection
+    complemented: bool
+
+
+@dataclasses.dataclass(frozen=True)
 class _BitRangeCastOperation:
     expression: ast.UnaryExpression | ast.BinaryExpression
     count_type: ValueType | None = None
@@ -4671,10 +4677,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return signature, source_runtime or distance_runtime
         if overloads[0].population_count:
             argument = expression.arguments[0]
-            # A direct runtime range has no inferred register width. Its
-            # existing selection metadata checks source/bound types without
-            # evaluating positions; capture and counting happen when reached.
-            if self.__runtime_bit_range_source(argument, iterators) is not None:
+            # Runtime ranges and their complement chains have no inferred
+            # register width. Validate metadata without evaluating positions;
+            # capture and counting happen when reached.
+            if self.__runtime_bit_range_popcount_info(argument, iterators) is not None:
                 return overloads[0], True
             width = self.__bit_register_expression_width(argument, iterators)
             if width is None:
@@ -7486,6 +7492,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if not 1 <= size <= self.QCX_INT_MAX:
             raise InvalidBitOperandException('Runtime selection source width must fit QCX INT indexing')
         return _RuntimeBitRangeSelection(name, size, bounds, start_type, step_type, stop_type)
+
+    def __runtime_bit_range_popcount_info(
+            self, argument: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangePopcountInfo | None:
+        complemented = False
+        while isinstance(argument, ast.UnaryExpression) and argument.op.name == '~':
+            complemented = not complemented
+            argument = argument.expression
+        # Even complement parity still validates every bound and the source.
+        # Other operators cannot turn a nested raw range into this operand.
+        selection = self.__runtime_bit_range_source(argument, iterators)
+        return None if selection is None else _RuntimeBitRangePopcountInfo(selection, complemented)
 
     def __runtime_bit_range_copy_info(
             self, statement: ast.ClassicalAssignment,
