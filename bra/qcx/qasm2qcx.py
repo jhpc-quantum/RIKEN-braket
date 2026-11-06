@@ -311,11 +311,12 @@ class _RuntimeBitRangeSelection:
 @dataclasses.dataclass(frozen=True)
 class _RuntimeBitRangePopcountInfo:
     selection: _RuntimeBitRangeSelection
-    # Parity on the source range; outer parity applies only after a shift.
+    # Parity on the source range; outer parity applies after a shift/rotation.
     complemented: bool
     shift: ast.BinaryExpression | None = None
     count_type: ValueType | None = None
     outer_complemented: bool = False
+    rotation: ast.FunctionCall | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -6955,7 +6956,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
                     result = self.__emit_bit_range_population_count(
-                        range_info.selection, range_info.complemented, range_info.shift, range_info.outer_complemented)
+                        range_info.selection, range_info.complemented, range_info.shift,
+                        range_info.outer_complemented, range_info.rotation)
                 else:
                     with self.__bit_register_expression_value(argument) as values:
                         # A register can be wider than a packed UINT. Count its
@@ -6983,7 +6985,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __emit_bit_range_population_count(
             self, selection: _RuntimeBitRangeSelection, complemented: bool = False,
-            shift: ast.BinaryExpression | None = None, outer_complemented: bool = False) -> str:
+            shift: ast.BinaryExpression | None = None, outer_complemented: bool = False,
+            rotation: ast.FunctionCall | None = None) -> str:
         # The enclosing population-count visitor owns all scratch storage and
         # preserves only the returned accumulator, including after failures.
         if len(self.__qcx_lines) + 1 > self.MAX_LOOP_OUTPUT_LINES:
@@ -6995,6 +6998,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # preparing constant words. No fixed selected width is required.
         positions, count = self.__capture_bit_range_positions(
             selection.bounds, selection.source_width, prefix + '_RANGE')
+        if rotation is not None:
+            # Rotation only permutes positions, but evaluating its distance
+            # and checking its INT conversion must still happen when reached.
+            value, value_type, kind = self.__condition_operand(rotation.arguments[1])
+            operand, _ = self.__converted_operand(value, value_type, kind, ValueType.INT)
+            distance = self.__add_new_temporary_variable(ValueType.INT)
+            self.__qcx_lines.append(f'LET {distance} := {operand}')
+            # No zeros are introduced: complements commute with rotation.
+            # Reuse unshifted counting with the combined parity, without
+            # normalizing/negating the distance or materializing rotated bits.
+            complemented = complemented != outer_complemented
+            outer_complemented = False
         if shift is not None:
             result = self.__add_new_temporary_variable(ValueType.UINT)
             # An oversized shift contributes only filled zeros, or ones after
@@ -7572,6 +7587,32 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         while isinstance(argument, ast.UnaryExpression) and argument.op.name == '~':
             outer_complemented = not outer_complemented
             argument = argument.expression
+        if isinstance(argument, ast.FunctionCall) and argument.name.name in ('rotl', 'rotr'):
+            self.__builtin_function_overloads(argument.name.name, len(argument.arguments))
+            source, distance = argument.arguments
+            complemented = False
+            while isinstance(source, ast.UnaryExpression) and source.op.name == '~':
+                complemented = not complemented
+                source = source.expression
+            selection = self.__runtime_bit_range_source(source, iterators)
+            if selection is None:
+                return None
+            # Match ordinary rotation input promotions without evaluating or
+            # narrowing the distance. Checked conversion happens when reached.
+            distance_type, _ = self.__loop_expression_info(distance, iterators)
+            self.__resolve_builtin_function(argument.name.name, (ValueType.BIT_REGISTER, distance_type))
+            self.__validate_bitwise_indices(distance, iterators)
+            if not self.__is_initialization_process:
+                active = set(iterators or ()) | {name for scope in self.__loop_bindings for name in scope}
+                for name in self.__loop_bound_names(distance) - active:
+                    if name in self.__constant_source_types:
+                        if name not in self.__declared_constant_variables:
+                            raise NoVariableNameException(name)
+                    elif name in self.__classical_source_types:
+                        self.__type_of(self.__capitalize_variable_name(name))
+            return _RuntimeBitRangePopcountInfo(
+                selection, complemented, count_type=distance_type,
+                outer_complemented=outer_complemented, rotation=argument)
         if isinstance(argument, ast.BinaryExpression) and argument.op.name in ('<<', '>>'):
             source = argument.lhs
             complemented = False
