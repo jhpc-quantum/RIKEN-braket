@@ -315,12 +315,23 @@ class _BitRangeCastOperation:
 
 
 @dataclasses.dataclass(frozen=True)
+class _BitRangeCastExpression:
+    expression: ast.Expression
+    # Required width, not an inferred count for a runtime range.
+    width: int
+    children: tuple['_BitRangeCastExpression', ...] = ()
+    selection: _RuntimeBitRangeSelection | None = None
+    count_type: ValueType | None = None
+
+
+@dataclasses.dataclass(frozen=True)
 class _UIntBitCastInfo:
     result_type: ValueType
     uint_type: _UnsignedIntegerType
     runtime: bool
     range_selection: _RuntimeBitRangeSelection | None = None
     range_operations: tuple[_BitRangeCastOperation, ...] = ()
+    range_tree: _BitRangeCastExpression | None = None
 
     @property
     def width(self) -> int:
@@ -5323,7 +5334,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, expression: ast.Expression, iterators: dict[str, ValueType]) -> None:
         if isinstance(expression, ast.Cast) and isinstance(expression.type, ast.UintType):
             info = self.__uint_bit_cast_info(expression, iterators)
-            if info is not None and info.range_selection is not None:
+            if info is not None and (info.range_selection is not None or info.range_tree is not None):
                 return  # The cast checks range types; its count is checked at runtime.
         if (self.__angle_bit_selection(expression, iterators) is not None
                 or self.__runtime_bit_set_selection(expression, iterators) is not None):
@@ -7830,6 +7841,51 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             operations.append(_BitRangeCastOperation(node, count_type))
         return selection, tuple(operations)
 
+    def __contains_uint_bit_range(
+            self, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None) -> bool:
+        # Follow register operands only. Ranges inside scalar counts or nested
+        # casts have their own contexts and cannot make this a register tree.
+        if isinstance(expression, ast.UnaryExpression) and expression.op.name == '~':
+            return self.__contains_uint_bit_range(expression.expression, iterators)
+        if isinstance(expression, ast.BinaryExpression):
+            if expression.op.name in ('<<', '>>'):
+                return self.__contains_uint_bit_range(expression.lhs, iterators)
+            if expression.op.name in ('&', '|', '^'):
+                return (self.__contains_uint_bit_range(expression.lhs, iterators)
+                        or self.__contains_uint_bit_range(expression.rhs, iterators))
+        return self.__runtime_bit_range_source(expression, iterators) is not None
+
+    def __uint_bit_range_tree_info(
+            self, expression: ast.Expression, width: int,
+            iterators: set[str] | dict[str, ValueType] | None) -> _BitRangeCastExpression:
+        if isinstance(expression, ast.UnaryExpression) and expression.op.name == '~':
+            child = self.__uint_bit_range_tree_info(expression.expression, width, iterators)
+            return _BitRangeCastExpression(expression, width, (child,))
+        if isinstance(expression, ast.BinaryExpression) and expression.op.name in ('&', '|', '^', '<<', '>>'):
+            lhs = self.__uint_bit_range_tree_info(expression.lhs, width, iterators)
+            if expression.op.name in ('<<', '>>'):
+                count_type, _ = self.__loop_expression_info(expression.rhs, iterators)
+                if count_type not in (ValueType.INT, ValueType.UINT):
+                    raise InvalidBitOperandException('A register shift count must be a scalar integer')
+                self.__validate_bitwise_indices(expression.rhs, iterators)
+                return _BitRangeCastExpression(expression, width, (lhs,), count_type=count_type)
+            rhs = self.__uint_bit_range_tree_info(expression.rhs, width, iterators)
+            return _BitRangeCastExpression(expression, width, (lhs, rhs))
+        selection = self.__runtime_bit_range_source(expression, iterators)
+        if selection is not None:
+            return _BitRangeCastExpression(expression, width, selection=selection)
+        # Bound static expansion before asking existing register inference to
+        # validate fixed leaves. No runtime values or register bits are read.
+        self.__validate_uint_bit_register_source(expression, iterators)
+        source_width = self.__bit_register_expression_width(expression, iterators)
+        if source_width is None:
+            raise InvalidBitOperandException('A bitwise UINT cast requires register operands')
+        if source_width != width:
+            raise InvalidBitOperandException(
+                f'UINT/bit-register cast requires equal widths, got {source_width} and {width}')
+        return _BitRangeCastExpression(expression, width)
+
     def __uint_bit_cast_info(
             self, expression: ast.Cast,
             iterators: set[str] | dict[str, ValueType] | None = None) -> _UIntBitCastInfo | None:
@@ -7838,9 +7894,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # existing angle/bit conversions retain their separate paths.
         range_selection = None
         range_operations = ()
+        range_tree = None
         if isinstance(expression.type, ast.UintType):
             range_info = self.__uint_bit_range_expression_info(expression.argument, iterators)
-            if range_info is None:
+            if range_info is None and self.__contains_uint_bit_range(expression.argument, iterators):
+                uint_type = self.__unsigned_integer_type(expression.type, iterators)
+                range_tree = self.__uint_bit_range_tree_info(expression.argument, uint_type.width, iterators)
+                source_width = None
+            elif range_info is None:
                 # Bound static selection expansion before generic width inference
                 # can materialize a range that cannot fit any native UINT cast.
                 self.__validate_uint_bit_register_source(expression.argument, iterators)
@@ -7852,9 +7913,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 # Width-preserving operations do not determine a range's count.
                 # Preserve its operands until capture checks the target width.
                 source_width = None
-            uint_type = self.__unsigned_integer_type(expression.type, iterators)
+            if range_tree is None:
+                uint_type = self.__unsigned_integer_type(expression.type, iterators)
             target_width = uint_type.width
-            runtime = (True if range_selection is not None
+            runtime = (True if range_selection is not None or range_tree is not None
                        else self.__register_expression_runtime(expression.argument, iterators))
             result_type = ValueType.UINT
         elif isinstance(expression.type, ast.BitType) and expression.type.size is not None:
@@ -7880,7 +7942,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                         raise NoVariableNameException(name)
                 elif name in self.__classical_source_types:
                     self.__type_of(self.__capitalize_variable_name(name))
-        return _UIntBitCastInfo(result_type, uint_type, runtime, range_selection, range_operations)
+        return _UIntBitCastInfo(result_type, uint_type, runtime, range_selection, range_operations, range_tree)
 
     def __validate_uint_bit_register_source(
             self, expression: ast.Expression,
@@ -7944,6 +8006,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise InvalidBitOperandException('UINT/bit-register cast exceeds QCX output limit')
 
     def __visit_runtime_bit_to_uint_cast(self, expression: ast.Cast, info: _UIntBitCastInfo) -> None:
+        if info.range_tree is not None:
+            # Tree validation is available before ordered lowering is added.
+            raise UnsupportedOpenQASMError('runtime range binary bitwise UINT cast lowering')
         self.__check_uint_bit_cast_output(1)
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
