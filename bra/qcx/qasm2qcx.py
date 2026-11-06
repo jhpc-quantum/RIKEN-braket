@@ -4671,6 +4671,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return signature, source_runtime or distance_runtime
         if overloads[0].population_count:
             argument = expression.arguments[0]
+            # A direct runtime range has no inferred register width. Its
+            # existing selection metadata checks source/bound types without
+            # evaluating positions; capture and counting happen when reached.
+            if self.__runtime_bit_range_source(argument, iterators) is not None:
+                return overloads[0], True
             width = self.__bit_register_expression_width(argument, iterators)
             if width is None:
                 source_type, uint_type, runtime = self.__integer_operand_info(argument, iterators)
