@@ -18,6 +18,15 @@ class BackendTests(unittest.TestCase):
     program = casts.BackendTests.program
     check_exact = casts.BackendTests.check_exact
 
+    def test_documented_binary_tree_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-range-bitwise-uint-cast-example -->'
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        source = source.replace('OPENQASM 3.0;', '', 1)
+        self.check_exact(source, (('both', None), ('either', None), ('different', None),
+                                 ('with_mask', None), ('chain', None), ('flags', 8), ('fresh', None)),
+                         (1, 15, 14, 6, 3, 206, 12))
+
     def test_every_native_width_with_ranges_on_either_or_both_sides(self):
         native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
         size = native + 3
