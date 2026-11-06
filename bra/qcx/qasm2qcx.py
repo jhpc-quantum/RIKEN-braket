@@ -309,6 +309,12 @@ class _RuntimeBitRangeSelection:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeBitRangePopcountInfo:
+    selection: _RuntimeBitRangeSelection
+    complemented: bool
+
+
+@dataclasses.dataclass(frozen=True)
 class _BitRangeCastOperation:
     expression: ast.UnaryExpression | ast.BinaryExpression
     count_type: ValueType | None = None
@@ -4671,10 +4677,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return signature, source_runtime or distance_runtime
         if overloads[0].population_count:
             argument = expression.arguments[0]
-            # A direct runtime range has no inferred register width. Its
-            # existing selection metadata checks source/bound types without
-            # evaluating positions; capture and counting happen when reached.
-            if self.__runtime_bit_range_source(argument, iterators) is not None:
+            # Runtime ranges and their complement chains have no inferred
+            # register width. Validate metadata without evaluating positions;
+            # capture and counting happen when reached.
+            if self.__runtime_bit_range_popcount_info(argument, iterators) is not None:
                 return overloads[0], True
             width = self.__bit_register_expression_width(argument, iterators)
             if width is None:
@@ -6942,9 +6948,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 kind = ValueKind.TEMPORARY
             else:
                 self.__expression_kind = ExpressionKind.ARITHMETIC
-                selection = self.__runtime_bit_range_source(argument)
-                if selection is not None:
-                    result = self.__emit_bit_range_population_count(selection)
+                range_info = self.__runtime_bit_range_popcount_info(argument)
+                if range_info is not None:
+                    result = self.__emit_bit_range_population_count(range_info.selection, range_info.complemented)
                 else:
                     with self.__bit_register_expression_value(argument) as values:
                         # A register can be wider than a packed UINT. Count its
@@ -6970,7 +6976,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if not keep or kind != ValueKind.TEMPORARY or temporary != result:
                     self.__release_temporary_variable(temporary)
 
-    def __emit_bit_range_population_count(self, selection: _RuntimeBitRangeSelection) -> str:
+    def __emit_bit_range_population_count(
+            self, selection: _RuntimeBitRangeSelection, complemented: bool = False) -> str:
         # The enclosing population-count visitor owns all scratch storage and
         # preserves only the returned accumulator, including after failures.
         if len(self.__qcx_lines) + 1 > self.MAX_LOOP_OUTPUT_LINES:
@@ -6988,8 +6995,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         index = self.__add_new_temporary_variable(ValueType.INT)
         position = self.__add_new_temporary_variable(ValueType.INT)
         bit = self.__add_new_temporary_variable(ValueType.BIT)
+        # Odd complement parity counts zeros as selection length minus set
+        # bits. Subtract each original bit from the validated length; neither
+        # parity needs a second capture, source pass, or materialized complement.
+        initial = f':UINT:{count}' if complemented else '0'
+        operation = '-=' if complemented else '+='
         self.__qcx_lines.extend([
-            f'LET {result} := 0', f'LET {index} := 0', f'@{prefix}_LOOP',
+            f'LET {result} := {initial}', f'LET {index} := 0', f'@{prefix}_LOOP',
             f'JUMPIF {prefix}_DONE {index} >= {count}',
             f'LET {position} := {positions}:{index}',
         ])
@@ -7004,9 +7016,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # counting loop. Keep their assignments inside each iteration.
             self.__hoist_temporary_declarations(previous_temporaries)
         # The position buffer bounds count within native INT capacity, so
-        # neither this UINT sum nor incrementing index up to count can overflow.
+        # neither the count nor incrementing index up to count can overflow.
+        # A complemented accumulator never subtracts more than its initial count.
         self.__qcx_lines.extend([
-            f'LET {result} += :UINT:{bit}', f'LET {index} += 1',
+            f'LET {result} {operation} :UINT:{bit}', f'LET {index} += 1',
             f'JUMP {prefix}_LOOP', f'@{prefix}_DONE',
         ])
         if len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES:
@@ -7486,6 +7499,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if not 1 <= size <= self.QCX_INT_MAX:
             raise InvalidBitOperandException('Runtime selection source width must fit QCX INT indexing')
         return _RuntimeBitRangeSelection(name, size, bounds, start_type, step_type, stop_type)
+
+    def __runtime_bit_range_popcount_info(
+            self, argument: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangePopcountInfo | None:
+        complemented = False
+        while isinstance(argument, ast.UnaryExpression) and argument.op.name == '~':
+            complemented = not complemented
+            argument = argument.expression
+        # Even complement parity still validates every bound and the source.
+        # Other operators cannot turn a nested raw range into this operand.
+        selection = self.__runtime_bit_range_source(argument, iterators)
+        return None if selection is None else _RuntimeBitRangePopcountInfo(selection, complemented)
 
     def __runtime_bit_range_copy_info(
             self, statement: ast.ClassicalAssignment,
