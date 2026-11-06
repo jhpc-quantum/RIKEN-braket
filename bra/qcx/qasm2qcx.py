@@ -312,6 +312,8 @@ class _RuntimeBitRangeSelection:
 class _RuntimeBitRangePopcountInfo:
     selection: _RuntimeBitRangeSelection
     complemented: bool
+    shift: ast.BinaryExpression | None = None
+    count_type: ValueType | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -4677,7 +4679,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return signature, source_runtime or distance_runtime
         if overloads[0].population_count:
             argument = expression.arguments[0]
-            # Runtime ranges and their complement chains have no inferred
+            # Runtime ranges and their supported operations have no inferred
             # register width. Validate metadata without evaluating positions;
             # capture and counting happen when reached.
             if self.__runtime_bit_range_popcount_info(argument, iterators) is not None:
@@ -6950,7 +6952,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__expression_kind = ExpressionKind.ARITHMETIC
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
-                    result = self.__emit_bit_range_population_count(range_info.selection, range_info.complemented)
+                    result = self.__emit_bit_range_population_count(
+                        range_info.selection, range_info.complemented, range_info.shift)
                 else:
                     with self.__bit_register_expression_value(argument) as values:
                         # A register can be wider than a packed UINT. Count its
@@ -6977,22 +6980,30 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     self.__release_temporary_variable(temporary)
 
     def __emit_bit_range_population_count(
-            self, selection: _RuntimeBitRangeSelection, complemented: bool = False) -> str:
+            self, selection: _RuntimeBitRangeSelection, complemented: bool = False,
+            shift: ast.BinaryExpression | None = None) -> str:
         # The enclosing population-count visitor owns all scratch storage and
         # preserves only the returned accumulator, including after failures.
         if len(self.__qcx_lines) + 1 > self.MAX_LOOP_OUTPUT_LINES:
             raise InvalidFunctionCallException('Runtime range popcount exceeds QCX output limit')
+        previous_declarations = self.__declared_temporary_variables.copy()
         prefix = f'QASM2QCX_POPCOUNT_{self.__population_count_index}'
         self.__population_count_index += 1
         # Capture/check the complete range before reading any source bit or
         # preparing constant words. No fixed selected width is required.
         positions, count = self.__capture_bit_range_positions(
             selection.bounds, selection.source_width, prefix + '_RANGE')
+        if shift is not None:
+            result = self.__add_new_temporary_variable(ValueType.UINT)
+            self.__qcx_lines.append(f'LET {result} := 0')
+            index, end = self.__emit_bit_range_popcount_shift_window(shift, count, prefix + '_DONE')
         constant = (self.__constant_bit_register(selection.source_name)
                     if selection.source_name in self.__const_bit_register_values else None)
         words = self.__prepare_constant_bit_lookup(constant) if constant is not None else None
-        result = self.__add_new_temporary_variable(ValueType.UINT)
-        index = self.__add_new_temporary_variable(ValueType.INT)
+        if shift is None:
+            result = self.__add_new_temporary_variable(ValueType.UINT)
+            index = self.__add_new_temporary_variable(ValueType.INT)
+            end = count
         position = self.__add_new_temporary_variable(ValueType.INT)
         bit = self.__add_new_temporary_variable(ValueType.BIT)
         # Odd complement parity counts zeros as selection length minus set
@@ -7000,9 +7011,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # parity needs a second capture, source pass, or materialized complement.
         initial = f':UINT:{count}' if complemented else '0'
         operation = '-=' if complemented else '+='
+        if shift is None:
+            self.__qcx_lines.extend([f'LET {result} := {initial}', f'LET {index} := 0'])
         self.__qcx_lines.extend([
-            f'LET {result} := {initial}', f'LET {index} := 0', f'@{prefix}_LOOP',
-            f'JUMPIF {prefix}_DONE {index} >= {count}',
+            f'@{prefix}_LOOP', f'JUMPIF {prefix}_DONE {index} >= {end}',
             f'LET {position} := {positions}:{index}',
         ])
         if words is None:
@@ -7024,7 +7036,46 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         ])
         if len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES:
             raise InvalidFunctionCallException('Runtime range popcount exceeds QCX output limit')
+        if shift is not None:
+            # The zero-result jump skips lookup and loop setup. Their storage
+            # must still exist for later expressions that reuse these names.
+            self.__hoist_temporary_declarations(previous_declarations)
         return result
+
+    def __emit_bit_range_popcount_shift_window(
+            self, shift: ast.BinaryExpression, count: str, done: str) -> tuple[str, str]:
+        # The enclosing visitor owns scratch storage, including count-expression
+        # results. All range positions have already passed validation here.
+        index = self.__add_new_temporary_variable(ValueType.INT)
+        end = self.__add_new_temporary_variable(ValueType.INT)
+        self.__qcx_lines.extend([f'LET {index} := 0', f'LET {end} := {count}'])
+        value, value_type, kind = self.__condition_operand(shift.rhs)
+        if kind == ValueKind.LITERAL:
+            distance = int(value)
+            if distance < 0:
+                # Do not emit an out-of-range negative literal on skipped paths.
+                self.__qcx_lines.append(f'ASSERT {index} < 0')
+                return index, end
+            if distance >= self.QCX_INT_MAX:
+                # Even arbitrarily large literals exceed every supported count.
+                self.__qcx_lines.append(f'JUMP {done}')
+                return index, end
+            operand = str(distance)
+            self.__qcx_lines.append(f'JUMPIF {done} {count} <= {operand}')
+        else:
+            captured = self.__add_new_temporary_variable(value_type)
+            self.__qcx_lines.append(f'LET {captured} := {value}')
+            if value_type == ValueType.INT:
+                self.__qcx_lines.append(f'ASSERT {captured} >= 0')
+            limit = f':UINT:{count}' if value_type == ValueType.UINT else count
+            self.__qcx_lines.append(f'JUMPIF {done} {captured} >= {limit}')
+            # Conversion is safe only after the oversized-count guard.
+            operand = f':INT:{captured}' if value_type == ValueType.UINT else captured
+        if shift.op.name == '<<':
+            self.__qcx_lines.append(f'LET {end} -= {operand}')
+        else:
+            self.__qcx_lines.append(f'LET {index} := {operand}')
+        return index, end
 
     def __emit_uint_population_count(self, argument: ast.Expression, angle_type: _AngleType | None = None) -> str:
         # The enclosing visitor owns all scratch storage and preserves only
@@ -7503,6 +7554,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __runtime_bit_range_popcount_info(
             self, argument: ast.Expression,
             iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangePopcountInfo | None:
+        if isinstance(argument, ast.BinaryExpression) and argument.op.name in ('<<', '>>'):
+            # Only one shift directly around a runtime range belongs here.
+            # Keep the count node intact; its domain is checked when reached.
+            selection = self.__runtime_bit_range_source(argument.lhs, iterators)
+            if selection is None:
+                return None
+            count_type, _ = self.__bit_index_info(argument.rhs, iterators, role='register shift count')
+            return _RuntimeBitRangePopcountInfo(selection, False, argument, count_type)
         complemented = False
         while isinstance(argument, ast.UnaryExpression) and argument.op.name == '~':
             complemented = not complemented
