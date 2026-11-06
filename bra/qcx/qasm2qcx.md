@@ -99,6 +99,8 @@ The converter currently covers:
   and overlap-safe assignment destinations;
 - runtime-dependent discrete-set bit-register expression operands with fixed
   result widths and snapshot reads;
+- `popcount` on direct runtime ranges of mutable or constant bit registers,
+  with bounded position storage and a native UINT result;
 - runtime-dependent discrete-set bit-register assignment destinations, including
   bitwise and shift compound assignments;
 - equal-width bit-register `==` and `!=` comparisons, including static
@@ -1534,7 +1536,8 @@ sized `uint[n]` without modifying it. It returns native, unspecified-width
 `uint`, independently of the input width and destination type.
 
 Register inputs can be bit-string literals, whole registers (including `bit[1]`),
-static range/set selections, or supported register `~`, `&`, `|`, `^`, `<<`, `>>`,
+static range/set selections, direct runtime ranges on named mutable or constant
+registers, or supported fixed-width register `~`, `&`, `|`, `^`, `<<`, `>>`,
 `rotl`, and `rotr` expressions. Repeated positions in a discrete selection are counted each
 time they appear. Scalar `bit`, scalar bit-register elements, signed integers,
 Booleans, and whole classical arrays are not accepted; use a one-position range
@@ -1581,9 +1584,10 @@ indexed assignments, and supported loop expressions. As with other numeric
 results, compare it with a number or use `bool(...)` for a Boolean condition.
 Register-expression and count temporaries remain reserved through counting.
 Skipped calls do not evaluate runtime shifts or their errors, but names, types,
-widths, and static selections are validated even in empty loops. Runtime-dependent
-register selections, concatenation, and casts to a whole register remain outside
-the supported subset. No new native bra instruction is required.
+widths, and static selections are validated even in empty loops. Nested
+expressions over raw runtime ranges, runtime angle-bit ranges, concatenation,
+and aliases remain outside this `popcount` subset. No new native bra instruction
+is required.
 
 <!-- popcount-example -->
 ```qasm
@@ -1596,6 +1600,67 @@ uint unsigned_count = popcount(value); // 3; value remains 37
 const uint FULL_COUNT = popcount(uint[6](-1)); // 6
 uint full_count = FULL_COUNT;
 ```
+
+#### Population counts of runtime bit-register ranges
+
+`popcount(flags[start:stop])` and `popcount(flags[start:step:stop])` accept
+direct ranges of named mutable or constant bit registers. The selected length
+may vary at runtime; no fixed-width UINT cast or destination width is required.
+The result is an unsized native UINT, including when the source or selected
+length exceeds the native UINT bit width.
+
+Both endpoints are required. Start, step, and stop use supported INT/UINT
+expressions and are captured once in that order; an omitted step is one.
+The inclusive raw progression is generated before negative positions are
+normalized against the source width. Only generated positions are accessed:
+`1:2:6` selects `1, 3, 5`. Repeated normalized positions contribute each time,
+so `flags[-1:3]` on a four-bit source counts bit 3 twice.
+
+The complete selection is checked before any source bit is read or any
+constant-register lookup words are prepared. Reached zero steps, empty
+selections, invalid positions, or exceeded position capacity fail before
+destination writes. An all-zero selected pattern returns zero; an empty
+selection is an error.
+
+The existing position buffer has capacity `min(2*N, MAX_RUNTIME_BIT_RANGE_POSITIONS)`
+for source width `N`; the configured limit is currently 1,000,000 positions.
+Source width and buffer capacity must fit QCX INT indexing. A larger reached
+selection fails rather than allocating more storage. After validation, a runtime
+loop reads each selected bit and adds it to a private UINT accumulator. Constant
+sources reuse native UINT-word lookup storage. The selection is never packed
+into a UINT or materialized as variable-width bit-register storage.
+
+Calls use fresh source values and bounds on each loop visit. Their results work
+in the existing scalar arithmetic, cast, array-index, loop, and gate-parameter
+contexts. Logical short-circuiting and skipped branches/loops suppress runtime
+capture and errors, while source visibility, bound types, and unsupported forms
+remain checked. A runtime selection of a constant source is still a runtime
+value and cannot initialize a `const` result. Temporary storage and caller state
+are preserved on lowering failures.
+
+<!-- runtime-range-popcount-example -->
+```qasm
+OPENQASM 3.0;
+const bit[8] PATTERN = "10110010";
+bit[8] flags = "11010011";
+int start = 7;
+int step = -2;
+int stop = 1;
+uint from_constant = popcount(PATTERN[start:step:stop]); // 3: selected "1011".
+uint selected = popcount(flags[start:step:stop]);       // 2: selected "1001".
+start = -1;
+step = 1;
+stop = 7;
+uint repeated = popcount(flags[start:step:stop]);       // 6: bit 7 occurs twice.
+flags = "00000000";
+uint fresh = popcount(flags[start:step:stop]);          // 0; selected is still 2.
+```
+
+Only the direct runtime range is added here. For example,
+`popcount(~flags[start:stop])` and `popcount(rotl(flags[start:stop], distance))`
+remain unsupported. For a known selected width, an explicit UINT cast can
+bridge to existing sized-UINT operations, such as
+`popcount(uint[4](~flags[start:stop]))`.
 
 #### Circular bit rotations
 
@@ -1891,8 +1956,9 @@ Their runtime-dependent ranges can be [copied into registers or selections](#cop
 or used as [bitwise compound-assignment RHS values](#runtime-range-rhs-bitwise-assignments).
 Same-width [UINT casts](#casts-between-uint-values-and-bit-registers) also
 accept constant registers, static selections, runtime index sets, and runtime
-ranges, including supported bitwise, complement, shift, and rotation expressions. Other
-runtime-dependent constant-register range expressions, aliases, concatenation,
+ranges, including supported bitwise, complement, shift, and rotation expressions.
+Direct runtime ranges also support [population counts](#population-counts-of-runtime-bit-register-ranges).
+Other runtime-dependent constant-register range expressions, aliases, concatenation,
 whole-array constants, and general block-local declarations remain unsupported.
 
 ### Unsigned integers
@@ -7462,6 +7528,19 @@ array iterators, skipped and reached errors, and unsigned gate parameters with
 and without fusion. The same driver can be run against optimized and UBSan bra
 builds without native source or build-option changes.
 
+`bra/test/qasm2qcx_runtime_range_popcount_numerical.py` checks direct runtime
+ranges on mutable and constant sources through 129 bits. It covers varying
+selection lengths, forward/reverse strides, negative indices, repeated normalized
+positions, native INT/UINT operands, and advancement past native endpoints.
+Scalar integration includes native result widths, narrow assignments, arithmetic,
+casts, nested bounds, array destinations, fresh loop values, loop transfers,
+short-circuiting, measurement feedback, and quantum parameters with and without
+fusion. Reached failures verify validation before counting and destination writes,
+including bounded position capacity. The runtime-range population-count example
+above is executed. Unit tests also check non-evaluating metadata, source visibility,
+once-only bound capture, declaration placement, temporary ownership, output limits,
+and cleanup after failures. Run with `--bra /path/to/bra`, including a UBSan build.
+
 `bra/test/qasm2qcx_constant_scalar_bit_numerical.py` checks scalar constant
 bit truth tables, runtime copies, indexed destinations, casts, array and nested
 function integration, short-circuiting, loops and transfers, iterator shadowing,
@@ -8275,6 +8354,7 @@ python3 bra/test/qasm2qcx_inverse_trigonometric_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_rounding_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_mod_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_popcount_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_range_popcount_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_bit_register_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_bit_register_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_bit_selection_loop_numerical.py --bra bra/bin/bra

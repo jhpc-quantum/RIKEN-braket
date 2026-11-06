@@ -28,6 +28,14 @@ class BackendTests(unittest.TestCase):
     program = casts.BackendTests.program
     check_exact = casts.BackendTests.check_exact
 
+    def test_documented_runtime_range_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-range-popcount-example -->'
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        source = source.replace('OPENQASM 3.0;', '', 1)
+        self.check_exact(source, (('from_constant', None), ('selected', None), ('repeated', None),
+                                 ('flags', 8), ('fresh', None)), (3, 2, 6, 0, 0))
+
     def test_widths_patterns_strides_reverse_and_repeated_normalized_positions(self):
         native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
         for size in (*range(1, native + 2), 129):
