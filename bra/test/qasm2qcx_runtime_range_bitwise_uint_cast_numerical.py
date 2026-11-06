@@ -129,7 +129,9 @@ class BackendTests(unittest.TestCase):
                  ('last = 2;', 'fixed ^ right[first:last]', (0, 0, 4), 'assertion failed'),
                  ('last = 2;', '(left[0:high] << 4) & right[first:last]', (4, 0, 0), 'assertion failed'),
                  ('', 'left[first:last] ^ (right[first:last] << (1 / zero))', (4, 4, 0), 'division by zero'),
-                 ('', 'rotl(fixed,1 / zero) ^ right[first:last]', (0, 0, 0), 'division by zero'))
+                 # Rotation tree nodes snapshot their register argument before
+                 # evaluating the distance, including a fixed-width argument.
+                 ('', 'rotl(fixed,1 / zero) ^ right[first:last]', (0, 0, 4), 'division by zero'))
         for update, operand, reads, error in cases:
             program = self.module.openqasm3.parser.parse('OPENQASM 3; bit[4] left = "1101"; bit[4] right = "1010"; '
                 'bit[4] fixed = "0011"; int first = 0; int last = 3; int high = 3; int distance = 1; int zero = 0; '

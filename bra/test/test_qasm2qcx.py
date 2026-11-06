@@ -28388,6 +28388,71 @@ class RuntimeRangeBitwiseUIntCastIntegrationTests(unittest.TestCase):
         self.assert_clean(c)
 
 
+class RuntimeRangeRotationUIntCastIntegrationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    prefix = RuntimeRangeRotationUIntCastFoundationTests.prefix
+    assert_clean = UIntBitCastIntegrationTests.assert_clean
+
+    def test_scalar_array_register_and_angle_consumers(self):
+        c = self.converter(self.prefix + 'count = 3; '
+            'array[uint[4],2] out = {uint[4](rotl(wide[index:count],u)),uint[4](rotr(C[index:count],condition))}; '
+            'u += uint[4](rotl(wide[index:count] ^ B,count)); '
+            'out[uint[1](rotl(one[index:index],count))] = uint[4](rotr(C[index:count],u)); '
+            'b = bit[4](uint[4](rotl(wide[index:count],u)) + U); '
+            'angle[4] phase = angle[4](bit[4](uint[4](rotr(C[index:count],count)))); '
+            'bool same = uint[4](rotl(wide[index:count],u)) == u;')
+        self.assert_clean(c)
+
+    def test_control_flow_hoists_storage_and_resolves_labels(self):
+        body = 'u = uint[4](rotr(wide[index:count] ^ B,u)); b = bit[4](uint[4](rotl(C[index:count],count)));'
+        existing = {line for line in self.converter(self.prefix) if line.startswith('VAR QASM2QCX_')}
+        for wrapper in ('if (index < count) {{ {} }}', 'while (index < count) {{ {} index += 1; }}',
+                        'for int i in [index:count] {{ {} }}',
+                        'for int index in [0:2] {{ if (index == 1) {{ continue; }} {} }}',
+                        'for int index in {{index,count}} {{ {} }}', 'for uint[4] index in values {{ {} }}'):
+            with self.subTest(wrapper=wrapper):
+                c = self.converter(self.prefix + wrapper.format(body))
+                self.assert_clean(c)
+                lines = list(c)
+                first = next(i for i, line in enumerate(lines) if line.startswith(('LET ', '@', 'ASSERT ', 'JUMP')))
+                self.assertTrue(all(i < first for i, line in enumerate(lines)
+                                    if line.startswith('VAR QASM2QCX_') and line not in existing))
+
+    def test_nested_casts_in_bounds_distances_and_loop_sets(self):
+        for interval in ('0:1', '1:0'):
+            c = self.converter(self.prefix + f'for int outer in [{interval}] {{ '
+                'for int i in [uint[1](rotl(C[outer:outer],count)):uint[2](rotr(wide[outer:count],u))] { u += uint[4](i); } '
+                'for int i in {uint[1](rotr(C[outer:outer],count)),uint[2](rotl(wide[outer:count],u))} { u += uint[4](i); } '
+                'u = uint[1](rotl(wide[uint[1](rotl(C[outer:outer],count)):outer],uint[1](rotr(C[outer:outer],count)))); }')
+            self.assert_clean(c)
+
+    def test_skipped_paths_validate_types_and_names_but_defer_runtime_domains(self):
+        c = self.converter(self.prefix +
+            'bool left = false && bool(uint[4](rotl(wide[index:0:999],1 / 0))); '
+            'bool right = true || bool(uint[4](rotr(C[index:count],uint(-1)))); '
+            'while (false) { u = uint[4](rotl(wide[index:count],uint(-1))); }')
+        self.assert_clean(c)
+        for body in ('u = uint[4](rotl(wide[outer:count],real));',
+                     'u = uint[3](rotr(wide[outer:count] ^ B,count));',
+                     'u = uint[4](rotl(wide[outer:count],later));',
+                     'for uint[4] u in values { u = uint[4](rotl(wide[outer:count],count)); }',
+                     'if (uint[4](rotl(wide[outer:count],count))) { }'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix + 'for int outer in [1:0] { if (false) { ' + body + ' } } int later;')
+
+    def test_measurement_feedback_and_gate_broadcast_capture_once(self):
+        c = self.converter('include "stdgates.inc"; qubit[2] q; bit[2] measured; int first = 0; int last = 1; '
+            'int count = 1; measured = measure q; uint[2] packed = uint[2](rotl(measured[first:last],count)); '
+            'if (bool(packed)) { x q[0]; }')
+        node = self.program('p(angle[2](bit[2](uint[2](rotr(measured[first:last],count))))) q;').statements[0]
+        capture = c._QASM2QCXConverter__capture_bit_range_positions
+        with patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions', wraps=capture) as selected:
+            c.visit(node)
+        self.assertEqual(selected.call_count, 1)
+        self.assert_clean(c)
+
+
 class AngleBitCastFoundationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)
