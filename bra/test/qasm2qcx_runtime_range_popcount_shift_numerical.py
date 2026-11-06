@@ -33,6 +33,15 @@ class BackendTests(unittest.TestCase):
     program = casts.BackendTests.program
     check_exact = casts.BackendTests.check_exact
 
+    def test_documented_shift_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-range-popcount-shift-example -->'
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        source = source.replace('OPENQASM 3.0;', '', 1)
+        self.check_exact(source, (('left', None), ('right', None), ('from_constant', None),
+                                 ('repeated', None), ('zero', None), ('fresh', None), ('flags', 8)),
+                         (1, 1, 2, 5, 0, 5, 211))
+
     def test_widths_patterns_directions_and_varying_selected_lengths(self):
         native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
         for size in (*range(1, native + 2), 129):
