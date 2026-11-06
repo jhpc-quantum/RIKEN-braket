@@ -312,6 +312,8 @@ class _RuntimeBitRangeSelection:
 class _RuntimeBitRangePopcountInfo:
     selection: _RuntimeBitRangeSelection
     complemented: bool
+    shift: ast.BinaryExpression | None = None
+    count_type: ValueType | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -4677,7 +4679,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return signature, source_runtime or distance_runtime
         if overloads[0].population_count:
             argument = expression.arguments[0]
-            # Runtime ranges and their complement chains have no inferred
+            # Runtime ranges and their supported operations have no inferred
             # register width. Validate metadata without evaluating positions;
             # capture and counting happen when reached.
             if self.__runtime_bit_range_popcount_info(argument, iterators) is not None:
@@ -6950,6 +6952,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__expression_kind = ExpressionKind.ARITHMETIC
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
+                    if range_info.shift is not None:
+                        raise UnsupportedOpenQASMError('runtime range popcount shift lowering')
                     result = self.__emit_bit_range_population_count(range_info.selection, range_info.complemented)
                 else:
                     with self.__bit_register_expression_value(argument) as values:
@@ -7503,6 +7507,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __runtime_bit_range_popcount_info(
             self, argument: ast.Expression,
             iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangePopcountInfo | None:
+        if isinstance(argument, ast.BinaryExpression) and argument.op.name in ('<<', '>>'):
+            # Only one shift directly around a runtime range belongs here.
+            # Keep the count node intact; its domain is checked when reached.
+            selection = self.__runtime_bit_range_source(argument.lhs, iterators)
+            if selection is None:
+                return None
+            count_type, _ = self.__bit_index_info(argument.rhs, iterators, role='register shift count')
+            return _RuntimeBitRangePopcountInfo(selection, False, argument, count_type)
         complemented = False
         while isinstance(argument, ast.UnaryExpression) and argument.op.name == '~':
             complemented = not complemented
