@@ -8006,9 +8006,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise InvalidBitOperandException('UINT/bit-register cast exceeds QCX output limit')
 
     def __visit_runtime_bit_to_uint_cast(self, expression: ast.Cast, info: _UIntBitCastInfo) -> None:
-        if info.range_tree is not None:
-            # Tree validation is available before ordered lowering is added.
-            raise UnsupportedOpenQASMError('runtime range binary bitwise UINT cast lowering')
         self.__check_uint_bit_cast_output(1)
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
@@ -8016,9 +8013,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         keep = None
         try:
             self.__expression_kind = ExpressionKind.ARITHMETIC
-            source = (self.__runtime_bit_range_cast_value(expression.argument, info)
-                      if info.range_selection is not None
-                      else self.__bit_register_expression_value(expression.argument))
+            if info.range_tree is not None:
+                source = self.__runtime_bit_range_tree_value(info.range_tree)
+            elif info.range_selection is not None:
+                source = self.__runtime_bit_range_cast_value(expression.argument, info)
+            else:
+                source = self.__bit_register_expression_value(expression.argument)
             with source as values:
                 literal = sum(value << index for index, value in enumerate(values) if isinstance(value, int))
                 if all(isinstance(value, int) for value in values):
@@ -9021,6 +9021,68 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             (self.__expression_kind, self.__value, self.__value_type,
              self.__value_kind, self.__evaluate_constant) = previous
             temporaries = owned if owned is not None else self.__used_temporary_variables - previous_used
+            for temporary in temporaries:
+                self.__release_temporary_variable(temporary)
+
+    @contextlib.contextmanager
+    def __runtime_bit_range_tree_value(
+            self, tree: _BitRangeCastExpression) -> Iterator[tuple[str | int, ...]]:
+        self.__check_uint_bit_cast_output(1)
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        owned = None
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            if not tree.children:
+                source = (self.__runtime_bit_range_value(tree.selection, tree.width)
+                          if tree.selection is not None
+                          else self.__bit_register_expression_value(tree.expression))
+                with source as bits:
+                    if len(bits) != tree.width:
+                        raise InvalidBitOperandException('Bitwise UINT cast operand width mismatch')
+                    values = list(bits)
+                    if tree.selection is None:
+                        # Freeze fixed register reads at this operand's position,
+                        # before any access or arithmetic in the right subtree.
+                        for index, bit in enumerate(bits):
+                            if isinstance(bit, str):
+                                snapshot = self.__add_new_temporary_variable(ValueType.BIT)
+                                self.__qcx_lines.append(f'LET {snapshot} := {bit}')
+                                values[index] = snapshot
+                    self.__check_uint_bit_cast_output()
+                    owned = self.__used_temporary_variables - previous_used
+                    yield tuple(values)
+                return
+            with contextlib.ExitStack() as result:
+                with contextlib.ExitStack() as operands:
+                    # Complete the left child, including its shift counts,
+                    # before beginning the right child. Do not pre-capture ranges.
+                    children = [operands.enter_context(self.__runtime_bit_range_tree_value(child))
+                                for child in tree.children]
+                    bindings = []
+                    try:
+                        for child, bits in zip(tree.children, children):
+                            key = id(child.expression)
+                            bindings.append((key, self.__captured_bit_register_values.get(key)))
+                            self.__captured_bit_register_values[key] = (child.expression, bits)
+                        values = result.enter_context(self.__bit_register_expression_value(tree.expression))
+                    finally:
+                        for key, old in reversed(bindings):
+                            if old is None:
+                                self.__captured_bit_register_values.pop(key, None)
+                            else:
+                                self.__captured_bit_register_values[key] = old
+                # The parent result is private now; release child storage before
+                # yielding so later consumers may safely reuse it.
+                self.__check_uint_bit_cast_output()
+                owned = self.__used_temporary_variables - previous_used
+                yield values
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            temporaries = (self.__used_temporary_variables - previous_used if owned is None
+                           else self.__used_temporary_variables & owned)
             for temporary in temporaries:
                 self.__release_temporary_variable(temporary)
 
