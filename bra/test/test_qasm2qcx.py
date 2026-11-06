@@ -26101,9 +26101,8 @@ class RuntimeBitSetUIntCastFoundationTests(unittest.TestCase):
                 with self.subTest(entries=entries), self.assertRaises(qasm2qcx.QASM2QCXError):
                     self.info(f'uint[4](wide[{{{entries}}}])')
 
-    def test_runtime_range_rotations_and_angle_bit_selections_stay_excluded(self):
-        for operand in ('rotl(wide[index:count],1)',
-                        'a[index]', 'a[{index}]', 'a[index:count]',
+    def test_runtime_angle_bit_selections_stay_excluded(self):
+        for operand in ('a[index]', 'a[{index}]', 'a[index:count]',
                         '~a[{index,0,1,2}]', 'bit[4](angle[4](a[{index,0,1,2}]))'):
             with self.subTest(operand=operand), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.info(f'uint[4]({operand})')
@@ -26273,8 +26272,7 @@ class RuntimeBitRangeUIntCastFoundationTests(unittest.TestCase):
                 self.info(source)
 
     def test_other_raw_range_expressions_and_source_forms_remain_excluded(self):
-        for operand in ('rotl(wide[index:count],1)',
-                        'bit[4](angle[4](wide[index:count]))', '(b ^ B)[index:count]',
+        for operand in ('bit[4](angle[4](wide[index:count]))', '(b ^ B)[index:count]',
                         'wide[index:count][0:3]', 'scalar[index:count]', 'u[index:count]',
                         'positions[index:count]', 'a[index:count]', 'wide[:count]', 'wide[index:]'):
             with self.subTest(operand=operand), self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -26460,7 +26458,6 @@ class RuntimeRangeUnaryShiftUIntCastFoundationTests(unittest.TestCase):
 
     def test_other_register_functions_and_source_forms_remain_excluded(self):
         for operand in ('B << wide[index:count]',
-                        'rotl(wide[index:count],count)', '~rotr(wide[index:count],count)',
                         '-wide[index:count]', '!wide[index:count]',
                         '~bit[4](angle[4](wide[index:count]))', '~a[index:count]',
                         '~(b ^ B)[index:count]', '~wide[:count]', '~wide[index:]',
@@ -26669,7 +26666,7 @@ class RuntimeRangeBitwiseUIntCastFoundationTests(unittest.TestCase):
         for operand in ('u', 'index', 'scalar', 'true', '1', 'real', 'a', 'values[index]'):
             with self.subTest(operand=operand), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.info(f'uint[4](wide[index:count] & {operand})')
-        for operand in ('rotl(wide[index:count],count) & B', 'wide[index:count] ^ a[index:count]',
+        for operand in ('wide[index:count] ^ a[index:count]',
                         'wide[index:count] | a[{index,0,1,2}]', '(wide[index:count] ^ B)[0:3]',
                         'wide[:count] & B', '(b ^ B)[index:count] | wide[index:count]'):
             with self.subTest(operand=operand), self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -26732,6 +26729,165 @@ class RuntimeRangeBitwiseUIntCastFoundationTests(unittest.TestCase):
     def test_runtime_trees_cannot_initialize_constants(self):
         with self.assertRaises(qasm2qcx.NoConstantExpressionException):
             self.converter(self.prefix + 'const uint[4] BAD = uint[4](C[index:count] & "0000");')
+
+
+class RuntimeRangeRotationUIntCastFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    expression = ScalarAngleArithmeticFoundationTests.expression
+    prefix = RuntimeRangeBitwiseUIntCastFoundationTests.prefix
+    nodes = staticmethod(RuntimeRangeBitwiseUIntCastFoundationTests.nodes)
+
+    def setUp(self):
+        self.c = self.converter(self.prefix)
+
+    def info(self, source, iterators=None):
+        return self.c._QASM2QCXConverter__uint_bit_cast_info(self.expression(source), iterators)
+
+    def test_frozen_rotation_nodes_retain_register_child_distance_and_required_width(self):
+        expression = self.expression('uint[4](rotl(~(wide[index:count] ^ B), rotr(u, count)))')
+        info = self.c._QASM2QCXConverter__uint_bit_cast_info(expression)
+        tree = info.range_tree
+        self.assertTrue(info.runtime)
+        self.assertIsNone(info.range_selection)
+        self.assertEqual(info.range_operations, ())
+        self.assertIs(tree.expression, expression.argument)
+        self.assertIs(tree.children[0].expression, expression.argument.arguments[0])
+        self.assertIs(tree.expression.arguments[1], expression.argument.arguments[1])
+        self.assertEqual(tree.count_type, qasm2qcx.ValueType.UINT)
+        leaf = tree.children[0].children[0].children[0]
+        self.assertIs(leaf.selection.bounds, leaf.expression.index[0])
+        self.assertTrue(all(node.width == 4 for node in self.nodes(tree)))
+        with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+            tree.count_type = qasm2qcx.ValueType.INT
+
+    def test_both_directions_and_nested_operators_use_register_edges(self):
+        for operand in ('rotl(wide[index:count],count)', 'rotr(C[index:count],u)',
+                        '~rotl(wide[index:count],count)',
+                        'rotl(rotr(C[index:count],count),u) << count',
+                        'rotr((wide[index:count] << u) ^ B,count)',
+                        'rotl(B,count) & rotr(C[index:count],u)',
+                        'rotr(wide[index:count] | C[count:index],condition)'):
+            with self.subTest(operand=operand):
+                tree = self.info(f'uint[4]({operand})').range_tree
+                self.assertIsNotNone(tree)
+                self.assertTrue(all(node.width == 4 for node in self.nodes(tree)))
+
+    def test_each_native_width_and_unsized_target_avoid_runtime_width_inference(self):
+        with patch.object(self.c, '_QASM2QCXConverter__bit_register_expression_width',
+                          side_effect=AssertionError('runtime range width must come from the cast')):
+            for width in range(1, self.c.QCX_UINT_WIDTH + 1):
+                info = self.info(f'uint[{width}](rotl(large[index:count],count))')
+                self.assertTrue(all(node.width == width for node in self.nodes(info.range_tree)))
+            info = self.info('uint(rotr(large[index:count],count))')
+            self.assertEqual(info.uint_type, qasm2qcx._UnsignedIntegerType(self.c.QCX_UINT_WIDTH, False))
+
+    def test_distance_typing_reuses_builtin_input_promotions(self):
+        for distance, expected in (('count', qasm2qcx.ValueType.INT),
+                                   ('u', qasm2qcx.ValueType.UINT),
+                                   ('condition', qasm2qcx.ValueType.BOOL),
+                                   ('true', qasm2qcx.ValueType.BOOL),
+                                   ('positions[index]', qasm2qcx.ValueType.INT)):
+            for name in ('rotl', 'rotr'):
+                with self.subTest(name=name, distance=distance):
+                    tree = self.info(f'uint[4]({name}(wide[index:count],{distance}))').range_tree
+                    self.assertEqual(tree.count_type, expected)
+        for distance in ('real', 'scalar', 'one', 'B', 'a', '1im', 'missing',
+                         'positions[true]', 'unknown(count)'):
+            with self.subTest(distance=distance), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(f'uint[4](rotl(wide[index:count],{distance}))')
+
+    def test_arity_is_checked_before_operands(self):
+        for operand in ('rotl(wide[index:count])', 'rotr(wide[index:count],missing,0)',
+                        'rotl(missing) | wide[index:count]', 'rotr() ^ wide[index:count]'):
+            with self.subTest(operand=operand), self.assertRaisesRegex(
+                    qasm2qcx.InvalidFunctionCallException, 'expects 2 argument'):
+                self.info(f'uint[4]({operand})')
+
+    def test_domains_and_native_conversion_failures_are_deferred(self):
+        for distance in ('-1', '0', str(self.c.QCX_INT_MIN), str(self.c.QCX_INT_MAX),
+                         f'uint({self.c.QCX_UINT_MAX})', 'count / 0', 'positions[999]'):
+            with self.subTest(distance=distance):
+                self.assertTrue(self.info(f'uint[4](rotl(wide[index:0:999],{distance}))').runtime)
+
+    def test_fixed_leaves_must_match_cast_width_and_remain_bounded(self):
+        for operand in ('rotl(wide[index:count] ^ "000",count)',
+                        'rotr(B,count) ^ C[index:count]'):
+            width = 4 if operand.startswith('rotl') else 3
+            with self.subTest(operand=operand), self.assertRaisesRegex(qasm2qcx.QASM2QCXError, 'equal widths'):
+                self.info(f'uint[{width}]({operand})')
+        size = self.c.QCX_INT_MAX
+        c = self.converter(f'bit[{size}] huge; bit[8] flags; int first; int last;')
+        with patch.object(c, '_QASM2QCXConverter__bit_register_expression_width') as inference:
+            with self.assertRaisesRegex(qasm2qcx.QASM2QCXError, 'size limit'):
+                c._QASM2QCXConverter__uint_bit_cast_info(self.expression(
+                    f'uint[4](rotl(flags[first:last] ^ huge[0:{size - 1}],first))'))
+            inference.assert_not_called()
+
+    def test_scalar_distance_ranges_and_nested_casts_have_separate_contexts(self):
+        self.assertIsNone(self.info('uint[4](rotl(B,uint[1](wide[index:count])))').range_tree)
+        # A scalar UINT rotation retains the ordinary numeric-cast path.
+        self.assertIsNone(self.info('uint[4](rotr(u,int(uint[1](wide[index:count]))))'))
+        info = self.info('uint[4](rotl(wide[index:count],uint[1](C[index:count])))')
+        self.assertEqual(len(info.range_tree.children), 1)
+        self.assertEqual(info.range_tree.count_type, qasm2qcx.ValueType.UINT)
+        for source in ('uint[4](rotl(wide[index:count],1) ^ u)',
+                       'uint[4](rotr(a[index:count],1) ^ wide[index:count])',
+                       'uint[4](rotl(wide[:count],1))'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(source)
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.c._QASM2QCXConverter__bit_register_expression_width(
+                self.expression('rotl(wide[index:count],1)'))
+
+    def test_visibility_and_iterator_types_are_checked_without_reading_values(self):
+        c = self.converter(self.prefix)
+        c._QASM2QCXConverter__declared_constant_variables.remove('LOW')
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            c._QASM2QCXConverter__uint_bit_cast_info(self.expression('uint[4](rotl(wide[index:count],LOW))'))
+        self.assertEqual(self.info('uint[4](rotl(C[LOW:HIGH],LOW))',
+                                   {'LOW': qasm2qcx.ValueType.UINT}).range_tree.count_type,
+                         qasm2qcx.ValueType.UINT)
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.info('uint[4](rotl(wide[index:count],LOW))', {'LOW': qasm2qcx.ValueType.FLOAT})
+
+    def test_empty_bodies_validate_without_runtime_evaluation_or_storage(self):
+        c = self.converter(self.prefix + 'for int outer in [1:0] { '
+            'u = uint[4](rotl(C[outer:0:999],count / 0)); '
+            'if (bool(uint[4](rotr(wide[outer:count] ^ B,uint(-1))))) { } }')
+        self.assertEqual(list(c), list(self.c))
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+        for body in ('u = uint[4](rotl(wide[outer:count],real));',
+                     'u = uint[4](rotr(wide[outer:count] ^ "000",count));',
+                     'u = uint[4](rotl(wide[outer:count],later));'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix + 'for int outer in [1:0] { ' + body + ' } int later;')
+
+    def test_metadata_preserves_fields_caches_output_and_caller_storage(self):
+        c = self.c
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        expression = self.expression('bit[4](u)')
+        captured = {id(expression): (expression, (caller,))}
+        c._QASM2QCXConverter__captured_bit_register_values.update(captured)
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+        lines = c._QASM2QCXConverter__qcx_lines.copy()
+        caches = (c._QASM2QCXConverter__uint_expression_types.copy(), c._QASM2QCXConverter__angle_expression_types.copy())
+        with patch.object(c, '_QASM2QCXConverter__condition_operand',
+                          side_effect=AssertionError('metadata must not evaluate operands')):
+            self.info('uint[4](rotl(wide[index:0:999],count / 0))')
+            with self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info('uint[4](rotr(wide[index:count],real))')
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+        self.assertEqual(lines, c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(caches, (c._QASM2QCXConverter__uint_expression_types, c._QASM2QCXConverter__angle_expression_types))
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, captured)
+
+    def test_runtime_rotations_cannot_initialize_constants(self):
+        with self.assertRaises(qasm2qcx.NoConstantExpressionException):
+            self.converter(self.prefix + 'const uint[4] BAD = uint[4](rotl(C[index:count],count));')
 
 
 class UIntBitCastLoweringTests(unittest.TestCase):
@@ -27512,6 +27668,167 @@ class RuntimeRangeBitwiseUIntCastLoweringTests(unittest.TestCase):
             self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, {})
 
 
+class RuntimeRangeRotationUIntCastLoweringTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    expression = ScalarAngleArithmeticFoundationTests.expression
+    prefix = RuntimeRangeRotationUIntCastFoundationTests.prefix
+
+    def test_capture_and_distance_evaluation_follow_nested_expression_order_once(self):
+        c = self.converter(self.prefix)
+        expression = self.expression(
+            'uint[4](rotr(rotl(wide[index:count],u) ^ (C[count:index] << index),count))')
+        outer = expression.argument
+        left, right = outer.arguments[0].lhs, outer.arguments[0].rhs
+        capture = c._QASM2QCXConverter__capture_bit_range_positions
+        condition = c._QASM2QCXConverter__condition_operand
+        events = []
+        def captured(bounds, *args, **kwargs):
+            events.append(bounds)
+            return capture(bounds, *args, **kwargs)
+        def operand(node):
+            if any(node is count for count in (left.arguments[1], right.rhs, outer.arguments[1])):
+                events.append(node)
+            return condition(node)
+        c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        with patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions', side_effect=captured), \
+             patch.object(c, '_QASM2QCXConverter__condition_operand', side_effect=operand):
+            c.visit(expression)
+        self.assertEqual(events, [left.arguments[0].index[0], left.arguments[1],
+                                  right.lhs.index[0], right.rhs, outer.arguments[1]])
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {c._QASM2QCXConverter__value})
+        self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, {})
+
+    def test_distance_cast_captures_its_own_range_after_source_snapshot(self):
+        c = self.converter(self.prefix)
+        expression = self.expression('uint[4](rotl(wide[index:count],uint[1](wide[index:index])))')
+        source = expression.argument.arguments[0]
+        distance = expression.argument.arguments[1].argument
+        capture = c._QASM2QCXConverter__capture_bit_range_positions
+        name = c._QASM2QCXConverter__capitalize_variable_name('wide')
+        def captured(bounds, *args, **kwargs):
+            if bounds is distance.index[0]:
+                reads = [line for line in c._QASM2QCXConverter__qcx_lines if f' := {name}:' in line]
+                self.assertEqual(len(reads), 4)
+            return capture(bounds, *args, **kwargs)
+        c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        with patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions', side_effect=captured) as selected:
+            c.visit(expression)
+        self.assertEqual([call.args[0] for call in selected.call_args_list], [source.index[0], distance.index[0]])
+        self.assertEqual([call.kwargs['capacity'] for call in selected.call_args_list], [4, 1])
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {c._QASM2QCXConverter__value})
+
+    def test_source_capture_failure_prevents_distance_evaluation(self):
+        c = self.converter(self.prefix)
+        c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        expression = self.expression('uint[4](rotl(wide[index:count],u))')
+        condition = c._QASM2QCXConverter__condition_operand
+        def operand(node):
+            self.assertIsNot(node, expression.argument.arguments[1])
+            return condition(node)
+        with patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions',
+                          side_effect=RuntimeError('source failed')), \
+             patch.object(c, '_QASM2QCXConverter__condition_operand', side_effect=operand):
+            with self.assertRaisesRegex(RuntimeError, 'source failed'):
+                c.visit(expression)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, {})
+
+    def test_left_distance_failure_prevents_right_capture_and_restores_caller(self):
+        c = self.converter(self.prefix)
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        expression = self.expression('uint[4](rotl(wide[index:count],count) ^ C[count:index])')
+        c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+        condition = c._QASM2QCXConverter__condition_operand
+        capture = c._QASM2QCXConverter__capture_bit_range_positions
+        def operand(node):
+            if node is expression.argument.lhs.arguments[1]:
+                raise RuntimeError('distance failed')
+            return condition(node)
+        with patch.object(c, '_QASM2QCXConverter__condition_operand', side_effect=operand), \
+             patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions', wraps=capture) as selected:
+            with self.assertRaisesRegex(RuntimeError, 'distance failed'):
+                c.visit(expression)
+        self.assertEqual(selected.call_count, 1)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, {})
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+
+    def test_rotation_results_outlive_children_and_preserve_consumer_storage(self):
+        for distance in ('0', '-1', 'count', 'u + uint[4](1)'):
+            for failed_consumer in (False, True):
+                c = self.converter(self.prefix)
+                caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+                expression = self.expression(f'uint[4](rotr(wide[index:count],{distance}))')
+                tree = c._QASM2QCXConverter__uint_bit_cast_info(expression).range_tree
+                leaf = tree.children[0].expression
+                previous = {id(leaf): (leaf, (caller,) * 4)}
+                c._QASM2QCXConverter__captured_bit_register_values.update(previous)
+                fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+                before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+                consumer = None
+                try:
+                    with c._QASM2QCXConverter__runtime_bit_range_tree_value(tree) as bits:
+                        self.assertEqual(len(bits), 4)
+                        storage = {bit.split(':')[0] for bit in bits if isinstance(bit, str)}
+                        self.assertTrue(storage <= c._QASM2QCXConverter__used_temporary_variables)
+                        self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, previous)
+                        consumer = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.BIT)
+                        self.assertNotIn(consumer, storage)
+                        if failed_consumer:
+                            raise RuntimeError('consumer failed')
+                except RuntimeError as error:
+                    self.assertTrue(failed_consumer)
+                    self.assertEqual(str(error), 'consumer failed')
+                self.assertIsNotNone(consumer)
+                self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller, consumer})
+                self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, previous)
+                self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+
+    def test_partial_rotation_allocation_failure_releases_child_and_distance_storage(self):
+        c = self.converter(self.prefix)
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        expression = self.expression('uint[4](rotl(wide[index:count],count + 1))')
+        tree = c._QASM2QCXConverter__uint_bit_cast_info(expression).range_tree
+        rotate = c._QASM2QCXConverter__rotate_bit_register_value
+        allocate = c._QASM2QCXConverter__add_temporary_bit_register
+        def failed(*args, **kwargs):
+            allocate(*args, **kwargs)
+            raise RuntimeError('rotation allocation failed')
+        @qasm2qcx.contextlib.contextmanager
+        def checked(node, bits):
+            with patch.object(c, '_QASM2QCXConverter__add_temporary_bit_register', side_effect=failed):
+                with rotate(node, bits) as result:
+                    yield result
+        with patch.object(c, '_QASM2QCXConverter__rotate_bit_register_value', side_effect=checked):
+            with self.assertRaisesRegex(RuntimeError, 'rotation allocation failed'):
+                with c._QASM2QCXConverter__runtime_bit_range_tree_value(tree):
+                    self.fail('allocation failure must precede yielding the result')
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, {})
+
+    def test_output_limit_failures_restore_caller_state(self):
+        source = 'uint[4](rotr(rotl(wide[index:count],u) ^ C[count:index],count))'
+        baseline = self.converter(self.prefix)
+        baseline._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        baseline.visit(self.expression(source))
+        for limit in (1, len(baseline._QASM2QCXConverter__qcx_lines) - 30,
+                      len(baseline._QASM2QCXConverter__qcx_lines) - 1):
+            c = self.converter(self.prefix)
+            c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+            caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+            fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+            before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+            with self.subTest(limit=limit), patch.object(c, 'MAX_LOOP_OUTPUT_LINES', limit):
+                with self.assertRaisesRegex(qasm2qcx.QASM2QCXError, 'output limit'):
+                    c.visit(self.expression(source))
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, {})
+            self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+
+
 class UIntBitCastIntegrationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)
@@ -28068,6 +28385,71 @@ class RuntimeRangeBitwiseUIntCastIntegrationTests(unittest.TestCase):
         with patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions', wraps=capture) as selected:
             c.visit(node)
         self.assertEqual(selected.call_count, 2)
+        self.assert_clean(c)
+
+
+class RuntimeRangeRotationUIntCastIntegrationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    prefix = RuntimeRangeRotationUIntCastFoundationTests.prefix
+    assert_clean = UIntBitCastIntegrationTests.assert_clean
+
+    def test_scalar_array_register_and_angle_consumers(self):
+        c = self.converter(self.prefix + 'count = 3; '
+            'array[uint[4],2] out = {uint[4](rotl(wide[index:count],u)),uint[4](rotr(C[index:count],condition))}; '
+            'u += uint[4](rotl(wide[index:count] ^ B,count)); '
+            'out[uint[1](rotl(one[index:index],count))] = uint[4](rotr(C[index:count],u)); '
+            'b = bit[4](uint[4](rotl(wide[index:count],u)) + U); '
+            'angle[4] phase = angle[4](bit[4](uint[4](rotr(C[index:count],count)))); '
+            'bool same = uint[4](rotl(wide[index:count],u)) == u;')
+        self.assert_clean(c)
+
+    def test_control_flow_hoists_storage_and_resolves_labels(self):
+        body = 'u = uint[4](rotr(wide[index:count] ^ B,u)); b = bit[4](uint[4](rotl(C[index:count],count)));'
+        existing = {line for line in self.converter(self.prefix) if line.startswith('VAR QASM2QCX_')}
+        for wrapper in ('if (index < count) {{ {} }}', 'while (index < count) {{ {} index += 1; }}',
+                        'for int i in [index:count] {{ {} }}',
+                        'for int index in [0:2] {{ if (index == 1) {{ continue; }} {} }}',
+                        'for int index in {{index,count}} {{ {} }}', 'for uint[4] index in values {{ {} }}'):
+            with self.subTest(wrapper=wrapper):
+                c = self.converter(self.prefix + wrapper.format(body))
+                self.assert_clean(c)
+                lines = list(c)
+                first = next(i for i, line in enumerate(lines) if line.startswith(('LET ', '@', 'ASSERT ', 'JUMP')))
+                self.assertTrue(all(i < first for i, line in enumerate(lines)
+                                    if line.startswith('VAR QASM2QCX_') and line not in existing))
+
+    def test_nested_casts_in_bounds_distances_and_loop_sets(self):
+        for interval in ('0:1', '1:0'):
+            c = self.converter(self.prefix + f'for int outer in [{interval}] {{ '
+                'for int i in [uint[1](rotl(C[outer:outer],count)):uint[2](rotr(wide[outer:count],u))] { u += uint[4](i); } '
+                'for int i in {uint[1](rotr(C[outer:outer],count)),uint[2](rotl(wide[outer:count],u))} { u += uint[4](i); } '
+                'u = uint[1](rotl(wide[uint[1](rotl(C[outer:outer],count)):outer],uint[1](rotr(C[outer:outer],count)))); }')
+            self.assert_clean(c)
+
+    def test_skipped_paths_validate_types_and_names_but_defer_runtime_domains(self):
+        c = self.converter(self.prefix +
+            'bool left = false && bool(uint[4](rotl(wide[index:0:999],1 / 0))); '
+            'bool right = true || bool(uint[4](rotr(C[index:count],uint(-1)))); '
+            'while (false) { u = uint[4](rotl(wide[index:count],uint(-1))); }')
+        self.assert_clean(c)
+        for body in ('u = uint[4](rotl(wide[outer:count],real));',
+                     'u = uint[3](rotr(wide[outer:count] ^ B,count));',
+                     'u = uint[4](rotl(wide[outer:count],later));',
+                     'for uint[4] u in values { u = uint[4](rotl(wide[outer:count],count)); }',
+                     'if (uint[4](rotl(wide[outer:count],count))) { }'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix + 'for int outer in [1:0] { if (false) { ' + body + ' } } int later;')
+
+    def test_measurement_feedback_and_gate_broadcast_capture_once(self):
+        c = self.converter('include "stdgates.inc"; qubit[2] q; bit[2] measured; int first = 0; int last = 1; '
+            'int count = 1; measured = measure q; uint[2] packed = uint[2](rotl(measured[first:last],count)); '
+            'if (bool(packed)) { x q[0]; }')
+        node = self.program('p(angle[2](bit[2](uint[2](rotr(measured[first:last],count))))) q;').statements[0]
+        capture = c._QASM2QCXConverter__capture_bit_range_positions
+        with patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions', wraps=capture) as selected:
+            c.visit(node)
+        self.assertEqual(selected.call_count, 1)
         self.assert_clean(c)
 
 
