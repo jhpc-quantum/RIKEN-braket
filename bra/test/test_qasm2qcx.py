@@ -26101,7 +26101,7 @@ class RuntimeBitSetUIntCastFoundationTests(unittest.TestCase):
                 with self.subTest(entries=entries), self.assertRaises(qasm2qcx.QASM2QCXError):
                     self.info(f'uint[4](wide[{{{entries}}}])')
 
-    def test_runtime_range_rotations_and_angle_bit_selections_stay_excluded(self):
+    def test_runtime_angle_bit_selections_stay_excluded(self):
         for operand in ('a[index]', 'a[{index}]', 'a[index:count]',
                         '~a[{index,0,1,2}]', 'bit[4](angle[4](a[{index,0,1,2}]))'):
             with self.subTest(operand=operand), self.assertRaises(qasm2qcx.QASM2QCXError):

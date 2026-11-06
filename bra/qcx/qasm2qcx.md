@@ -1609,6 +1609,9 @@ scalar `angle[n]` or `angle` expressions.
 Scalar `bit`, signed integers, unspecified-width `uint`, and whole classical arrays
 are not supported. An indexed UINT array element is a scalar
 input; a one-position bit range is a register input, unlike a scalar bit element.
+Runtime bit-register ranges can also supply rotation operands inside
+[UINT casts](#casts-between-uint-values-and-bit-registers), where the cast
+provides the required selection width.
 
 The distance parameter is `int`, with the usual built-in input promotions from
 `bool` and `uint`. UINT-to-INT conversion is checked before normalization;
@@ -1888,7 +1891,7 @@ Their runtime-dependent ranges can be [copied into registers or selections](#cop
 or used as [bitwise compound-assignment RHS values](#runtime-range-rhs-bitwise-assignments).
 Same-width [UINT casts](#casts-between-uint-values-and-bit-registers) also
 accept constant registers, static selections, runtime index sets, and runtime
-ranges, including their supported bitwise/complement/shift expressions. Other
+ranges, including supported bitwise, complement, shift, and rotation expressions. Other
 runtime-dependent constant-register range expressions, aliases, concatenation,
 whole-array constants, and general block-local declarations remain unsupported.
 
@@ -2020,8 +2023,8 @@ rotation, and cast expressions. Selection order determines bit significance;
 repeated source positions are retained. A selection from a register wider than
 `W` is supported when its selected width is within `W`. Static selection
 expansion is bounded by `W` before width inference materializes its positions.
-Runtime ranges are supported directly and in bitwise/complement/shift
-expressions inside UINT casts, as described below. Runtime ranges in other
+Runtime ranges are supported directly and in bitwise, complement, shift, and
+rotation expressions inside UINT casts, as described below. Runtime ranges in other
 register-expression contexts, runtime angle-bit selections, indexing or
 iterating over computed register values, and aliases remain outside this subset.
 
@@ -2108,14 +2111,34 @@ available, including named registers, static and runtime index-set selections,
 rotations of fixed-width registers, and supported angle/UINT-to-bit conversions.
 
 Runtime value evaluation follows the expression tree from left to right. The
-left subtree is completed, including its snapshots, shift counts, and
-arithmetic, before the right subtree begins. Each range occurrence captures its own bounds and bits
-when reached, even when accesses use identical source text. Fixed register
+left subtree is completed, including its snapshots, shift counts, rotation
+distances, and arithmetic, before the right subtree begins. Each range
+occurrence captures its own bounds and bits when reached, even when accesses
+use identical source text. Fixed register
 reads are also snapshotted at their operand's position. A left-side failure
 prevents right-side evaluation; a right-side failure may occur after left-side
 reads but still precedes all destination writes. Binary bitwise operators do
 not short-circuit, so zero masks, all-one masks, or repeated operands do not
 suppress range checks or other operand evaluation.
+
+`rotl` and `rotr` may wrap runtime ranges and supported register expression
+trees inside a UINT cast. They preserve the required cast width and rotate
+within the selected positions, rather than within the entire source register:
+
+```qasm
+uint[4] left = uint[4](rotl(flags[start:stop], distance));
+uint[4] right = uint[4](rotr(left_bits[a:b] ^ right_bits[c:d], distance));
+```
+
+Each call evaluates and snapshots its complete register argument before
+evaluating its distance once. Nested rotations finish from the inside outward.
+Distances follow the existing [rotation rules](#circular-bit-rotations): the
+parameter type is INT, with supported Boolean and UINT input promotions.
+UINT-to-INT conversion must succeed before normalization, even if the remainder
+would fit. Negative distances reverse direction; distances are reduced modulo
+the selected width, and zero or multiples of that width preserve the bits.
+These rules also apply at native INT endpoints and for width-one selections.
+A nested UINT cast in the distance captures its own operands at that point.
 
 Intermediates retain the target width and private storage until their parent
 operation is complete. Source registers remain unchanged, overlapping
@@ -2123,7 +2146,7 @@ assignments use original values, and failed expressions do not partially
 update the destination. Temporary storage and caller snapshot bindings are
 restored after lowering failures.
 
-Rotations and other register functions applied directly to raw runtime ranges,
+Other register functions applied directly to raw runtime ranges,
 runtime angle-bit selections, aliases, and further indexing of range results
 remain outside this subset. The resulting scalar UINT may supply supported
 arithmetic, indices, loop bounds, or an enclosing `bit[n]` cast. General
@@ -2253,6 +2276,31 @@ start = 0;
 step = 1;
 stop = 3;
 uint[4] fresh = uint[4](flags[start:step:stop] ^ PATTERN[start:step:stop]); // 12; different is still 14.
+```
+
+Rotations use the selected order and preserve snapshots during overlapping
+assignments:
+
+<!-- runtime-range-rotation-uint-cast-example -->
+```qasm
+OPENQASM 3.0;
+const bit[8] PATTERN = "10110010";
+bit[8] flags = "11010011";
+int start = 7;
+int step = -2;
+int stop = 1;
+int distance = 1;
+uint[4] left = uint[4](rotl(flags[start:step:stop], distance)); // 3: rotate "1001" left.
+uint[4] right = uint[4](rotr(flags[start:step:stop], distance)); // 12.
+uint[4] from_constant = uint[4](rotl(PATTERN[start:step:stop], distance)); // 7.
+uint[4] restored = uint[4](rotr(rotl(flags[start:step:stop], distance), distance)); // 9.
+uint[4] combined = uint[4](rotr(flags[start:step:stop] ^ PATTERN[start:step:stop], distance)); // 1.
+uint[4] shifted = uint[4](rotl(flags[start:step:stop] << 1, distance)); // 4.
+flags[0:3] = bit[4](uint[4](rotr(flags[start:step:stop], distance))); // "11011100".
+start = 0;
+step = 1;
+stop = 3;
+uint[4] fresh = uint[4](rotl(flags[start:step:stop], distance)); // 9; left is still 3.
 ```
 
 Each register-operand occurrence is evaluated once per cast. Runtime packing
@@ -7763,6 +7811,19 @@ independent occurrence identities, one-time capture, snapshot ownership,
 output limits, and cleanup preserving caller state and bindings after failures.
 Run with `--bra /path/to/bra`, including a UBSan build.
 
+`bra/test/qasm2qcx_runtime_range_rotation_uint_cast_numerical.py` checks both
+rotation directions inside UINT casts at every native width. It covers signed
+distance endpoints, negative/zero/oversized distances, Boolean and checked UINT
+promotions, constant and mutable sources, strides, negative indices, wide
+sources, nested bitwise/shift/rotation trees, unsized targets, and overlapping
+assignments. Integration cases cover arrays, nested distance casts, fresh loop
+operands, transfers, skipped errors, measurement feedback, and quantum parameters
+with and without fusion. Reached failures check operand order and absence of
+destination writes. The rotation example above is executed. Unit tests verify
+width propagation, non-evaluating validation, once-only capture and distance
+evaluation, temporary ownership, binding restoration, and failure cleanup.
+Run with `--bra /path/to/bra`, including a UBSan build.
+
 `bra/test/qasm2qcx_integer_array_numerical.py` verifies declarations and runtime
 initializers, static, runtime, and negative element indices, compound assignments,
 live reads versus set snapshots, dimension-constant shadowing, repeated entry,
@@ -8271,6 +8332,7 @@ python3 bra/test/qasm2qcx_runtime_bit_set_uint_cast_numerical.py --bra bra/bin/b
 python3 bra/test/qasm2qcx_runtime_bit_range_uint_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_range_unary_shift_uint_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_range_bitwise_uint_cast_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_range_rotation_uint_cast_numerical.py --bra bra/bin/bra
 ```
 
 For an MPI-enabled `bra` executable, run the distributed control-value driver
