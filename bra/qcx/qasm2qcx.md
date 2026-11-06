@@ -99,7 +99,8 @@ The converter currently covers:
   and overlap-safe assignment destinations;
 - runtime-dependent discrete-set bit-register expression operands with fixed
   result widths and snapshot reads;
-- `popcount` on direct runtime ranges of mutable or constant bit registers,
+- `popcount` on runtime ranges and their unary complement chains on mutable
+  or constant bit registers,
   with bounded position storage and a native UINT result;
 - runtime-dependent discrete-set bit-register assignment destinations, including
   bitwise and shift compound assignments;
@@ -1536,8 +1537,9 @@ sized `uint[n]` without modifying it. It returns native, unspecified-width
 `uint`, independently of the input width and destination type.
 
 Register inputs can be bit-string literals, whole registers (including `bit[1]`),
-static range/set selections, direct runtime ranges on named mutable or constant
-registers, or supported fixed-width register `~`, `&`, `|`, `^`, `<<`, `>>`,
+static range/set selections, direct runtime ranges and their unary complement
+chains on named mutable or constant registers, or supported fixed-width register
+`~`, `&`, `|`, `^`, `<<`, `>>`,
 `rotl`, and `rotr` expressions. Repeated positions in a discrete selection are counted each
 time they appear. Scalar `bit`, scalar bit-register elements, signed integers,
 Booleans, and whole classical arrays are not accepted; use a one-position range
@@ -1545,7 +1547,8 @@ such as `bits[0:0]` when a one-bit register selection is intended.
 
 Constant calls accept literal or named constant-register expressions and constant
 sized-UINT or angle expressions, using exact bit counting. Mutable named bit registers are
-runtime values even if their initializers are literals. Runtime register calls use a `UINT`
+runtime values even if their initializers are literals. Fixed-width runtime
+register calls use a `UINT`
 temporary initialized to the literal-bit subtotal, then add each live bit with
 an explicit unsigned cast. Registers wider than native `UINT` are supported
 without packing their contents into an integer; the register/selection width
@@ -1584,7 +1587,7 @@ indexed assignments, and supported loop expressions. As with other numeric
 results, compare it with a number or use `bool(...)` for a Boolean condition.
 Register-expression and count temporaries remain reserved through counting.
 Skipped calls do not evaluate runtime shifts or their errors, but names, types,
-widths, and static selections are validated even in empty loops. Nested
+widths, and static selections are validated even in empty loops. Other
 expressions over raw runtime ranges, runtime angle-bit ranges, concatenation,
 and aliases remain outside this `popcount` subset. No new native bra instruction
 is required.
@@ -1619,8 +1622,8 @@ so `flags[-1:3]` on a four-bit source counts bit 3 twice.
 The complete selection is checked before any source bit is read or any
 constant-register lookup words are prepared. Reached zero steps, empty
 selections, invalid positions, or exceeded position capacity fail before
-destination writes. An all-zero selected pattern returns zero; an empty
-selection is an error.
+destination writes. An uncomplemented all-zero selected pattern returns zero;
+an empty selection is an error.
 
 The existing position buffer has capacity `min(2*N, MAX_RUNTIME_BIT_RANGE_POSITIONS)`
 for source width `N`; the configured limit is currently 1,000,000 positions.
@@ -1656,11 +1659,55 @@ flags = "00000000";
 uint fresh = popcount(flags[start:step:stop]);          // 0; selected is still 2.
 ```
 
-Only the direct runtime range is added here. For example,
-`popcount(~flags[start:stop])` and `popcount(rotl(flags[start:stop], distance))`
-remain unsupported. For a known selected width, an explicit UINT cast can
-bridge to existing sized-UINT operations, such as
-`popcount(uint[4](~flags[start:stop]))`.
+Unary complement chains around the direct range are also supported:
+
+```qasm
+uint zeros = popcount(~flags[start:step:stop]);
+uint ones = popcount(~~flags[start:stop]);
+```
+
+Complement applies to the selected positions, using their actual runtime
+length, independently of the source-register and destination widths. For a
+selection of length `n` containing `k` set bits, an odd number of `~` operators
+returns `n - k`, and an even number returns `k`. Every occurrence of a repeated
+normalized position contributes separately. Even complement parity still
+validates the source and all bounds; it does not suppress reached errors.
+
+Both parities capture and validate the range once, then read each selected bit
+once. Odd parity initializes the native UINT accumulator to the captured
+selection length and subtracts each original bit. Even parity uses the direct
+counting path. This never requires a complemented register, packed UINT input,
+second capture, or second source pass. The accumulator cannot underflow because
+the number of set bits cannot exceed the validated selected length. All-zero
+selected patterns produce `n` for odd parity; all-one patterns produce zero.
+Constant sources, short-circuiting, storage limits, and cleanup retain the rules
+above, and source registers remain unchanged.
+
+<!-- runtime-range-popcount-complement-example -->
+```qasm
+OPENQASM 3.0;
+const bit[8] PATTERN = "10110010";
+bit[8] flags = "11010011";
+int start = 7;
+int step = -2;
+int stop = 1;
+uint zeros = popcount(~flags[start:step:stop]);           // 2: selected "1001".
+uint constant_zeros = popcount(~PATTERN[start:step:stop]); // 1: selected "1011".
+uint twice = popcount(~~PATTERN[start:step:stop]);        // 3.
+uint thrice = popcount(~~~PATTERN[start:step:stop]);      // 1.
+start = -1;
+step = 1;
+stop = 7;
+uint repeated_zeros = popcount(~flags[start:step:stop]);  // 3: nine selected positions.
+uint repeated_ones = popcount(~~flags[start:step:stop]);  // 6: bit 7 occurs twice.
+flags = "11111111";
+uint fresh = popcount(~flags[start:step:stop]);           // 0; zeros is still 2.
+```
+
+Shifts, rotations, and binary expressions over raw runtime ranges remain
+unsupported in `popcount`. For a known selected width, an explicit UINT cast
+can bridge to existing sized-UINT operations, such as
+`popcount(uint[4](flags[start:stop] << count))`.
 
 #### Circular bit rotations
 
@@ -1957,7 +2004,8 @@ or used as [bitwise compound-assignment RHS values](#runtime-range-rhs-bitwise-a
 Same-width [UINT casts](#casts-between-uint-values-and-bit-registers) also
 accept constant registers, static selections, runtime index sets, and runtime
 ranges, including supported bitwise, complement, shift, and rotation expressions.
-Direct runtime ranges also support [population counts](#population-counts-of-runtime-bit-register-ranges).
+Runtime ranges and their unary complement chains also support
+[population counts](#population-counts-of-runtime-bit-register-ranges).
 Other runtime-dependent constant-register range expressions, aliases, concatenation,
 whole-array constants, and general block-local declarations remain unsupported.
 
@@ -7541,6 +7589,20 @@ above is executed. Unit tests also check non-evaluating metadata, source visibil
 once-only bound capture, declaration placement, temporary ownership, output limits,
 and cleanup after failures. Run with `--bra /path/to/bra`, including a UBSan build.
 
+`bra/test/qasm2qcx_runtime_range_popcount_complement_numerical.py` checks odd
+and even complement chains at every native width and on sources through 129 bits.
+The independent reference flips individual selected bits. Cases cover zero/all-one
+patterns, runtime lengths, negative indices, repeated normalized positions, wide
+constants, strides, native endpoint advancement, UINT result widths, and narrow
+assignments. Integration checks include nested bounds and scalar calls, array
+indices, fresh loop values, transfers, skipped errors, measurement feedback, and
+gate parameters and powers with and without fusion. Reached failures verify
+validation before counting and destination writes for both parities. The complement
+example above is executed. Unit tests also check immutable parity metadata,
+non-evaluating validation, single captures and source passes, caller state and
+temporary cleanup, and output limits. Run with `--bra /path/to/bra`, including a
+UBSan build.
+
 `bra/test/qasm2qcx_constant_scalar_bit_numerical.py` checks scalar constant
 bit truth tables, runtime copies, indexed destinations, casts, array and nested
 function integration, short-circuiting, loops and transfers, iterator shadowing,
@@ -8355,6 +8417,7 @@ python3 bra/test/qasm2qcx_rounding_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_mod_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_popcount_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_range_popcount_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_range_popcount_complement_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_bit_register_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_bit_register_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_bit_selection_loop_numerical.py --bra bra/bin/bra
