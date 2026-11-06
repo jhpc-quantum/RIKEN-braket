@@ -311,9 +311,11 @@ class _RuntimeBitRangeSelection:
 @dataclasses.dataclass(frozen=True)
 class _RuntimeBitRangePopcountInfo:
     selection: _RuntimeBitRangeSelection
+    # Parity on the source range; outer parity applies only after a shift.
     complemented: bool
     shift: ast.BinaryExpression | None = None
     count_type: ValueType | None = None
+    outer_complemented: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -6953,7 +6955,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
                     result = self.__emit_bit_range_population_count(
-                        range_info.selection, range_info.complemented, range_info.shift)
+                        range_info.selection, range_info.complemented, range_info.shift, range_info.outer_complemented)
                 else:
                     with self.__bit_register_expression_value(argument) as values:
                         # A register can be wider than a packed UINT. Count its
@@ -6981,7 +6983,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __emit_bit_range_population_count(
             self, selection: _RuntimeBitRangeSelection, complemented: bool = False,
-            shift: ast.BinaryExpression | None = None) -> str:
+            shift: ast.BinaryExpression | None = None, outer_complemented: bool = False) -> str:
         # The enclosing population-count visitor owns all scratch storage and
         # preserves only the returned accumulator, including after failures.
         if len(self.__qcx_lines) + 1 > self.MAX_LOOP_OUTPUT_LINES:
@@ -6995,8 +6997,22 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             selection.bounds, selection.source_width, prefix + '_RANGE')
         if shift is not None:
             result = self.__add_new_temporary_variable(ValueType.UINT)
-            self.__qcx_lines.append(f'LET {result} := 0')
+            # An oversized shift contributes only filled zeros, or ones after
+            # an outer complement. Initialize before the early-result jump.
+            initial = f':UINT:{count}' if outer_complemented else '0'
+            self.__qcx_lines.append(f'LET {result} := {initial}')
             index, end = self.__emit_bit_range_popcount_shift_window(shift, count, prefix + '_DONE')
+            if complemented:
+                # For surviving length m=end-index and original ones k:
+                # inner only starts at m and subtracts k; both complements
+                # start at n-m and add k. All intermediates stay within n.
+                initial = count if outer_complemented else end
+                subtract = end if outer_complemented else index
+                self.__qcx_lines.extend([
+                    f'LET {result} := :UINT:{initial}', f'LET {result} -= :UINT:{subtract}',
+                ])
+                if outer_complemented:
+                    self.__qcx_lines.append(f'LET {result} += :UINT:{index}')
         constant = (self.__constant_bit_register(selection.source_name)
                     if selection.source_name in self.__const_bit_register_values else None)
         words = self.__prepare_constant_bit_lookup(constant) if constant is not None else None
@@ -7006,12 +7022,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             end = count
         position = self.__add_new_temporary_variable(ValueType.INT)
         bit = self.__add_new_temporary_variable(ValueType.BIT)
-        # Odd complement parity counts zeros as selection length minus set
-        # bits. Subtract each original bit from the validated length; neither
-        # parity needs a second capture, source pass, or materialized complement.
-        initial = f':UINT:{count}' if complemented else '0'
-        operation = '-=' if complemented else '+='
+        # One pass over original surviving bits suffices for all parities.
+        operation = '-=' if complemented != outer_complemented else '+='
         if shift is None:
+            initial = f':UINT:{count}' if complemented else '0'
             self.__qcx_lines.extend([f'LET {result} := {initial}', f'LET {index} := 0'])
         self.__qcx_lines.extend([
             f'@{prefix}_LOOP', f'JUMPIF {prefix}_DONE {index} >= {end}',
@@ -7029,7 +7043,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__hoist_temporary_declarations(previous_temporaries)
         # The position buffer bounds count within native INT capacity, so
         # neither the count nor incrementing index up to count can overflow.
-        # A complemented accumulator never subtracts more than its initial count.
+        # Every accumulator update remains between zero and the selected length.
         self.__qcx_lines.extend([
             f'LET {result} {operation} :UINT:{bit}', f'LET {index} += 1',
             f'JUMP {prefix}_LOOP', f'@{prefix}_DONE',
@@ -7554,22 +7568,27 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __runtime_bit_range_popcount_info(
             self, argument: ast.Expression,
             iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangePopcountInfo | None:
+        outer_complemented = False
+        while isinstance(argument, ast.UnaryExpression) and argument.op.name == '~':
+            outer_complemented = not outer_complemented
+            argument = argument.expression
         if isinstance(argument, ast.BinaryExpression) and argument.op.name in ('<<', '>>'):
-            # Only one shift directly around a runtime range belongs here.
-            # Keep the count node intact; its domain is checked when reached.
-            selection = self.__runtime_bit_range_source(argument.lhs, iterators)
+            source = argument.lhs
+            complemented = False
+            while isinstance(source, ast.UnaryExpression) and source.op.name == '~':
+                complemented = not complemented
+                source = source.expression
+            # Preserve both parities around exactly one shift. Its count stays
+            # intact; all value and range-domain checks happen when reached.
+            selection = self.__runtime_bit_range_source(source, iterators)
             if selection is None:
                 return None
             count_type, _ = self.__bit_index_info(argument.rhs, iterators, role='register shift count')
-            return _RuntimeBitRangePopcountInfo(selection, False, argument, count_type)
-        complemented = False
-        while isinstance(argument, ast.UnaryExpression) and argument.op.name == '~':
-            complemented = not complemented
-            argument = argument.expression
+            return _RuntimeBitRangePopcountInfo(selection, complemented, argument, count_type, outer_complemented)
         # Even complement parity still validates every bound and the source.
         # Other operators cannot turn a nested raw range into this operand.
         selection = self.__runtime_bit_range_source(argument, iterators)
-        return None if selection is None else _RuntimeBitRangePopcountInfo(selection, complemented)
+        return None if selection is None else _RuntimeBitRangePopcountInfo(selection, outer_complemented)
 
     def __runtime_bit_range_copy_info(
             self, statement: ast.ClassicalAssignment,
