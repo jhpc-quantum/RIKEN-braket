@@ -7848,6 +7848,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # casts have their own contexts and cannot make this a register tree.
         if isinstance(expression, ast.UnaryExpression) and expression.op.name == '~':
             return self.__contains_uint_bit_range(expression.expression, iterators)
+        if (isinstance(expression, ast.FunctionCall) and expression.name.name in ('rotl', 'rotr')
+                and expression.arguments):
+            return self.__contains_uint_bit_range(expression.arguments[0], iterators)
         if isinstance(expression, ast.BinaryExpression):
             if expression.op.name in ('<<', '>>'):
                 return self.__contains_uint_bit_range(expression.lhs, iterators)
@@ -7859,6 +7862,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __uint_bit_range_tree_info(
             self, expression: ast.Expression, width: int,
             iterators: set[str] | dict[str, ValueType] | None) -> _BitRangeCastExpression:
+        if isinstance(expression, ast.FunctionCall) and expression.name.name in ('rotl', 'rotr'):
+            # The required cast width supplies the register context; generic
+            # function inference cannot infer a runtime range's width. Keep
+            # the original distance node and defer its value/conversion checks.
+            self.__builtin_function_overloads(expression.name.name, len(expression.arguments))
+            argument, distance = expression.arguments
+            child = self.__uint_bit_range_tree_info(argument, width, iterators)
+            distance_type, _ = self.__loop_expression_info(distance, iterators)
+            self.__resolve_builtin_function(expression.name.name, (ValueType.BIT_REGISTER, distance_type))
+            self.__validate_bitwise_indices(distance, iterators)
+            return _BitRangeCastExpression(expression, width, (child,), count_type=distance_type)
         if isinstance(expression, ast.UnaryExpression) and expression.op.name == '~':
             child = self.__uint_bit_range_tree_info(expression.expression, width, iterators)
             return _BitRangeCastExpression(expression, width, (child,))
