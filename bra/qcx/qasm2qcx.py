@@ -6948,9 +6948,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 kind = ValueKind.TEMPORARY
             else:
                 self.__expression_kind = ExpressionKind.ARITHMETIC
-                selection = self.__runtime_bit_range_source(argument)
-                if selection is not None:
-                    result = self.__emit_bit_range_population_count(selection)
+                range_info = self.__runtime_bit_range_popcount_info(argument)
+                if range_info is not None:
+                    result = self.__emit_bit_range_population_count(range_info.selection, range_info.complemented)
                 else:
                     with self.__bit_register_expression_value(argument) as values:
                         # A register can be wider than a packed UINT. Count its
@@ -6976,7 +6976,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if not keep or kind != ValueKind.TEMPORARY or temporary != result:
                     self.__release_temporary_variable(temporary)
 
-    def __emit_bit_range_population_count(self, selection: _RuntimeBitRangeSelection) -> str:
+    def __emit_bit_range_population_count(
+            self, selection: _RuntimeBitRangeSelection, complemented: bool = False) -> str:
         # The enclosing population-count visitor owns all scratch storage and
         # preserves only the returned accumulator, including after failures.
         if len(self.__qcx_lines) + 1 > self.MAX_LOOP_OUTPUT_LINES:
@@ -6994,8 +6995,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         index = self.__add_new_temporary_variable(ValueType.INT)
         position = self.__add_new_temporary_variable(ValueType.INT)
         bit = self.__add_new_temporary_variable(ValueType.BIT)
+        # Odd complement parity counts zeros as selection length minus set
+        # bits. Subtract each original bit from the validated length; neither
+        # parity needs a second capture, source pass, or materialized complement.
+        initial = f':UINT:{count}' if complemented else '0'
+        operation = '-=' if complemented else '+='
         self.__qcx_lines.extend([
-            f'LET {result} := 0', f'LET {index} := 0', f'@{prefix}_LOOP',
+            f'LET {result} := {initial}', f'LET {index} := 0', f'@{prefix}_LOOP',
             f'JUMPIF {prefix}_DONE {index} >= {count}',
             f'LET {position} := {positions}:{index}',
         ])
@@ -7010,9 +7016,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # counting loop. Keep their assignments inside each iteration.
             self.__hoist_temporary_declarations(previous_temporaries)
         # The position buffer bounds count within native INT capacity, so
-        # neither this UINT sum nor incrementing index up to count can overflow.
+        # neither the count nor incrementing index up to count can overflow.
+        # A complemented accumulator never subtracts more than its initial count.
         self.__qcx_lines.extend([
-            f'LET {result} += :UINT:{bit}', f'LET {index} += 1',
+            f'LET {result} {operation} :UINT:{bit}', f'LET {index} += 1',
             f'JUMP {prefix}_LOOP', f'@{prefix}_DONE',
         ])
         if len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES:
