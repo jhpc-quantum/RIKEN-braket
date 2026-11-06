@@ -311,9 +311,11 @@ class _RuntimeBitRangeSelection:
 @dataclasses.dataclass(frozen=True)
 class _RuntimeBitRangePopcountInfo:
     selection: _RuntimeBitRangeSelection
+    # Parity on the source range; outer parity applies only after a shift.
     complemented: bool
     shift: ast.BinaryExpression | None = None
     count_type: ValueType | None = None
+    outer_complemented: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -6952,6 +6954,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__expression_kind = ExpressionKind.ARITHMETIC
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
+                    if range_info.shift is not None and (range_info.complemented or range_info.outer_complemented):
+                        raise UnsupportedOpenQASMError('runtime range popcount mixed complement/shift lowering')
                     result = self.__emit_bit_range_population_count(
                         range_info.selection, range_info.complemented, range_info.shift)
                 else:
@@ -7554,22 +7558,27 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __runtime_bit_range_popcount_info(
             self, argument: ast.Expression,
             iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangePopcountInfo | None:
+        outer_complemented = False
+        while isinstance(argument, ast.UnaryExpression) and argument.op.name == '~':
+            outer_complemented = not outer_complemented
+            argument = argument.expression
         if isinstance(argument, ast.BinaryExpression) and argument.op.name in ('<<', '>>'):
-            # Only one shift directly around a runtime range belongs here.
-            # Keep the count node intact; its domain is checked when reached.
-            selection = self.__runtime_bit_range_source(argument.lhs, iterators)
+            source = argument.lhs
+            complemented = False
+            while isinstance(source, ast.UnaryExpression) and source.op.name == '~':
+                complemented = not complemented
+                source = source.expression
+            # Preserve both parities around exactly one shift. Its count stays
+            # intact; all value and range-domain checks happen when reached.
+            selection = self.__runtime_bit_range_source(source, iterators)
             if selection is None:
                 return None
             count_type, _ = self.__bit_index_info(argument.rhs, iterators, role='register shift count')
-            return _RuntimeBitRangePopcountInfo(selection, False, argument, count_type)
-        complemented = False
-        while isinstance(argument, ast.UnaryExpression) and argument.op.name == '~':
-            complemented = not complemented
-            argument = argument.expression
+            return _RuntimeBitRangePopcountInfo(selection, complemented, argument, count_type, outer_complemented)
         # Even complement parity still validates every bound and the source.
         # Other operators cannot turn a nested raw range into this operand.
         selection = self.__runtime_bit_range_source(argument, iterators)
-        return None if selection is None else _RuntimeBitRangePopcountInfo(selection, complemented)
+        return None if selection is None else _RuntimeBitRangePopcountInfo(selection, outer_complemented)
 
     def __runtime_bit_range_copy_info(
             self, statement: ast.ClassicalAssignment,
