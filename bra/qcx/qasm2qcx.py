@@ -6992,7 +6992,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
                     if range_info.bitwise is not None:
-                        raise UnsupportedOpenQASMError('runtime range bitwise popcount lowering')
+                        result = self.__emit_bit_range_bitwise_population_count(range_info)
                     elif range_info.mixed_operations:
                         result = self.__emit_bit_range_population_count(
                             range_info.selection, mixed_operations=range_info.mixed_operations)
@@ -7027,6 +7027,56 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             for temporary in self.__used_temporary_variables - previous_used:
                 if not keep or kind != ValueKind.TEMPORARY or temporary != result:
                     self.__release_temporary_variable(temporary)
+
+    def __emit_bit_range_bitwise_population_count(self, info: _RuntimeBitRangePopcountInfo) -> str:
+        record = info.bitwise
+        # Range snapshots need two instructions per bit; combining/counting
+        # needs three more. Reject excessive fixed widths before allocation.
+        def check_output(extra=0):
+            if len(self.__qcx_lines) + extra > self.MAX_LOOP_OUTPUT_LINES:
+                raise InvalidFunctionCallException('Runtime range bitwise popcount exceeds QCX output limit')
+        check_output(5 * record.width + 2)
+        previous_declarations = self.__declared_temporary_variables.copy()
+        with contextlib.ExitStack() as operands:
+            def capture_fixed():
+                values = operands.enter_context(self.__bit_register_expression_value(record.fixed_operand))
+                if len(values) != record.width:
+                    raise InvalidBitOperandException('Runtime range bitwise popcount operand width mismatch')
+                check_output(sum(isinstance(value, str) for value in values))
+                snapshot = []
+                for value in values:
+                    if isinstance(value, str):
+                        bit = self.__add_new_temporary_variable(ValueType.BIT)
+                        self.__qcx_lines.append(f'LET {bit} := {value}')
+                        snapshot.append(bit)
+                    else:
+                        snapshot.append(value)
+                check_output()
+                return tuple(snapshot)
+
+            # Capture complete operands at their written evaluation points.
+            # Range capture checks the count before lookup or any bit read;
+            # borrowed fixed-register reads must be frozen before the RHS.
+            if record.range_on_left:
+                left = operands.enter_context(self.__runtime_bit_range_value(info.selection, record.width))
+                right = capture_fixed()
+            else:
+                left = capture_fixed()
+                right = operands.enter_context(self.__runtime_bit_range_value(info.selection, record.width))
+            check_output(3 * record.width + 3)
+            result = self.__add_new_temporary_variable(ValueType.UINT)
+            bit = self.__add_new_temporary_variable(ValueType.BIT)
+            self.__qcx_lines.append(f'LET {result} := 0')
+            for lhs, rhs in zip(left, right):
+                self.__qcx_lines.extend([
+                    f'LET {bit} := {lhs}', f'LET {bit} {record.expression.op.name}= {rhs}',
+                    f'LET {result} += :UINT:{bit}',
+                ])
+            check_output()
+        # The enclosing population-count visitor releases all scratch,
+        # including these fixed snapshots, and keeps only the UINT result.
+        self.__hoist_temporary_declarations(previous_declarations)
+        return result
 
     def __emit_bit_range_population_count(
             self, selection: _RuntimeBitRangeSelection, complemented: bool = False,
