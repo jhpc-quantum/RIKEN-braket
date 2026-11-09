@@ -327,6 +327,14 @@ class _RuntimeBitRangePopcountRotation:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeBitRangePopcountBitwise:
+    expression: ast.BinaryExpression
+    fixed_operand: ast.Expression
+    width: int
+    range_on_left: bool
+
+
+@dataclasses.dataclass(frozen=True)
 class _RuntimeBitRangePopcountInfo:
     selection: _RuntimeBitRangeSelection
     # Parity on the source range; outer parity applies after a shift/rotation.
@@ -344,6 +352,7 @@ class _RuntimeBitRangePopcountInfo:
     rotation_complemented: bool = False
     # Mixed chains retain every original node, innermost to outermost.
     mixed_operations: tuple[_RuntimeBitRangePopcountOperation, ...] = ()
+    bitwise: _RuntimeBitRangePopcountBitwise | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -6982,7 +6991,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__expression_kind = ExpressionKind.ARITHMETIC
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
-                    if range_info.mixed_operations:
+                    if range_info.bitwise is not None:
+                        raise UnsupportedOpenQASMError('runtime range bitwise popcount lowering')
+                    elif range_info.mixed_operations:
                         result = self.__emit_bit_range_population_count(
                             range_info.selection, mixed_operations=range_info.mixed_operations)
                     elif len(range_info.rotations) > 1:
@@ -7923,6 +7934,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __runtime_bit_range_popcount_info(
             self, argument: ast.Expression,
             iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangePopcountInfo | None:
+        if isinstance(argument, ast.BinaryExpression) and argument.op.name in ('&', '|', '^'):
+            return self.__runtime_bit_range_popcount_bitwise_info(argument, iterators)
         original = argument
         outer_complemented = False
         outer_nodes = []
@@ -7973,6 +7986,58 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # Other operators cannot turn a nested raw range into this operand.
         selection = self.__runtime_bit_range_source(argument, iterators)
         return None if selection is None else _RuntimeBitRangePopcountInfo(selection, outer_complemented)
+
+    def __runtime_bit_range_popcount_bitwise_info(
+            self, expression: ast.BinaryExpression,
+            iterators: set[str] | dict[str, ValueType] | None) -> _RuntimeBitRangePopcountInfo | None:
+        selection = self.__runtime_bit_range_source(expression.lhs, iterators)
+        if selection is not None:
+            fixed = expression.rhs
+            width = self.__runtime_range_popcount_fixed_width(fixed, iterators)
+            range_on_left = True
+        else:
+            selection = self.__runtime_bit_range_source(expression.rhs, iterators)
+            if selection is None:
+                return None
+            fixed = expression.lhs
+            width = self.__runtime_range_popcount_fixed_width(fixed, iterators)
+            range_on_left = False
+        return _RuntimeBitRangePopcountInfo(selection, False, bitwise=_RuntimeBitRangePopcountBitwise(
+            expression, fixed, width, range_on_left))
+
+    def __runtime_range_popcount_fixed_width(
+            self, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None) -> int:
+        limit = min(self.QCX_INT_MAX, self.MAX_RUNTIME_BIT_RANGE_POSITIONS)
+        # Bound static selection expansion before generic width inference.
+        # This is register storage, so native UINT width is not a restriction.
+        def check_selections(node):
+            if isinstance(node, ast.IndexExpression) and self.__is_register_bit_selection(node):
+                selection = self.__runtime_bit_set_selection(node, iterators)
+                if selection is None:
+                    self.__static_bit_selection(node, iterators, max_indices=limit)
+            elif isinstance(node, ast.UnaryExpression) and node.op.name == '~':
+                check_selections(node.expression)
+            elif isinstance(node, ast.BinaryExpression) and node.op.name in ('&', '|', '^', '<<', '>>'):
+                check_selections(node.lhs)
+                if node.op.name in ('&', '|', '^'):
+                    check_selections(node.rhs)
+            elif isinstance(node, ast.FunctionCall) and node.name.name in ('rotl', 'rotr'):
+                self.__builtin_function_overloads(node.name.name, len(node.arguments))
+                check_selections(node.arguments[0])
+        check_selections(expression)
+        width = self.__bit_register_expression_width(expression, iterators)
+        if width is None or not 1 <= width <= limit:
+            raise InvalidBitOperandException('Runtime range bitwise popcount requires a bounded known-width register operand')
+        if not self.__is_initialization_process:
+            active = set(iterators or ()) | {name for scope in self.__loop_bindings for name in scope}
+            for name in self.__loop_bound_names(expression) - active:
+                if name in self.__constant_source_types:
+                    if name not in self.__declared_constant_variables:
+                        raise NoVariableNameException(name)
+                elif name in self.__classical_source_types:
+                    self.__type_of(self.__capitalize_variable_name(name))
+        return width
 
     def __runtime_bit_range_popcount_mixed_info(
             self, argument: ast.Expression,
