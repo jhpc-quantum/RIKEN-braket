@@ -99,8 +99,8 @@ The converter currently covers:
   and overlap-safe assignment destinations;
 - runtime-dependent discrete-set bit-register expression operands with fixed
   result widths and snapshot reads;
-- `popcount` on runtime ranges, arbitrary complement/shift chains, and nested
-  rotations with complements on mutable or constant bit registers,
+- `popcount` on runtime ranges and arbitrary chains of complements, shifts,
+  and rotations on mutable or constant bit registers,
   with bounded position storage and a native UINT result;
 - runtime-dependent discrete-set bit-register assignment destinations, including
   bitwise and shift compound assignments;
@@ -2053,8 +2053,63 @@ right = 0;
 uint fresh = popcount((~(flags[start:stop] << left)) >> right);   // 1, after a call with no original survivors.
 ```
 
-Rotation/shift combinations and binary bitwise expressions over raw runtime
-ranges remain unsupported in `popcount`.
+Mixed `~`, `<<`, `>>`, `rotl`, and `rotr` chains over one named runtime
+bit-register range are also supported inside `popcount`. Every operation acts
+on the same selected length `n`. Rotation placement matters when a later shift
+discards bits: rotating before shifting can change which bits survive, even
+though rotation alone preserves the population count. Complements flip the
+zero fill of earlier shifts, and later operations can move or discard those
+new ones. Parenthesize intermediate shift results to complement them.
+
+Range bounds are captured and validated once, then each distance is evaluated
+once in execution order, from the innermost operation outward. Shift distances
+must be INT or UINT and nonnegative when reached; values at least `n` discard
+all bits without narrowing an oversized UINT. Rotation distances retain their
+separate rules: INT, UINT, or Boolean inputs undergo checked INT conversion
+before reduction modulo `n`. Negative rotations, including native `INT_MIN`,
+are valid; a UINT rotation distance above native `INT_MAX` fails even when its
+remainder would fit. All later distance checks still run after a shift discards
+every bit. Skipped calls and short-circuited conditions suppress runtime errors
+while still validating names, types, arity, and supported syntax.
+
+After distance capture, the converter traces surviving logical positions
+backward through disjoint intervals. Inverse shifts clip these intervals;
+inverse rotations can split them at the circular wrap point. At most one new
+interval is needed per rotation, and the number of intervals is also bounded
+by the maximum selected length. Zero-fill contributions under odd complement
+parity are counted separately. No intermediate bit register or packed UINT is
+needed. Main-source bits are read only for surviving logical positions, with
+repeated physical positions counted separately. Existing position-storage and
+output limits, temporary cleanup, and native unspecified-width UINT result
+semantics are preserved for mutable and constant sources.
+
+<!-- runtime-range-popcount-mixed-operations-example -->
+```qasm
+OPENQASM 3.0;
+const bit[4] PATTERN = "1011";
+bit[4] flags = "1011";
+int start = 0;
+int stop = 3;
+int rotation = 1;
+uint shift = 1;
+uint before = popcount(rotl(PATTERN[start:stop], rotation) << shift); // 3: "1011" -> "0111" -> "1110".
+uint after = popcount(rotl(PATTERN[start:stop] << shift, rotation)); // 2: "1011" -> "0110" -> "1100".
+uint middle = popcount(~(rotr((~PATTERN[start:stop]) << shift, -1) >> shift)); // 4.
+uint even = popcount(~~(rotl(~~PATTERN[start:stop], rotation) << shift)); // 3.
+uint huge = uint(-1);
+uint filled = popcount(rotr(~(PATTERN[start:stop] << huge), -1) >> shift); // 3, with no original bits left.
+bool skipped = false && bool(popcount(rotl(PATTERN[start:stop] << huge, huge))); // false; reached rotation conversion would fail.
+start = -4;
+uint repeated = popcount(rotl(flags[start:stop], rotation) << shift); // 6: eight logical positions, including aliases.
+start = 0;
+rotation = 0;
+shift = 0;
+flags = "0010";
+uint fresh = popcount(rotl(flags[start:stop], rotation) << shift); // 1, using fresh bits and distances.
+```
+
+Binary bitwise expressions over raw runtime ranges remain unsupported in
+`popcount`.
 For a known selected width, an explicit UINT cast can bridge to existing
 sized-UINT operations, such as `popcount(uint[4](~(flags[start:stop] << count)))`.
 
@@ -2355,8 +2410,7 @@ or used as [bitwise compound-assignment RHS values](#runtime-range-rhs-bitwise-a
 Same-width [UINT casts](#casts-between-uint-values-and-bit-registers) also
 accept constant registers, static selections, runtime index sets, and runtime
 ranges, including supported bitwise, complement, shift, and rotation expressions.
-Runtime ranges, arbitrary complement/shift chains, and nested rotations with
-complements support
+Runtime ranges and arbitrary complement/shift/rotation chains support
 [population counts](#population-counts-of-runtime-bit-register-ranges).
 Other runtime-dependent constant-register range expressions, aliases, concatenation,
 whole-array constants, and general block-local declarations remain unsupported.
@@ -8050,6 +8104,22 @@ independent INT materialization, total complement parity, temporary cleanup,
 declaration placement, output limits, and unsupported mixtures. Run with
 `--bra /path/to/bra`, including a UBSan build.
 
+`bra/test/qasm2qcx_runtime_range_popcount_mixed_operations_numerical.py` checks
+mixed shift/rotation chains with complements using an independent reference
+that materializes every intermediate bit vector. Cases cover both operation
+orders and directions, exhaustive small vectors and complement placements,
+native-width boundaries, sources through 129 bits, longer chains with several
+surviving fragments, INT endpoints, oversized shifts, Boolean/UINT rotation
+promotions, reverse strides, negative aliases, and source preservation.
+Integration cases cover nested calls, bounds, casts, arrays, fresh loop values,
+transfers, skipped errors, deterministic and superposed measurement feedback,
+and normal/fused gate parameters and powers. Reached errors are checked before
+main counting or destination writes, including later errors after complete bit
+loss. The mixed-operation example above is executed. Unit tests check original
+AST order, distinct distance rules, validation and capture order, bounded
+interval storage, declaration placement, temporary cleanup, and output limits.
+Run with `--bra /path/to/bra`, including a UBSan build.
+
 `bra/test/qasm2qcx_constant_scalar_bit_numerical.py` checks scalar constant
 bit truth tables, runtime copies, indexed destinations, casts, array and nested
 function integration, short-circuiting, loops and transfers, iterator shadowing,
@@ -8871,6 +8941,7 @@ python3 bra/test/qasm2qcx_runtime_range_popcount_rotation_numerical.py --bra bra
 python3 bra/test/qasm2qcx_runtime_range_popcount_nested_rotation_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_range_popcount_nested_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_range_popcount_interleaved_complement_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_range_popcount_mixed_operations_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_bit_register_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_bit_register_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_bit_selection_loop_numerical.py --bra bra/bin/bra

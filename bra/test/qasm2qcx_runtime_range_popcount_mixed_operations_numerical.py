@@ -70,6 +70,15 @@ class BackendTests(unittest.TestCase):
     program = casts.BackendTests.program
     check_exact = casts.BackendTests.check_exact
 
+    def test_documented_mixed_operation_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-range-popcount-mixed-operations-example -->'
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        source = source.replace('OPENQASM 3.0;', '', 1)
+        self.check_exact(source, tuple((name, None) for name in
+            ('before', 'after', 'middle', 'even', 'filled', 'skipped', 'repeated', 'fresh')),
+            (3, 2, 4, 3, 3, 0, 6, 1))
+
     def check_case(self, size, pattern, constant, first, step, last, chains, *, parities=None, literal=False):
         positions = list(range(first, last + (1 if step > 0 else -1), step))
         assert positions and all(-size <= position < size for position in positions)
