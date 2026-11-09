@@ -99,9 +99,9 @@ The converter currently covers:
   and overlap-safe assignment destinations;
 - runtime-dependent discrete-set bit-register expression operands with fixed
   result widths and snapshot reads;
-- `popcount` on runtime ranges and arbitrary chains of complements, shifts,
-  and rotations on mutable or constant bit registers,
-  with bounded position storage and a native UINT result;
+- `popcount` on runtime ranges, arbitrary complement/shift/rotation chains,
+  and bitwise combinations of one direct runtime range with a known-width
+  register operand, with bounded storage and a native UINT result;
 - runtime-dependent discrete-set bit-register assignment destinations, including
   bitwise and shift compound assignments;
 - equal-width bit-register `==` and `!=` comparisons, including static
@@ -2108,8 +2108,66 @@ flags = "0010";
 uint fresh = popcount(rotl(flags[start:stop], rotation) << shift); // 1, using fresh bits and distances.
 ```
 
-Binary bitwise expressions over raw runtime ranges remain unsupported in
-`popcount`.
+`popcount` also accepts `&`, `|`, or `^` between one direct runtime
+bit-register range and an otherwise supported register expression with a known
+width. The range can appear on either side. The fixed operand supplies the
+required selected length `k`; the runtime range must have exactly that many
+entries, without padding, truncation, or scalar broadcasting. Bit-string
+literals, mutable/constant registers, static selections, runtime index sets,
+and supported fixed-width bitwise, shift, rotation, and cast expressions can
+supply that width. Scalar bits, integers, and whole classical arrays cannot.
+
+Both operands are captured in written order. Each operand is completely
+snapshotted before the next is evaluated, including borrowed reads from a fixed
+register. At the range's evaluation point, start, step, and stop are captured
+once; selected positions and the exact count are checked before reading its
+bits or preparing its constant lookup. If the range is on the left, its checks
+and snapshot precede all RHS evaluation. If it is on the right, fixed-LHS
+accesses and arithmetic occur first. This capture/check timing is a converter
+policy. A reached failure stops evaluation before later operands and before
+assigning the population-count result to its destination.
+
+Bits are paired by selection order, including repeated normalized source
+positions. Neither source is changed. The result is native unspecified-width
+UINT, even for registers wider than native UINT. The fixed width must fit QCX
+INT and the existing range-position storage limit (currently 1000000). Position
+storage is bounded by `k`, independently of the containing source width.
+Snapshot and counting code grows with `k` and is also checked against the QCX
+output limit. Scratch storage is released on success and failed lowering.
+Skipped paths suppress runtime value checks while retaining static validation;
+operands are recaptured on each reached visit.
+
+<!-- runtime-range-popcount-bitwise-example -->
+```qasm
+OPENQASM 3.0;
+bit[8] flags = "11010011";
+const bit[8] PATTERN = "10110010";
+bit[4] mask = "1010";
+int start = 0;
+int stop = 3;
+uint left = popcount(flags[start:stop] & mask);       // 1: "0011" & "1010".
+uint right = popcount(mask & flags[start:stop]);      // 1; reversed operand order.
+uint united = popcount(flags[start:stop] | mask);     // 3: "1011".
+uint different = popcount(mask ^ flags[start:stop]);  // 2: "1001".
+uint constant_count = popcount(mask & PATTERN[start:stop]); // 1.
+uint expression = popcount(flags[start:stop] & rotl(mask, -1)); // 1: "0011" & "0101".
+start = -1;
+uint repeated = popcount(flags[start:stop] ^ "10101"); // 2: five logical positions give "00111".
+const bit[65] WIDE = "1_00000000_00000000_00000000_00000000_00000000_00000000_00000000_00000001";
+start = 0;
+stop = 64;
+uint wide = popcount(WIDE[start:stop] & WIDE); // 2, without packing into native UINT.
+bool skipped = false && bool(popcount(flags[start:0:999] & (mask << -1))); // false.
+stop = 3;
+flags = "00000001";
+uint fresh = popcount(flags[start:stop] & mask); // 0, using the updated bits.
+```
+
+Two raw runtime-range operands and general nested binary trees involving raw
+runtime ranges remain unsupported in `popcount`. The range operand itself must
+be direct: complementing, shifting, or rotating it inside this binary subset,
+or wrapping the binary result in another operation, is deferred. Existing
+fixed-width contexts retain their own supported expression rules.
 For a known selected width, an explicit UINT cast can bridge to existing
 sized-UINT operations, such as `popcount(uint[4](~(flags[start:stop] << count)))`.
 
@@ -2410,7 +2468,8 @@ or used as [bitwise compound-assignment RHS values](#runtime-range-rhs-bitwise-a
 Same-width [UINT casts](#casts-between-uint-values-and-bit-registers) also
 accept constant registers, static selections, runtime index sets, and runtime
 ranges, including supported bitwise, complement, shift, and rotation expressions.
-Runtime ranges and arbitrary complement/shift/rotation chains support
+Runtime ranges, arbitrary complement/shift/rotation chains, and bitwise
+combinations with a known-width register operand support
 [population counts](#population-counts-of-runtime-bit-register-ranges).
 Other runtime-dependent constant-register range expressions, aliases, concatenation,
 whole-array constants, and general block-local declarations remain unsupported.
@@ -3542,9 +3601,11 @@ declarations are hoisted outside
 loops; storage is released on success and failed lowering while preserving
 caller-owned temporaries. No new bra instruction or build option is required.
 
-Outside the supported UINT-cast context, runtime ranges remain unsupported in
-declaration initializers, scalar destinations, general bitwise/shift expressions,
-comparisons, and function calls.
+Outside the supported UINT-cast and
+[population-count contexts](#population-counts-of-runtime-bit-register-ranges),
+runtime ranges remain unsupported in general bitwise/shift expressions,
+comparisons, and function calls. Supported scalar conversions and counts can
+be used in declaration initializers and scalar assignments.
 Explicit [UINT casts](#casts-between-uint-values-and-bit-registers) provide a
 separate scalar conversion path for ranges in bitwise/complement/shift
 expressions. Computed sources, aliases, and further indexing of selection
@@ -8120,6 +8181,21 @@ AST order, distinct distance rules, validation and capture order, bounded
 interval storage, declaration placement, temporary cleanup, and output limits.
 Run with `--bra /path/to/bra`, including a UBSan build.
 
+`bra/test/qasm2qcx_runtime_range_popcount_bitwise_numerical.py` checks all
+three bitwise operators and both operand orders against independent bit-vector
+results. It covers exhaustive small patterns, every native width, sources
+through 129 bits, mutable/constant sources, literal and computed fixed operands,
+reverse/nonunit strides, negative aliases, singleton ranges, and source
+preservation. Integration cases cover casts, arrays, nested consumers, fresh
+loop values, captured loop bounds, transfers, skipped domains, measurement
+feedback, and normal/fused gate parameters and powers. Reached errors check
+operand order, range/count validation, later fixed-operand failures, selected
+range reads, and destination-write suppression. The bitwise example above is
+executed. Unit tests additionally check metadata validation, snapshot timing,
+single evaluation, declaration placement, temporary cleanup, storage/output
+limits, and unsupported forms. Run with `--bra /path/to/bra`, including a UBSan
+build.
+
 `bra/test/qasm2qcx_constant_scalar_bit_numerical.py` checks scalar constant
 bit truth tables, runtime copies, indexed destinations, casts, array and nested
 function integration, short-circuiting, loops and transfers, iterator shadowing,
@@ -8942,6 +9018,7 @@ python3 bra/test/qasm2qcx_runtime_range_popcount_nested_rotation_numerical.py --
 python3 bra/test/qasm2qcx_runtime_range_popcount_nested_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_range_popcount_interleaved_complement_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_range_popcount_mixed_operations_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_range_popcount_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_bit_register_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_bit_register_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_bit_selection_loop_numerical.py --bra bra/bin/bra
