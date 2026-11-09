@@ -100,8 +100,9 @@ The converter currently covers:
 - runtime-dependent discrete-set bit-register expression operands with fixed
   result widths and snapshot reads;
 - `popcount` on runtime ranges, arbitrary complement/shift/rotation chains,
-  and bitwise combinations of two direct runtime ranges or one direct range
-  with a known-width register operand, with bounded storage and a native UINT result;
+  and bitwise combinations of two runtime ranges or one range with a known-width
+  register operand, including operand/result complements, with bounded storage
+  and a native UINT result;
 - runtime-dependent discrete-set bit-register assignment destinations, including
   bitwise and shift compound assignments;
 - equal-width bit-register `==` and `!=` comparisons, including static
@@ -2226,11 +2227,65 @@ a = "0001";
 uint fresh = popcount(a[first:last] & B[start:stop]); // 1, using fresh bounds and bits.
 ```
 
+Both binary subsets also accept `~` chains on either operand and around the
+binary result. Each complement flips only the bits within that operand or
+result's selected width. Operand complements apply before `&`, `|`, or `^`;
+result complements apply afterward. Consecutive complements at each position
+reduce to parity, independently of complements at the other positions. Fixed
+operands retain support for their existing nested register expressions and
+internal complements.
+
+Complement chains do not change selected lengths or relax any capture, bounds,
+capacity, equal-length, or operand checks. Even complement groups and identities
+whose result is known still evaluate both operands in written order. Reached
+arithmetic and index errors remain observable; skipped calls and short-circuited
+conditions suppress runtime evaluation while retaining static validation.
+Sources and private snapshots remain unchanged. Counting flips individual 0/1
+scratch bits with XOR by one, avoiding signed native `~` and bits beyond the
+selected width. Results remain native unspecified-width UINT. Existing storage,
+output, declaration-placement, and temporary-cleanup rules are preserved.
+
+<!-- runtime-popcount-bitwise-complement-example -->
+```qasm
+OPENQASM 3.0;
+bit[4] a = "1011";
+const bit[8] B = "11011101";
+bit[4] mask = "1101";
+int first = 0;
+int last = 3;
+int start = 0;
+int stop = 3;
+uint plain = popcount(a[first:last] & B[start:stop]); // 2: "1001".
+uint left = popcount((~a[first:last]) & B[start:stop]); // 1: "0100".
+uint right = popcount(a[first:last] & (~B[start:stop])); // 1: "0010".
+uint both = popcount((~a[first:last]) & (~B[start:stop])); // 0.
+uint outer = popcount(~(a[first:last] & B[start:stop])); // 2: "0110".
+uint all = popcount(~((~a[first:last]) & (~B[start:stop]))); // 4: "1111".
+uint even = popcount(~~((~~a[first:last]) & (~~B[start:stop]))); // 2; checks still execute.
+uint odd = popcount(~~~((~~~a[first:last]) & (~~~B[start:stop]))); // 4.
+uint fixed = popcount(~((~a[first:last]) & mask)); // 3.
+uint reversed = popcount(~((~mask) & a[first:last])); // 3.
+uint legacy = popcount(a[first:last] & ~mask); // 1; existing fixed-operand complements still work.
+first = -4;
+stop = 7;
+uint repeated = popcount(~((~a[first:last]) | (~B[start:stop]))); // 4 across eight logical entries.
+const bit[65] WIDE = "1_00000000_00000000_00000000_00000000_00000000_00000000_00000000_00000001";
+int low = 0;
+int high = 64;
+uint wide = popcount(~(WIDE[low:high] ^ WIDE[high:-1:low])); // 65, complemented within the selected width.
+int zero = 0;
+bool skipped = false && bool(popcount(~~((~~a[first:0:999]) & (~~B[start/zero:stop])))); // false.
+first = 0;
+stop = 3;
+a = "0001";
+uint fresh = popcount(~((~a[first:last]) & B[start:stop])); // 2, using fresh bits.
+```
+
 General nested binary trees involving raw runtime ranges remain unsupported in
-`popcount`. Each range operand in these binary subsets must be direct:
-complementing, shifting, or rotating it, or wrapping the binary result in another
-operation, is deferred. Existing fixed-width contexts retain their own supported
-expression rules.
+`popcount`. After removing their complement chains, runtime-range operands in
+these binary subsets must be direct selections. Shift or rotation wrappers on
+a runtime-range operand or the binary result remain deferred. Existing
+fixed-width contexts retain their own supported expression rules.
 For a known selected width, an explicit UINT cast can bridge to existing
 sized-UINT operations, such as `popcount(uint[4](~(flags[start:stop] << count)))`.
 
@@ -2532,8 +2587,8 @@ Same-width [UINT casts](#casts-between-uint-values-and-bit-registers) also
 accept constant registers, static selections, runtime index sets, and runtime
 ranges, including supported bitwise, complement, shift, and rotation expressions.
 Runtime ranges, arbitrary complement/shift/rotation chains, and bitwise
-combinations of two direct runtime ranges or a direct range and a known-width
-register operand support [population counts](#population-counts-of-runtime-bit-register-ranges).
+combinations of two runtime ranges or a range and a known-width register
+operand, including operand/result complement chains, support [population counts](#population-counts-of-runtime-bit-register-ranges).
 Other runtime-dependent constant-register range expressions, aliases, concatenation,
 whole-array constants, and general block-local declarations remain unsupported.
 
@@ -8276,6 +8331,23 @@ source width, declaration placement, caller-state preservation, temporary
 cleanup, output limits, and unsupported forms. Run with `--bra /path/to/bra`,
 including a UBSan build.
 
+`bra/test/qasm2qcx_runtime_popcount_bitwise_complement_numerical.py` checks
+all left/right/result complement parities in the range/range and both
+range/fixed-register operand orders, for every bitwise operator. Its independent
+reference explicitly flips each bit vector for every complement, then combines
+and counts. Cases cover exhaustive small patterns, native-width boundaries,
+sources through 129 bits, all mutable/constant combinations, aliases, reverse
+strides, singletons, longer even/odd chains, computed fixed operands, and source
+preservation. Integration cases cover nested consumers, arrays, narrowing,
+self-referencing destinations, shrinking/fresh loop selections, transfers,
+skipped domains, measurement feedback, and normal/fused gate parameters and
+powers. Reached errors verify capture order, right-read and destination-write
+suppression, and retained validation for even parity. The complemented-bitwise
+example above is executed. Unit tests additionally check original AST retention,
+ordered metadata validation and capture, parity reduction, legacy fixed-operand
+readers, caller state, scratch cleanup, declaration placement, and output limits.
+Run with `--bra /path/to/bra`, including a UBSan build.
+
 `bra/test/qasm2qcx_constant_scalar_bit_numerical.py` checks scalar constant
 bit truth tables, runtime copies, indexed destinations, casts, array and nested
 function integration, short-circuiting, loops and transfers, iterator shadowing,
@@ -9100,6 +9172,7 @@ python3 bra/test/qasm2qcx_runtime_range_popcount_interleaved_complement_numerica
 python3 bra/test/qasm2qcx_runtime_range_popcount_mixed_operations_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_range_popcount_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_range_pair_popcount_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_popcount_bitwise_complement_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_bit_register_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_bit_register_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_bit_selection_loop_numerical.py --bra bra/bin/bra
