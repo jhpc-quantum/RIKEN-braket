@@ -342,6 +342,14 @@ class _RuntimeBitRangePopcountPair:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeBitRangePopcountComplements:
+    expression: ast.Expression
+    left: bool
+    right: bool
+    outer: bool
+
+
+@dataclasses.dataclass(frozen=True)
 class _RuntimeBitRangePopcountInfo:
     selection: _RuntimeBitRangeSelection
     # Parity on the source range; outer parity applies after a shift/rotation.
@@ -361,6 +369,7 @@ class _RuntimeBitRangePopcountInfo:
     mixed_operations: tuple[_RuntimeBitRangePopcountOperation, ...] = ()
     bitwise: _RuntimeBitRangePopcountBitwise | None = None
     pair: _RuntimeBitRangePopcountPair | None = None
+    binary_complements: _RuntimeBitRangePopcountComplements | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -6999,6 +7008,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__expression_kind = ExpressionKind.ARITHMETIC
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
+                    if range_info.binary_complements is not None:
+                        raise UnsupportedOpenQASMError('complemented runtime-range bitwise popcount lowering')
                     if range_info.pair is not None:
                         result = self.__emit_bit_range_pair_population_count(range_info)
                     elif range_info.bitwise is not None:
@@ -8059,8 +8070,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __runtime_bit_range_popcount_info(
             self, argument: ast.Expression,
             iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangePopcountInfo | None:
-        if isinstance(argument, ast.BinaryExpression) and argument.op.name in ('&', '|', '^'):
-            return self.__runtime_bit_range_popcount_bitwise_info(argument, iterators)
         original = argument
         outer_complemented = False
         outer_nodes = []
@@ -8068,6 +8077,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             outer_nodes.append(argument)
             outer_complemented = not outer_complemented
             argument = argument.expression
+        if isinstance(argument, ast.BinaryExpression) and argument.op.name in ('&', '|', '^'):
+            return self.__runtime_bit_range_popcount_bitwise_info(
+                argument, iterators, original=original, outer_complemented=outer_complemented)
         if isinstance(argument, ast.FunctionCall) and argument.name.name in ('rotl', 'rotr'):
             info = self.__runtime_bit_range_popcount_rotation_chain_info(argument, outer_complemented, iterators)
             return info if info is not None else self.__runtime_bit_range_popcount_mixed_info(original, iterators)
@@ -8114,27 +8126,47 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __runtime_bit_range_popcount_bitwise_info(
             self, expression: ast.BinaryExpression,
-            iterators: set[str] | dict[str, ValueType] | None) -> _RuntimeBitRangePopcountInfo | None:
-        selection = self.__runtime_bit_range_source(expression.lhs, iterators)
+            iterators: set[str] | dict[str, ValueType] | None, *,
+            original: ast.Expression, outer_complemented: bool) -> _RuntimeBitRangePopcountInfo | None:
+        def peel(node):
+            complemented = False
+            while isinstance(node, ast.UnaryExpression) and node.op.name == '~':
+                complemented = not complemented
+                node = node.expression
+            return node, complemented
+        left, left_complemented = peel(expression.lhs)
+        right, right_complemented = peel(expression.rhs)
+        selection = self.__runtime_bit_range_source(left, iterators)
         if selection is not None:
-            right = self.__runtime_bit_range_source(expression.rhs, iterators)
-            if right is not None:
+            right_selection = self.__runtime_bit_range_source(right, iterators)
+            if right_selection is not None:
                 # Validate both ranges in written order without inferring a
                 # selected width or comparing their runtime lengths here.
-                return _RuntimeBitRangePopcountInfo(selection, False, pair=_RuntimeBitRangePopcountPair(
-                    expression, right))
-            fixed = expression.rhs
-            width = self.__runtime_range_popcount_fixed_width(fixed, iterators)
+                complements = (None if original is expression and left is expression.lhs and right is expression.rhs
+                               else _RuntimeBitRangePopcountComplements(
+                                   original, left_complemented, right_complemented, outer_complemented))
+                return _RuntimeBitRangePopcountInfo(
+                    selection, False, pair=_RuntimeBitRangePopcountPair(expression, right_selection),
+                    binary_complements=complements)
             range_on_left = True
         else:
-            selection = self.__runtime_bit_range_source(expression.rhs, iterators)
+            selection = self.__runtime_bit_range_source(right, iterators)
             if selection is None:
                 return None
-            fixed = expression.lhs
-            width = self.__runtime_range_popcount_fixed_width(fixed, iterators)
             range_on_left = False
-        return _RuntimeBitRangePopcountInfo(selection, False, bitwise=_RuntimeBitRangePopcountBitwise(
-            expression, fixed, width, range_on_left))
+        range_wrapped = left is not expression.lhs if range_on_left else right is not expression.rhs
+        extended = original is not expression or range_wrapped
+        # Existing fixed-operand complements keep their original reader/path.
+        # Extended forms expose the bare fixed operand and record all three
+        # parities; the original AST remains available in the complement info.
+        fixed = (right if range_on_left else left) if extended else (
+            expression.rhs if range_on_left else expression.lhs)
+        width = self.__runtime_range_popcount_fixed_width(fixed, iterators)
+        complements = (_RuntimeBitRangePopcountComplements(
+            original, left_complemented, right_complemented, outer_complemented) if extended else None)
+        return _RuntimeBitRangePopcountInfo(
+            selection, False, bitwise=_RuntimeBitRangePopcountBitwise(expression, fixed, width, range_on_left),
+            binary_complements=complements)
 
     def __runtime_range_popcount_fixed_width(
             self, expression: ast.Expression,
