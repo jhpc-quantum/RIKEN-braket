@@ -40,6 +40,15 @@ class BackendTests(unittest.TestCase):
     program = casts.BackendTests.program
     check_exact = casts.BackendTests.check_exact
 
+    def test_documented_range_pair_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-range-pair-popcount-example -->'
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        source = source.replace('OPENQASM 3.0;', '', 1)
+        self.check_exact(source, tuple((name, None) for name in
+            ('both', 'either', 'different', 'reversed', 'repeated', 'same', 'singleton', 'wide', 'skipped', 'fresh')),
+            (2, 4, 2, 0, 4, 0, 1, 2, 0, 1))
+
     def check_case(self, left, right, constants):
         # Each operand independently specifies its containing width and range.
         left_size, left_pattern, left_bounds = left
