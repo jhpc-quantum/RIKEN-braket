@@ -316,7 +316,7 @@ class _RuntimeBitRangePopcountShift:
 
 @dataclasses.dataclass(frozen=True)
 class _RuntimeBitRangePopcountOperation:
-    expression: ast.UnaryExpression | ast.BinaryExpression
+    expression: ast.UnaryExpression | ast.BinaryExpression | ast.FunctionCall
     count_type: ValueType | None = None
 
 
@@ -342,6 +342,8 @@ class _RuntimeBitRangePopcountInfo:
     # Innermost to outermost; parity includes complements between calls.
     rotations: tuple[_RuntimeBitRangePopcountRotation, ...] = ()
     rotation_complemented: bool = False
+    # Mixed chains retain every original node, innermost to outermost.
+    mixed_operations: tuple[_RuntimeBitRangePopcountOperation, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -6980,6 +6982,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__expression_kind = ExpressionKind.ARITHMETIC
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
+                    if range_info.mixed_operations:
+                        raise UnsupportedOpenQASMError('runtime range popcount mixed shift/rotation lowering')
                     if len(range_info.rotations) > 1:
                         result = self.__emit_bit_range_population_count(
                             range_info.selection, range_info.rotation_complemented, rotations=range_info.rotations)
@@ -7794,6 +7798,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __runtime_bit_range_popcount_info(
             self, argument: ast.Expression,
             iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangePopcountInfo | None:
+        original = argument
         outer_complemented = False
         outer_nodes = []
         while isinstance(argument, ast.UnaryExpression) and argument.op.name == '~':
@@ -7801,7 +7806,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             outer_complemented = not outer_complemented
             argument = argument.expression
         if isinstance(argument, ast.FunctionCall) and argument.name.name in ('rotl', 'rotr'):
-            return self.__runtime_bit_range_popcount_rotation_chain_info(argument, outer_complemented, iterators)
+            info = self.__runtime_bit_range_popcount_rotation_chain_info(argument, outer_complemented, iterators)
+            return info if info is not None else self.__runtime_bit_range_popcount_mixed_info(original, iterators)
         if isinstance(argument, ast.BinaryExpression) and argument.op.name in ('<<', '>>'):
             source = argument
             nodes = list(outer_nodes)
@@ -7816,7 +7822,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     break
             selection = self.__runtime_bit_range_source(source, iterators)
             if selection is None:
-                return None
+                return self.__runtime_bit_range_popcount_mixed_info(original, iterators)
             # Validate every original count in execution order without reading
             # its value, including after a shift that could discard all bits.
             operations = tuple(_RuntimeBitRangePopcountOperation(
@@ -7843,6 +7849,61 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         selection = self.__runtime_bit_range_source(argument, iterators)
         return None if selection is None else _RuntimeBitRangePopcountInfo(selection, outer_complemented)
 
+    def __runtime_bit_range_popcount_mixed_info(
+            self, argument: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None) -> _RuntimeBitRangePopcountInfo | None:
+        source = argument
+        nodes = []
+        has_shift = has_rotation = False
+        while True:
+            if isinstance(source, ast.UnaryExpression) and source.op.name == '~':
+                nodes.append(source)
+                source = source.expression
+            elif isinstance(source, ast.BinaryExpression) and source.op.name in ('<<', '>>'):
+                nodes.append(source)
+                has_shift = True
+                source = source.lhs
+            elif isinstance(source, ast.FunctionCall) and source.name.name in ('rotl', 'rotr'):
+                self.__builtin_function_overloads(source.name.name, len(source.arguments))
+                nodes.append(source)
+                has_rotation = True
+                source = source.arguments[0]
+            else:
+                break
+        if not (has_shift and has_rotation):
+            return None
+        selection = self.__runtime_bit_range_source(source, iterators)
+        if selection is None:
+            return None
+        operations = []
+        # Validate distances in execution order, without evaluating domains or
+        # folding complements across shifts that introduce zero-filled bits.
+        for node in reversed(nodes):
+            if isinstance(node, ast.BinaryExpression):
+                value_type, _ = self.__bit_index_info(node.rhs, iterators, role='register shift count')
+            elif isinstance(node, ast.FunctionCall):
+                value_type = self.__runtime_bit_range_popcount_rotation_distance_type(node, iterators)
+            else:
+                value_type = None
+            operations.append(_RuntimeBitRangePopcountOperation(node, value_type))
+        return _RuntimeBitRangePopcountInfo(selection, False, mixed_operations=tuple(operations))
+
+    def __runtime_bit_range_popcount_rotation_distance_type(
+            self, node: ast.FunctionCall, iterators: set[str] | dict[str, ValueType] | None) -> ValueType:
+        distance = node.arguments[1]
+        distance_type, _ = self.__loop_expression_info(distance, iterators)
+        self.__resolve_builtin_function(node.name.name, (ValueType.BIT_REGISTER, distance_type))
+        self.__validate_bitwise_indices(distance, iterators)
+        if not self.__is_initialization_process:
+            active = set(iterators or ()) | {name for scope in self.__loop_bindings for name in scope}
+            for name in self.__loop_bound_names(distance) - active:
+                if name in self.__constant_source_types:
+                    if name not in self.__declared_constant_variables:
+                        raise NoVariableNameException(name)
+                elif name in self.__classical_source_types:
+                    self.__type_of(self.__capitalize_variable_name(name))
+        return distance_type
+
     def __runtime_bit_range_popcount_rotation_chain_info(
             self, argument: ast.FunctionCall, outer_complemented: bool,
             iterators: set[str] | dict[str, ValueType] | None) -> _RuntimeBitRangePopcountInfo | None:
@@ -7868,20 +7929,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return None
         rotations = []
         for node in reversed(nodes):
-            distance = node.arguments[1]
             # Preserve ordinary rotation promotions and source-order visibility
             # without evaluating, converting, or normalizing any distance.
-            distance_type, _ = self.__loop_expression_info(distance, iterators)
-            self.__resolve_builtin_function(node.name.name, (ValueType.BIT_REGISTER, distance_type))
-            self.__validate_bitwise_indices(distance, iterators)
-            if not self.__is_initialization_process:
-                active = set(iterators or ()) | {name for scope in self.__loop_bindings for name in scope}
-                for name in self.__loop_bound_names(distance) - active:
-                    if name in self.__constant_source_types:
-                        if name not in self.__declared_constant_variables:
-                            raise NoVariableNameException(name)
-                    elif name in self.__classical_source_types:
-                        self.__type_of(self.__capitalize_variable_name(name))
+            distance_type = self.__runtime_bit_range_popcount_rotation_distance_type(node, iterators)
             rotations.append(_RuntimeBitRangePopcountRotation(node, distance_type))
         single = rotations[0] if len(rotations) == 1 else None
         return _RuntimeBitRangePopcountInfo(
