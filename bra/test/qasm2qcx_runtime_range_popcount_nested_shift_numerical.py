@@ -42,6 +42,15 @@ class BackendTests(unittest.TestCase):
     program = casts.BackendTests.program
     check_exact = casts.BackendTests.check_exact
 
+    def test_documented_nested_shift_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-range-popcount-nested-shift-example -->'
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        source = source.replace('OPENQASM 3.0;', '', 1)
+        self.check_exact(source, tuple((name, None) for name in
+            ('original', 'lost', 'before', 'after', 'both', 'third', 'filled', 'skipped', 'fresh')),
+            (1, 0, 3, 4, 1, 1, 4, 0, 1))
+
     def check_case(self, size, pattern, constant, first, step, last, chains, cases, modes=None,
                    parities=((0, 0), (1, 0), (0, 1), (1, 1))):
         depth = len(chains[0])
