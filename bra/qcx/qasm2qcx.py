@@ -6983,8 +6983,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
                     if range_info.mixed_operations:
-                        raise UnsupportedOpenQASMError('runtime range popcount mixed shift/rotation lowering')
-                    if len(range_info.rotations) > 1:
+                        result = self.__emit_bit_range_population_count(
+                            range_info.selection, mixed_operations=range_info.mixed_operations)
+                    elif len(range_info.rotations) > 1:
                         result = self.__emit_bit_range_population_count(
                             range_info.selection, range_info.rotation_complemented, rotations=range_info.rotations)
                     else:
@@ -7022,7 +7023,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             rotation: ast.FunctionCall | None = None,
             shifts: tuple[_RuntimeBitRangePopcountShift, ...] = (),
             operations: tuple[_RuntimeBitRangePopcountOperation, ...] = (),
-            rotations: tuple[_RuntimeBitRangePopcountRotation, ...] = ()) -> str:
+            rotations: tuple[_RuntimeBitRangePopcountRotation, ...] = (),
+            mixed_operations: tuple[_RuntimeBitRangePopcountOperation, ...] = ()) -> str:
         # The enclosing population-count visitor owns all scratch storage and
         # preserves only the returned accumulator, including after failures.
         if len(self.__qcx_lines) + 1 > self.MAX_LOOP_OUTPUT_LINES:
@@ -7049,8 +7051,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # normalizing/negating the distance or materializing rotated bits.
             complemented = complemented != outer_complemented
             outer_complemented = False
-        windowed = shift is not None or len(shifts) > 1 or bool(operations)
-        if operations:
+        windowed = shift is not None or len(shifts) > 1 or bool(operations) or bool(mixed_operations)
+        if mixed_operations:
+            result, starts, ends, intervals, complemented = self.__emit_bit_range_popcount_mixed_intervals(
+                mixed_operations, selection.source_width, count, prefix)
+            slot = self.__add_new_temporary_variable(ValueType.INT)
+            index = self.__add_new_temporary_variable(ValueType.INT)
+            end = self.__add_new_temporary_variable(ValueType.INT)
+        elif operations:
             result, index, end, complemented = self.__emit_bit_range_popcount_interleaved_window(
                 operations, count, prefix)
             outer_complemented = False
@@ -7093,8 +7101,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if not windowed:
             initial = f':UINT:{count}' if complemented else '0'
             self.__qcx_lines.extend([f'LET {result} := {initial}', f'LET {index} := 0'])
+        if mixed_operations:
+            self.__qcx_lines.extend([
+                f'LET {slot} := 0', f'@{prefix}_INTERVAL',
+                f'JUMPIF {prefix}_DONE {slot} >= {intervals}',
+                f'LET {index} := {starts}:{slot}', f'LET {end} := {ends}:{slot}',
+            ])
+        interval_done = prefix + ('_INTERVAL_NEXT' if mixed_operations else '_DONE')
         self.__qcx_lines.extend([
-            f'@{prefix}_LOOP', f'JUMPIF {prefix}_DONE {index} >= {end}',
+            f'@{prefix}_LOOP', f'JUMPIF {interval_done} {index} >= {end}',
             f'LET {position} := {positions}:{index}',
         ])
         if words is None:
@@ -7112,8 +7127,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # Every accumulator update remains between zero and the selected length.
         self.__qcx_lines.extend([
             f'LET {result} {operation} :UINT:{bit}', f'LET {index} += 1',
-            f'JUMP {prefix}_LOOP', f'@{prefix}_DONE',
+            f'JUMP {prefix}_LOOP',
         ])
+        if mixed_operations:
+            self.__qcx_lines.extend([
+                f'@{interval_done}', f'LET {slot} += 1', f'JUMP {prefix}_INTERVAL',
+            ])
+        self.__qcx_lines.append(f'@{prefix}_DONE')
         if len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES:
             raise InvalidFunctionCallException('Runtime range popcount exceeds QCX output limit')
         if windowed:
@@ -7126,11 +7146,31 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, operations: tuple[_RuntimeBitRangePopcountOperation, ...], count: str,
             prefix: str) -> tuple[str | None, ...]:
         # Evaluate all distances in execution order, even after complete bit
-        # loss. Save min(distance, n) in INT storage for backward analysis.
+        # loss. Shifts save min(distance, n); rotations save a normalized
+        # left-rotation distance after the ordinary checked INT conversion.
         distances = []
         for number, operation in enumerate(operations):
             if isinstance(operation.expression, ast.UnaryExpression):
                 distances.append(None)
+                continue
+            if isinstance(operation.expression, ast.FunctionCall):
+                value, value_type, kind = self.__condition_operand(operation.expression.arguments[1])
+                operand, _ = self.__converted_operand(value, value_type, kind, ValueType.INT)
+                distance = self.__add_new_temporary_variable(ValueType.INT)
+                label = f'{prefix}_DISTANCE_{number}'
+                self.__qcx_lines.extend([
+                    f'LET {distance} := {operand}', f'LET {distance} %= {count}',
+                    f'JUMPIF {label}_NORMALIZED {distance} >= 0',
+                    f'LET {distance} += {count}', f'@{label}_NORMALIZED',
+                ])
+                if operation.expression.name.name == 'rotr':
+                    remaining = self.__add_new_temporary_variable(ValueType.INT)
+                    self.__qcx_lines.extend([
+                        f'JUMPIF {label}_READY {distance} == 0',
+                        f'LET {remaining} := {count}', f'LET {remaining} -= {distance}',
+                        f'LET {distance} := {remaining}', f'@{label}_READY',
+                    ])
+                distances.append(distance)
                 continue
             value, value_type, kind = self.__condition_operand(operation.expression.rhs)
             distance = self.__add_new_temporary_variable(ValueType.INT)
@@ -7162,6 +7202,91 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 ])
             distances.append(distance)
         return tuple(distances)
+
+    def __emit_bit_range_popcount_mixed_intervals(
+            self, operations: tuple[_RuntimeBitRangePopcountOperation, ...], width: int,
+            count: str, prefix: str) -> tuple[str, str, str, str, bool]:
+        distances = self.__capture_bit_range_popcount_distances(operations, count, prefix)
+        # Inverse shifts only clip/translate disjoint intervals. An inverse
+        # rotation has one circular cut, splitting at most one interval.
+        # There cannot be more nonempty disjoint intervals than positions.
+        rotations = sum(isinstance(record.expression, ast.FunctionCall) for record in operations)
+        capacity = min(1 + rotations, 2 * width, self.MAX_RUNTIME_BIT_RANGE_POSITIONS)
+        starts, ends, next_starts, next_ends = (
+            self.__add_temporary_int_array(capacity, 'POPCOUNT_INTERVALS') for _ in range(4))
+        length, next_length, slot, start, end, removed, remaining = (
+            self.__add_new_temporary_variable(ValueType.INT) for _ in range(7))
+        result = self.__add_new_temporary_variable(ValueType.UINT)
+        self.__qcx_lines.extend([
+            f'LET {result} := 0', f'LET {length} := 1',
+            f'LET {starts}:0 := 0', f'LET {ends}:0 := {count}',
+        ])
+        complemented = False
+        for number in reversed(range(len(operations))):
+            operation = operations[number].expression
+            if isinstance(operation, ast.UnaryExpression):
+                complemented = not complemented
+                continue
+            label = f'{prefix}_REVERSE_{number}'
+            self.__qcx_lines.extend([
+                f'LET {next_length} := 0', f'LET {slot} := 0', f'@{label}_LOOP',
+                f'JUMPIF {label}_DONE {slot} >= {length}',
+                f'LET {start} := {starts}:{slot}', f'LET {end} := {ends}:{slot}',
+            ])
+            if isinstance(operation, ast.FunctionCall):
+                self.__emit_bit_range_popcount_reverse_rotation(
+                    distances[number], count, start, end, remaining,
+                    next_starts, next_ends, next_length, label)
+            else:
+                if complemented:
+                    self.__qcx_lines.extend([f'LET {removed} := {end}', f'LET {removed} -= {start}'])
+                self.__emit_bit_range_popcount_reverse_shift(
+                    operation, distances[number], count, start, end, remaining, label)
+                if complemented:
+                    # Only the suffix parity acts on this shift's zero fill.
+                    # Count those positions once, and remove them from tracing.
+                    self.__qcx_lines.extend([
+                        f'LET {remaining} := {end}', f'LET {remaining} -= {start}',
+                        f'LET {removed} -= {remaining}', f'LET {result} += :UINT:{removed}',
+                    ])
+            self.__qcx_lines.extend([
+                f'JUMPIF {label}_SKIP {start} >= {end}',
+                f'LET {next_starts}:{next_length} := {start}',
+                f'LET {next_ends}:{next_length} := {end}', f'LET {next_length} += 1',
+                f'@{label}_SKIP', f'LET {slot} += 1', f'JUMP {label}_LOOP', f'@{label}_DONE',
+            ])
+            starts, ends, next_starts, next_ends = next_starts, next_ends, starts, ends
+            length, next_length = next_length, length
+        if complemented:
+            # Original surviving bits contribute length-k. Fill contributions
+            # and these lengths cover disjoint subsets of the n output bits.
+            self.__qcx_lines.extend([
+                f'LET {slot} := 0', f'@{prefix}_LENGTHS',
+                f'JUMPIF {prefix}_LENGTHS_DONE {slot} >= {length}',
+                f'LET {remaining} := {ends}:{slot}', f'LET {remaining} -= {starts}:{slot}',
+                f'LET {result} += :UINT:{remaining}', f'LET {slot} += 1',
+                f'JUMP {prefix}_LENGTHS', f'@{prefix}_LENGTHS_DONE',
+            ])
+        return result, starts, ends, length, complemented
+
+    def __emit_bit_range_popcount_reverse_rotation(
+            self, distance: str, count: str, start: str, end: str, remaining: str,
+            starts: str, ends: str, length: str, label: str) -> None:
+        # Trace a normalized left rotation backward by subtracting distance
+        # modulo n. Never compute index+n or negate an unnormalized INT_MIN.
+        self.__qcx_lines.extend([
+            f'LET {remaining} := {count}', f'LET {remaining} -= {distance}',
+            f'JUMPIF {label}_LOW {end} <= {distance}',
+            f'JUMPIF {label}_HIGH {start} >= {distance}',
+            # The interval straddles the circular cut. Save its wrapped half;
+            # the caller appends the other half through the common path.
+            f'LET {start} += {remaining}', f'LET {starts}:{length} := {start}',
+            f'LET {ends}:{length} := {count}', f'LET {length} += 1',
+            f'LET {start} := 0', f'LET {end} -= {distance}', f'JUMP {label}_NEXT',
+            f'@{label}_LOW', f'LET {start} += {remaining}', f'LET {end} += {remaining}',
+            f'JUMP {label}_NEXT', f'@{label}_HIGH',
+            f'LET {start} -= {distance}', f'LET {end} -= {distance}', f'@{label}_NEXT',
+        ])
 
     def __emit_bit_range_popcount_interleaved_window(
             self, operations: tuple[_RuntimeBitRangePopcountOperation, ...], count: str,
