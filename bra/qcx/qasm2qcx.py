@@ -6971,11 +6971,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__expression_kind = ExpressionKind.ARITHMETIC
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
-                    if range_info.operations:
-                        raise UnsupportedOpenQASMError('runtime range popcount interleaved-complement lowering')
                     result = self.__emit_bit_range_population_count(
                         range_info.selection, range_info.complemented, range_info.shift,
-                        range_info.outer_complemented, range_info.rotation, range_info.shifts)
+                        range_info.outer_complemented, range_info.rotation, range_info.shifts, range_info.operations)
                 else:
                     with self.__bit_register_expression_value(argument) as values:
                         # A register can be wider than a packed UINT. Count its
@@ -7005,7 +7003,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, selection: _RuntimeBitRangeSelection, complemented: bool = False,
             shift: ast.BinaryExpression | None = None, outer_complemented: bool = False,
             rotation: ast.FunctionCall | None = None,
-            shifts: tuple[_RuntimeBitRangePopcountShift, ...] = ()) -> str:
+            shifts: tuple[_RuntimeBitRangePopcountShift, ...] = (),
+            operations: tuple[_RuntimeBitRangePopcountOperation, ...] = ()) -> str:
         # The enclosing population-count visitor owns all scratch storage and
         # preserves only the returned accumulator, including after failures.
         if len(self.__qcx_lines) + 1 > self.MAX_LOOP_OUTPUT_LINES:
@@ -7029,8 +7028,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # normalizing/negating the distance or materializing rotated bits.
             complemented = complemented != outer_complemented
             outer_complemented = False
-        windowed = shift is not None or len(shifts) > 1
-        if windowed:
+        windowed = shift is not None or len(shifts) > 1 or bool(operations)
+        if operations:
+            result, index, end, complemented = self.__emit_bit_range_popcount_interleaved_window(
+                operations, count, prefix)
+            outer_complemented = False
+            self.__qcx_lines.append(f'JUMPIF {prefix}_DONE {index} >= {end}')
+        elif windowed:
             result = self.__add_new_temporary_variable(ValueType.UINT)
             # An oversized shift contributes only filled zeros, or ones after
             # an outer complement. Initialize before the early-result jump.
@@ -7096,6 +7100,108 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # must still exist for later expressions that reuse these names.
             self.__hoist_temporary_declarations(previous_declarations)
         return result
+
+    def __capture_bit_range_popcount_distances(
+            self, operations: tuple[_RuntimeBitRangePopcountOperation, ...], count: str,
+            prefix: str) -> tuple[str | None, ...]:
+        # Evaluate all distances in execution order, even after complete bit
+        # loss. Save min(distance, n) in INT storage for backward analysis.
+        distances = []
+        for number, operation in enumerate(operations):
+            if isinstance(operation.expression, ast.UnaryExpression):
+                distances.append(None)
+                continue
+            value, value_type, kind = self.__condition_operand(operation.expression.rhs)
+            distance = self.__add_new_temporary_variable(ValueType.INT)
+            if kind == ValueKind.LITERAL:
+                raw = int(value)
+                if raw < 0:
+                    self.__qcx_lines.append(f'ASSERT {count} < 0')
+                    operand = '0'
+                else:
+                    operand = count if raw >= self.QCX_INT_MAX else str(raw)
+                self.__qcx_lines.append(f'LET {distance} := {operand}')
+                if 0 <= raw < self.QCX_INT_MAX:
+                    label = f'{prefix}_DISTANCE_{number}_CAPTURED'
+                    self.__qcx_lines.extend([
+                        f'JUMPIF {label} {distance} <= {count}',
+                        f'LET {distance} := {count}', f'@{label}',
+                    ])
+            else:
+                captured = self.__add_new_temporary_variable(value_type)
+                self.__qcx_lines.append(f'LET {captured} := {value}')
+                if value_type == ValueType.INT:
+                    self.__qcx_lines.append(f'ASSERT {captured} >= 0')
+                limit = f':UINT:{count}' if value_type == ValueType.UINT else count
+                operand = f':INT:{captured}' if value_type == ValueType.UINT else captured
+                label = f'{prefix}_DISTANCE_{number}_CAPTURED'
+                self.__qcx_lines.extend([
+                    f'LET {distance} := {count}', f'JUMPIF {label} {captured} >= {limit}',
+                    f'LET {distance} := {operand}', f'@{label}',
+                ])
+            distances.append(distance)
+        return tuple(distances)
+
+    def __emit_bit_range_popcount_interleaved_window(
+            self, operations: tuple[_RuntimeBitRangePopcountOperation, ...], count: str,
+            prefix: str) -> tuple[str, str, str, bool]:
+        distances = self.__capture_bit_range_popcount_distances(operations, count, prefix)
+        result = self.__add_new_temporary_variable(ValueType.UINT)
+        index = self.__add_new_temporary_variable(ValueType.INT)
+        end = self.__add_new_temporary_variable(ValueType.INT)
+        removed = self.__add_new_temporary_variable(ValueType.INT)
+        remaining = self.__add_new_temporary_variable(ValueType.INT)
+        self.__qcx_lines.extend([f'LET {result} := 0', f'LET {index} := 0', f'LET {end} := {count}'])
+        complemented = False
+        for number in reversed(range(len(operations))):
+            operation = operations[number].expression
+            if isinstance(operation, ast.UnaryExpression):
+                complemented = not complemented
+                continue
+            if complemented:
+                self.__qcx_lines.extend([f'LET {removed} := {end}', f'LET {removed} -= {index}'])
+            self.__emit_bit_range_popcount_reverse_shift(
+                operation, distances[number], count, index, end, remaining, f'{prefix}_REVERSE_{number}')
+            if complemented:
+                # Positions traced to this shift's zero fill become ones.
+                # Count each such position once, then stop tracing it.
+                self.__qcx_lines.extend([
+                    f'LET {remaining} := {end}', f'LET {remaining} -= {index}',
+                    f'LET {removed} -= {remaining}', f'LET {result} += :UINT:{removed}',
+                ])
+        if complemented:
+            # Surviving original bits contribute length-k instead of k.
+            self.__qcx_lines.extend([
+                f'LET {remaining} := {end}', f'LET {remaining} -= {index}',
+                f'LET {result} += :UINT:{remaining}',
+            ])
+        return result, index, end, complemented
+
+    def __emit_bit_range_popcount_reverse_shift(
+            self, shift: ast.BinaryExpression, distance: str, count: str,
+            index: str, end: str, remaining: str, label: str) -> None:
+        # Trace [index,end) backward to this shift's input. All coordinates
+        # and the captured distance lie in [0,n]; the interval never grows.
+        if shift.op.name == '<<':
+            self.__qcx_lines.extend([
+                f'JUMPIF {label}_EMPTY {end} <= {distance}',
+                f'LET {end} -= {distance}',
+                f'JUMPIF {label}_LOWER {index} >= {distance}',
+                f'LET {index} := 0', f'JUMP {label}_NEXT',
+                f'@{label}_LOWER', f'LET {index} -= {distance}', f'JUMP {label}_NEXT',
+            ])
+        else:
+            self.__qcx_lines.extend([
+                f'LET {remaining} := {count}', f'LET {remaining} -= {distance}',
+                f'JUMPIF {label}_EMPTY {index} >= {remaining}',
+                f'LET {index} += {distance}',
+                f'JUMPIF {label}_UPPER {end} <= {remaining}',
+                f'LET {end} := {remaining}',
+                f'@{label}_UPPER', f'LET {end} += {distance}', f'JUMP {label}_NEXT',
+            ])
+        self.__qcx_lines.extend([
+            f'@{label}_EMPTY', f'LET {index} := 0', f'LET {end} := 0', f'@{label}_NEXT',
+        ])
 
     def __emit_bit_range_popcount_nested_shift_window(
             self, shifts: tuple[_RuntimeBitRangePopcountShift, ...], count: str, prefix: str) -> tuple[str, str]:
