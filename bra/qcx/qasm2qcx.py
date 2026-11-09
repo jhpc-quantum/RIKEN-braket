@@ -335,6 +335,13 @@ class _RuntimeBitRangePopcountBitwise:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeBitRangePopcountPair:
+    expression: ast.BinaryExpression
+    # The left selection is stored in the enclosing popcount info.
+    right_selection: _RuntimeBitRangeSelection
+
+
+@dataclasses.dataclass(frozen=True)
 class _RuntimeBitRangePopcountInfo:
     selection: _RuntimeBitRangeSelection
     # Parity on the source range; outer parity applies after a shift/rotation.
@@ -353,6 +360,7 @@ class _RuntimeBitRangePopcountInfo:
     # Mixed chains retain every original node, innermost to outermost.
     mixed_operations: tuple[_RuntimeBitRangePopcountOperation, ...] = ()
     bitwise: _RuntimeBitRangePopcountBitwise | None = None
+    pair: _RuntimeBitRangePopcountPair | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -6991,7 +6999,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__expression_kind = ExpressionKind.ARITHMETIC
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
-                    if range_info.bitwise is not None:
+                    if range_info.pair is not None:
+                        raise UnsupportedOpenQASMError('runtime range-pair bitwise popcount lowering')
+                    elif range_info.bitwise is not None:
                         result = self.__emit_bit_range_bitwise_population_count(range_info)
                     elif range_info.mixed_operations:
                         result = self.__emit_bit_range_population_count(
@@ -8042,6 +8052,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             iterators: set[str] | dict[str, ValueType] | None) -> _RuntimeBitRangePopcountInfo | None:
         selection = self.__runtime_bit_range_source(expression.lhs, iterators)
         if selection is not None:
+            right = self.__runtime_bit_range_source(expression.rhs, iterators)
+            if right is not None:
+                # Validate both ranges in written order without inferring a
+                # selected width or comparing their runtime lengths here.
+                return _RuntimeBitRangePopcountInfo(selection, False, pair=_RuntimeBitRangePopcountPair(
+                    expression, right))
             fixed = expression.rhs
             width = self.__runtime_range_popcount_fixed_width(fixed, iterators)
             range_on_left = True
