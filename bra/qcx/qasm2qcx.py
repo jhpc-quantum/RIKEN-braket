@@ -370,7 +370,7 @@ class _RuntimeBitRangePopcountInfo:
     bitwise: _RuntimeBitRangePopcountBitwise | None = None
     pair: _RuntimeBitRangePopcountPair | None = None
     binary_complements: _RuntimeBitRangePopcountComplements | None = None
-    # Shift/complement wrappers around a binary result, innermost to outermost.
+    # Shift/rotation/complement wrappers around a binary result, innermost to outermost.
     result_operations: tuple[_RuntimeBitRangePopcountOperation, ...] = ()
 
 
@@ -7010,6 +7010,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__expression_kind = ExpressionKind.ARITHMETIC
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
+                    if any(isinstance(record.expression, ast.FunctionCall)
+                           for record in range_info.result_operations):
+                        raise UnsupportedOpenQASMError('rotated runtime-range bitwise popcount lowering')
                     if range_info.pair is not None:
                         result = self.__emit_bit_range_pair_population_count(range_info)
                     elif range_info.bitwise is not None:
@@ -8188,15 +8191,21 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __runtime_bit_range_popcount_result_info(
             self, info: _RuntimeBitRangePopcountInfo,
-            nodes: list[ast.UnaryExpression | ast.BinaryExpression],
+            nodes: list[ast.UnaryExpression | ast.BinaryExpression | ast.FunctionCall],
             iterators: set[str] | dict[str, ValueType] | None) -> _RuntimeBitRangePopcountInfo:
         # Binary metadata has already validated the operands and their widths.
         # Keep every wrapper, including even complement groups, and validate
-        # shift distances once in execution order without reading their values.
-        operations = tuple(_RuntimeBitRangePopcountOperation(
-            node, self.__bit_index_info(node.rhs, iterators, role='register shift count')[0]
-            if isinstance(node, ast.BinaryExpression) else None) for node in reversed(nodes))
-        return dataclasses.replace(info, result_operations=operations)
+        # distances once in execution order without reading their values.
+        operations = []
+        for node in reversed(nodes):
+            if isinstance(node, ast.BinaryExpression):
+                value_type, _ = self.__bit_index_info(node.rhs, iterators, role='register shift count')
+            elif isinstance(node, ast.FunctionCall):
+                value_type = self.__runtime_bit_range_popcount_rotation_distance_type(node, iterators)
+            else:
+                value_type = None
+            operations.append(_RuntimeBitRangePopcountOperation(node, value_type))
+        return dataclasses.replace(info, result_operations=tuple(operations))
 
     def __runtime_bit_range_popcount_bitwise_info(
             self, expression: ast.BinaryExpression,
@@ -8297,6 +8306,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 source = source.arguments[0]
             else:
                 break
+        if has_rotation and isinstance(source, ast.BinaryExpression) and source.op.name in ('&', '|', '^'):
+            info = self.__runtime_bit_range_popcount_bitwise_info(
+                source, iterators, original=source, outer_complemented=False)
+            if info is not None:
+                return self.__runtime_bit_range_popcount_result_info(info, nodes, iterators)
         if not (has_shift and has_rotation):
             return None
         selection = self.__runtime_bit_range_source(source, iterators)
