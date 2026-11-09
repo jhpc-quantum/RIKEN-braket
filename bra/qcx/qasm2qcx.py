@@ -370,6 +370,8 @@ class _RuntimeBitRangePopcountInfo:
     bitwise: _RuntimeBitRangePopcountBitwise | None = None
     pair: _RuntimeBitRangePopcountPair | None = None
     binary_complements: _RuntimeBitRangePopcountComplements | None = None
+    # Shift/complement wrappers around a binary result, innermost to outermost.
+    result_operations: tuple[_RuntimeBitRangePopcountOperation, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -7008,6 +7010,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__expression_kind = ExpressionKind.ARITHMETIC
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
+                    if range_info.result_operations:
+                        raise UnsupportedOpenQASMError('shifted runtime-range bitwise popcount lowering')
                     if range_info.pair is not None:
                         result = self.__emit_bit_range_pair_population_count(range_info)
                     elif range_info.bitwise is not None:
@@ -8122,6 +8126,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     break
             selection = self.__runtime_bit_range_source(source, iterators)
             if selection is None:
+                if isinstance(source, ast.BinaryExpression) and source.op.name in ('&', '|', '^'):
+                    info = self.__runtime_bit_range_popcount_bitwise_info(
+                        source, iterators, original=source, outer_complemented=False)
+                    if info is not None:
+                        return self.__runtime_bit_range_popcount_result_info(info, nodes, iterators)
                 return self.__runtime_bit_range_popcount_mixed_info(original, iterators)
             # Validate every original count in execution order without reading
             # its value, including after a shift that could discard all bits.
@@ -8148,6 +8157,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # Other operators cannot turn a nested raw range into this operand.
         selection = self.__runtime_bit_range_source(argument, iterators)
         return None if selection is None else _RuntimeBitRangePopcountInfo(selection, outer_complemented)
+
+    def __runtime_bit_range_popcount_result_info(
+            self, info: _RuntimeBitRangePopcountInfo,
+            nodes: list[ast.UnaryExpression | ast.BinaryExpression],
+            iterators: set[str] | dict[str, ValueType] | None) -> _RuntimeBitRangePopcountInfo:
+        # Binary metadata has already validated the operands and their widths.
+        # Keep every wrapper, including even complement groups, and validate
+        # shift distances once in execution order without reading their values.
+        operations = tuple(_RuntimeBitRangePopcountOperation(
+            node, self.__bit_index_info(node.rhs, iterators, role='register shift count')[0]
+            if isinstance(node, ast.BinaryExpression) else None) for node in reversed(nodes))
+        return dataclasses.replace(info, result_operations=operations)
 
     def __runtime_bit_range_popcount_bitwise_info(
             self, expression: ast.BinaryExpression,
