@@ -4583,6 +4583,87 @@ class RuntimeRangePopcountComplementShiftIntegrationTests(unittest.TestCase):
         self.assert_clean(c)
 
 
+class RuntimeRangePopcountNestedShiftIntegrationTests(unittest.TestCase):
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    prefix = RuntimeRangePopcountFoundationTests.prefix
+    assert_clean = RuntimeRangePopcountIntegrationTests.assert_clean
+
+    def test_nested_scalar_calls_distances_bounds_indices_and_register_consumers(self):
+        c = self.converter(self.prefix + 'array[uint,2] values={popcount((flags[start:stop] << step) >> bound), '
+            'popcount(~((C[start:stop] >> bound) << step))}; '
+            'values[popcount((one[start:start] << 0) >> 0)]+=popcount(~(((~wide[start:stop]) << step) >> bound)); '
+            'uint nested=popcount(uint[8](popcount(~((flags[start:stop] << step) >> bound)))); '
+            'uint counted=popcount((flags[start:stop] << popcount((C[start:stop] << step) >> bound)) >> bound); '
+            'uint bounded=popcount((flags[start:int(popcount((C[start:stop] << step) >> bound))] << step) >> bound); '
+            'bit[4] packed=bit[4](uint[4](popcount(~(((~flags[start:stop]) << step) >> bound)))); '
+            'float root=sqrt(popcount(~((flags[start:stop] << step) >> bound)) + uint(1));')
+        self.assert_clean(c)
+
+    def test_loops_branches_bounds_and_sets_preserve_storage_scopes_and_labels(self):
+        body = ('bound+=popcount(~(((~C[start:stop]) << step) >> bound)); '
+                'bound+=popcount(((flags[start:stop] << step) >> bound) << stop);')
+        existing = {line for line in self.converter(self.prefix) if line.startswith('VAR QASM2QCX_')}
+        for wrapper in ('if (condition) {{ {} }}', 'while (start<stop) {{ {} start+=1; }}',
+                        'for int i in [start:stop] {{ {} }}', 'for int start in [0:2] {{ {} }}',
+                        'for int start in {{start,stop}} {{ {} }}', 'for int start in indices {{ {} }}'):
+            with self.subTest(wrapper=wrapper):
+                c = self.converter(self.prefix + wrapper.format(body))
+                self.assert_clean(c)
+                if wrapper != 'for int start in [0:2] {{ {} }}':
+                    lines = list(c)
+                    first = next(i for i, line in enumerate(lines) if line.startswith(('LET ', '@', 'ASSERT ', 'JUMP')))
+                    self.assertTrue(all(i < first for i, line in enumerate(lines)
+                                        if line.startswith('VAR QASM2QCX_') and line not in existing))
+        c = self.converter(self.prefix + 'uint result=0; '
+            'for int i in [popcount((flags[start:stop] << step) >> bound):popcount((C[start:stop] << step) >> bound)] '
+            '{ result+=uint(i); } '
+            'for int i in {popcount(~(((~flags[start:stop]) << step) >> bound)),popcount(~((C[start:stop] << step) >> bound))} '
+            '{ result+=uint(i); }')
+        self.assert_clean(c)
+
+    def test_skipped_paths_still_validate_all_count_types_visibility_and_shape(self):
+        c = self.converter(self.prefix + 'uint result=6; '
+            'bool left=false && bool(popcount(~(((~flags[start:0:999]) << uint(-1)) >> -1))); '
+            'bool right=true || bool(popcount(((C[start/0:stop] << 999) >> bound/0) << -1)); '
+            'while (false) { result=popcount((flags[start:stop] << 999) >> step/0); } '
+            'for int outer in [1:0] { result=popcount((wide[outer:0:999] << uint(-1)) >> -1); }')
+        self.assert_clean(c)
+        for body in ('result=popcount(((flags[outer:stop] << 999) >> 0) << real);',
+                     'result=popcount((later[outer:stop] << step) >> bound);',
+                     'result=popcount((C[outer:stop] << 999) >> LATER);',
+                     'if (popcount((flags[outer:stop] << step) >> bound)) { }',
+                     'result=popcount((~~(flags[outer:stop] << step)) >> bound);',
+                     'result=popcount((rotl(flags[outer:stop], 1) << step) >> bound);',
+                     'for int C in [0:1] { result=popcount((C[outer:stop] << step) >> bound); }'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix + 'uint result=6; for int outer in [1:0] { ' + body +
+                               ' } bit[8] later; const int LATER=3;')
+
+    def test_measurement_feedback_and_broadcast_capture_each_distance_once(self):
+        c = self.converter('include "stdgates.inc"; qubit[2] q; bit[2] measured; int start=0; int stop=1; '
+            'int first_count=1; uint second_count=1; measured=measure q; '
+            'if (bool(popcount((measured[start:stop] << first_count) >> second_count))) { x q[0]; }')
+        statement = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; '
+            'p(float(popcount(~(((~measured[start:stop]) << first_count+1) >> second_count+1)))) q;').statements[0]
+        expression = statement.arguments[0].argument
+        info = c._QASM2QCXConverter__runtime_bit_range_popcount_info(expression.arguments[0])
+        expected = [item.expression.rhs for item in info.shifts]
+        capture = c._QASM2QCXConverter__capture_bit_range_positions
+        operand = c._QASM2QCXConverter__condition_operand
+        events = []
+        def condition(node):
+            if any(node is item for item in expected):
+                events.append(node)
+            return operand(node)
+        with patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions', wraps=capture) as selected, \
+             patch.object(c, '_QASM2QCXConverter__condition_operand', side_effect=condition):
+            c.visit(statement)
+        selected.assert_called_once()
+        self.assertEqual(events, expected)
+        self.assert_clean(c)
+
+
 class RuntimeRangePopcountRotationIntegrationTests(unittest.TestCase):
     expression = staticmethod(BuiltinFunctionSignatureTests.expression)
     converter = staticmethod(BuiltinFunctionSignatureTests.converter)
