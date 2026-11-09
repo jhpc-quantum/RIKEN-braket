@@ -6036,6 +6036,63 @@ class RuntimeRangePopcountNestedRotationIntegrationTests(unittest.TestCase):
         self.assert_clean(c)
 
 
+class RuntimeRangePopcountBitwiseIntegrationTests(unittest.TestCase):
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    prefix = RuntimeRangePopcountFoundationTests.prefix
+    assert_clean = RuntimeRangePopcountIntegrationTests.assert_clean
+
+    def test_nested_calls_array_indices_bounds_and_loop_scopes(self):
+        c = self.converter(self.prefix + 'array[uint,2] values={popcount(flags[start:stop] & "1010"),0}; '
+            'values[uint[1](popcount("1" ^ one[start:start]))]+=popcount(C[start:stop] | flags[0:3]); '
+            'uint nested=popcount(flags[start:stop] & rotl(C, popcount(flags[start:stop] ^ C))); '
+            'uint bounded=popcount(flags[int(popcount(flags[start:stop] & "0001")):stop] ^ "111"); '
+            'bit[4] packed=bit[4](uint[4](popcount(flags[start:stop] | "1111"))); '
+            'for int start in indices { bound+=popcount(C & flags[start:stop]); } '
+            'for int i in [popcount(flags[start:stop] & "0001"):popcount("0000" | flags[start:stop])] '
+            '{ bound+=uint(i); start=99; } start=0; '
+            'for int i in {popcount(flags[start:stop] & "0001"),popcount("0000" | flags[start:stop])} '
+            '{ bound+=uint(i); start=99; }')
+        self.assert_clean(c)
+
+    def test_skipped_paths_keep_static_validation_and_suppress_domain_evaluation(self):
+        body = 'bound+=popcount(flags[start:0:999] & (C << (step/0)));'
+        for wrapper in ('if (condition) {{ {} }}', 'while (condition) {{ {} }}',
+                        'for int i in [1:0] {{ {} }}', 'while (true) {{ break; {} }}',
+                        'for int i in [0:1] {{ continue; {} }}'):
+            with self.subTest(wrapper=wrapper):
+                self.assert_clean(self.converter(self.prefix + wrapper.format(body)))
+        for value in ('flags[outer:stop] & later', 'LATER ^ flags[outer:stop]',
+                      'flags[outer:stop] & (C << condition)', 'rotl(C) | flags[outer:stop]',
+                      'flags[outer:stop] & C[outer:stop]', '(~flags[outer:stop]) & C'):
+            with self.subTest(value=value), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix + f'for int outer in [1:0] {{ uint out=popcount({value}); }} '
+                    'bit[8] later; const bit[8] LATER="10101010";')
+
+    def test_measurement_feedback_and_broadcast_capture_operands_once(self):
+        c = self.converter('include "stdgates.inc"; qubit[2] q; bit[2] measured; bit[2] mask="01"; '
+            'int start=0; int stop=1; int distance=-1; measured=measure q; '
+            'if (bool(popcount(measured[start:stop] & mask))) { x q[0]; }')
+        statement = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; '
+            'p(float(popcount(rotl(mask, distance+1) ^ measured[start:stop]))) q;').statements[0]
+        expression = statement.arguments[0].argument
+        info = c._QASM2QCXConverter__runtime_bit_range_popcount_info(expression.arguments[0])
+        expected = [info.bitwise.fixed_operand.arguments[1], info.selection.bounds.start, info.selection.bounds.end]
+        capture = c._QASM2QCXConverter__capture_bit_range_positions
+        operand = c._QASM2QCXConverter__condition_operand
+        events = []
+        def condition(node):
+            if any(node is item for item in expected):
+                events.append(node)
+            return operand(node)
+        with patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions', wraps=capture) as selected, \
+             patch.object(c, '_QASM2QCXConverter__condition_operand', side_effect=condition):
+            c.visit(statement)
+        selected.assert_called_once()
+        self.assertEqual(events, expected)
+        self.assert_clean(c)
+
+
 class RuntimeRangePopcountMixedOperationIntegrationTests(unittest.TestCase):
     expression = staticmethod(BuiltinFunctionSignatureTests.expression)
     converter = staticmethod(BuiltinFunctionSignatureTests.converter)
