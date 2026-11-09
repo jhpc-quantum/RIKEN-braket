@@ -99,9 +99,9 @@ The converter currently covers:
   and overlap-safe assignment destinations;
 - runtime-dependent discrete-set bit-register expression operands with fixed
   result widths and snapshot reads;
-- `popcount` on runtime ranges, unary complement chains, shift chains, and one
-  rotation, with optional endpoint complements on mutable or constant bit registers,
-  bounded position storage, and a native UINT result;
+- `popcount` on runtime ranges, arbitrary complement/shift chains, and one
+  rotation with endpoint complements on mutable or constant bit registers,
+  with bounded position storage and a native UINT result;
 - runtime-dependent discrete-set bit-register assignment destinations, including
   bitwise and shift compound assignments;
 - equal-width bit-register `==` and `!=` comparisons, including static
@@ -1537,9 +1537,9 @@ sized `uint[n]` without modifying it. It returns native, unspecified-width
 `uint`, independently of the input width and destination type.
 
 Register inputs can be bit-string literals, whole registers (including `bit[1]`),
-static range/set selections, direct runtime ranges, their unary complement
-chains, or shift chains or one rotation with optional endpoint complement chains
-on named mutable or constant registers, or supported fixed-width register
+static range/set selections, direct runtime ranges, arbitrary complement/shift
+chains or one rotation with endpoint complements on named mutable or constant
+registers, or supported fixed-width register
 `~`, `&`, `|`, `^`, `<<`, `>>`,
 `rotl`, and `rotr` expressions. Repeated positions in a discrete selection are counted each
 time they appear. Scalar `bit`, scalar bit-register elements, signed integers,
@@ -1883,9 +1883,8 @@ bits and fills vacated positions with zero. Opposite shifts cannot simply cancel
 `("1000" << 1) >> 1` is `"0000"`, not `"1000"`. Parentheses determine grouping;
 unparenthesized shifts associate to the left.
 
-Optional complement chains may precede the first shift or follow the complete
-chain. Complements between successive shifts, including even complement chains,
-remain unsupported. The four-case table above still applies, where `m` now means
+For chains with complements only before the first shift or after the complete
+chain, the four-case table above still applies, where `m` now means
 the number of original selected positions surviving **every** shift and `k` is
 their original population count. The converter tracks this surviving interval
 and its current position with arithmetic bounded by the selected length; it
@@ -1901,8 +1900,9 @@ all-zero pattern nor endpoint complements suppress those checks. Evaluation
 stops at the first reached error.
 
 Counting the main range's surviving bits and preparing its constant lookup
-occur after all distance checks. An empty survivor interval then returns zero,
-or the original selected length when the outer complement parity is odd.
+occur after all distance checks. For these endpoint-only chains, an empty
+survivor interval returns zero, or the original selected length when the outer
+complement parity is odd.
 Declarations remain safe for reuse after that branch. Native UINT results,
 bounded position storage, negative indices,
 repeated normalized positions, mutable/constant sources, short-circuiting, and
@@ -1931,11 +1931,74 @@ right = 0;
 uint fresh = popcount((PATTERN[start:stop] << left) >> right);   // 1, after the empty-window branch.
 ```
 
-Interleaved shift/complement chains, nested rotations of the range value,
-rotation/shift combinations, and binary bitwise expressions over raw runtime
-ranges remain unsupported in `popcount`. For a known selected width, an explicit
-UINT cast can bridge to existing sized-UINT
-operations, such as `popcount(uint[4](~(flags[start:stop] << count)))`.
+Complements may also appear between successive shifts. Any chain of `~`, `<<`,
+and `>>` over one named runtime bit-register range is supported inside `popcount`:
+
+```qasm
+uint middle = popcount((~(flags[start:stop] << first)) >> second);
+uint longer = popcount(~((~(flags[start:step:stop] >> first)) << second));
+uint even = popcount((~~(flags[start:stop] << first)) >> second);
+```
+
+Each complement flips every bit of its immediate operand, including zeros
+introduced by earlier shifts. Later shifts can discard these generated ones.
+Complement placement therefore matters: `popcount((~("0000" << 1)) >> 1)` is
+three, while `popcount(~(("0000" << 1) >> 1))` is four. Parenthesize intermediate
+shift results to complement them; `~` binds more tightly than `<<` and `>>`.
+Consecutive complements reduce to parity, but complements separated by shifts
+cannot generally be combined into endpoint parity.
+
+The converter captures and validates the complete range, then evaluates and
+checks each distance once in execution order. The original INT/UINT shift rules
+apply: negative distances fail when reached, and oversized nonnegative
+distances discard all input bits. UINT distances are bounded by the selected
+length before signed conversion. Later distances still execute after complete
+original-bit loss, even when complement parity or a known result could make
+their values irrelevant. Even complement groups retain range and distance
+validation. Short-circuited and skipped paths suppress runtime evaluation while
+still validating names, types, and supported syntax.
+
+After distance capture, the converter traces the final positions backward
+through the chain. Positions supplied by a shift's zero fill contribute ones
+under odd complement parity and are then removed from further tracing. The
+remaining interval reaches the original selected bits and is counted with its
+remaining parity. Generated-one contributions are retained when no original
+bits survive. Interval coordinates, effective distances, and counts remain
+bounded by the selected length, without packing the source into native UINT or
+constructing intermediate registers. During the final counting pass, only
+surviving original positions are read from the main source; its constant lookup
+is skipped when none survive.
+Existing storage limits, repeated normalized positions, wide mutable/constant
+sources, declaration placement, and temporary cleanup are preserved.
+
+<!-- runtime-range-popcount-interleaved-complement-example -->
+```qasm
+OPENQASM 3.0;
+const bit[4] PATTERN = "0000";
+bit[4] flags = "1011";
+int start = 0;
+int stop = 3;
+int left = 1;
+uint right = 1;
+uint plain = popcount((PATTERN[start:stop] << left) >> right);    // 0.
+uint middle = popcount((~(PATTERN[start:stop] << left)) >> right); // 3: "0000" -> "1111" -> "0111".
+uint after = popcount(~((PATTERN[start:stop] << left) >> right)); // 4.
+uint even = popcount((~~(PATTERN[start:stop] << left)) >> right);  // 0.
+uint inverted = popcount(~((~(PATTERN[start:stop] << left)) >> right)); // 1.
+uint huge = uint(-1);
+uint generated = popcount((~(PATTERN[start:stop] << huge)) >> 0); // 4, with no original bits left.
+uint retained = popcount((~(PATTERN[start:stop] << huge)) >> right); // 3.
+uint longer = popcount((~((~(PATTERN[start:stop] << huge)) >> right)) << left); // 0.
+bool skipped = false && bool(popcount((~(PATTERN[start:stop] << huge)) >> -1)); // false; reached -1 would fail.
+left = 0;
+right = 0;
+uint fresh = popcount((~(flags[start:stop] << left)) >> right);   // 1, after a call with no original survivors.
+```
+
+Nested rotations of the range value, rotation/shift combinations, and binary
+bitwise expressions over raw runtime ranges remain unsupported in `popcount`.
+For a known selected width, an explicit UINT cast can bridge to existing
+sized-UINT operations, such as `popcount(uint[4](~(flags[start:stop] << count)))`.
 
 #### Circular bit rotations
 
@@ -2234,7 +2297,7 @@ or used as [bitwise compound-assignment RHS values](#runtime-range-rhs-bitwise-a
 Same-width [UINT casts](#casts-between-uint-values-and-bit-registers) also
 accept constant registers, static selections, runtime index sets, and runtime
 ranges, including supported bitwise, complement, shift, and rotation expressions.
-Runtime ranges, unary complement chains, shift chains, and one rotation with
+Runtime ranges, arbitrary complement/shift chains, and one rotation with
 endpoint complements support
 [population counts](#population-counts-of-runtime-bit-register-ranges).
 Other runtime-dependent constant-register range expressions, aliases, concatenation,
@@ -7893,6 +7956,24 @@ metadata validation, single capture/evaluation, variable comparison operands,
 declaration placement, temporary cleanup, output limits, and unsupported forms.
 Run with `--bra /path/to/bra`, including a UBSan build.
 
+`bra/test/qasm2qcx_runtime_range_popcount_interleaved_complement_numerical.py`
+checks all complement placements and shift directions, every native width, and
+sources through 129 bits. Its independent reference constructs every
+intermediate bit vector, applying zero fill and complements directly. Cases
+include exhaustive small vectors and distances, even complement groups, chains
+up to 16 shifts, generated ones after complete original-bit loss, reverse
+strides, negative indices, repeated normalized positions, native endpoints,
+huge literals, and storage reuse. Further cases cover nested calls, bounds,
+arrays, narrow results, fresh loop values, transfers, skipped errors,
+measurement feedback, and normal/fused gate parameters and powers. Reached
+failures verify range and distance errors before main-source counting or
+destination writes, including errors in a third distance after complete bit
+loss. The interleaved-complement example above is executed. Unit tests check
+original AST nodes, ordered validation and capture, forward distance evaluation
+before backward analysis, checked narrowing, variable comparison operands,
+declaration placement, temporary cleanup, output limits, and unsupported forms.
+Run with `--bra /path/to/bra`, including a UBSan build.
+
 `bra/test/qasm2qcx_constant_scalar_bit_numerical.py` checks scalar constant
 bit truth tables, runtime copies, indexed destinations, casts, array and nested
 function integration, short-circuiting, loops and transfers, iterator shadowing,
@@ -8712,6 +8793,7 @@ python3 bra/test/qasm2qcx_runtime_range_popcount_shift_numerical.py --bra bra/bi
 python3 bra/test/qasm2qcx_runtime_range_popcount_complement_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_range_popcount_rotation_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_range_popcount_nested_shift_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_range_popcount_interleaved_complement_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_bit_register_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_bit_register_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_bit_selection_loop_numerical.py --bra bra/bin/bra
