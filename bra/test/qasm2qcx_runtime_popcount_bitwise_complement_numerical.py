@@ -54,6 +54,15 @@ class BackendTests(unittest.TestCase):
     program = casts.BackendTests.program
     check_exact = casts.BackendTests.check_exact
 
+    def test_documented_complemented_bitwise_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-popcount-bitwise-complement-example -->'
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        source = source.replace('OPENQASM 3.0;', '', 1)
+        self.check_exact(source, tuple((name, None) for name in
+            ('plain', 'left', 'right', 'both', 'outer', 'all', 'even', 'odd', 'fixed', 'reversed',
+             'legacy', 'repeated', 'wide', 'skipped', 'fresh')), (2, 1, 1, 0, 2, 4, 2, 4, 3, 3, 1, 4, 65, 0, 2))
+
     def check_case(self, left, right, constants, depths=None):
         sa, pa, ba = left
         sb, pb, bb = right
