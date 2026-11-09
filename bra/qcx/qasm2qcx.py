@@ -315,6 +315,12 @@ class _RuntimeBitRangePopcountShift:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeBitRangePopcountOperation:
+    expression: ast.UnaryExpression | ast.BinaryExpression
+    count_type: ValueType | None = None
+
+
+@dataclasses.dataclass(frozen=True)
 class _RuntimeBitRangePopcountInfo:
     selection: _RuntimeBitRangeSelection
     # Parity on the source range; outer parity applies after a shift/rotation.
@@ -325,6 +331,8 @@ class _RuntimeBitRangePopcountInfo:
     rotation: ast.FunctionCall | None = None
     # Innermost to outermost. The single-shift fields retain the existing path.
     shifts: tuple[_RuntimeBitRangePopcountShift, ...] = ()
+    # Complete interleaved chain, innermost to outermost. Empty for fast paths.
+    operations: tuple[_RuntimeBitRangePopcountOperation, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -6963,6 +6971,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__expression_kind = ExpressionKind.ARITHMETIC
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
+                    if range_info.operations:
+                        raise UnsupportedOpenQASMError('runtime range popcount interleaved-complement lowering')
                     result = self.__emit_bit_range_population_count(
                         range_info.selection, range_info.complemented, range_info.shift,
                         range_info.outer_complemented, range_info.rotation, range_info.shifts)
@@ -7662,7 +7672,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, argument: ast.Expression,
             iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangePopcountInfo | None:
         outer_complemented = False
+        outer_nodes = []
         while isinstance(argument, ast.UnaryExpression) and argument.op.name == '~':
+            outer_nodes.append(argument)
             outer_complemented = not outer_complemented
             argument = argument.expression
         if isinstance(argument, ast.FunctionCall) and argument.name.name in ('rotl', 'rotr'):
@@ -7693,30 +7705,40 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 outer_complemented=outer_complemented, rotation=argument)
         if isinstance(argument, ast.BinaryExpression) and argument.op.name in ('<<', '>>'):
             source = argument
-            nodes = []
-            while isinstance(source, ast.BinaryExpression) and source.op.name in ('<<', '>>'):
-                nodes.append(source)
-                source = source.lhs
-            complemented = False
-            while isinstance(source, ast.UnaryExpression) and source.op.name == '~':
-                complemented = not complemented
-                source = source.expression
-            # Complements are allowed only at the endpoints. A complement
-            # between shifts leaves a non-range source and is not recognized.
+            nodes = list(outer_nodes)
+            while True:
+                if isinstance(source, ast.BinaryExpression) and source.op.name in ('<<', '>>'):
+                    nodes.append(source)
+                    source = source.lhs
+                elif isinstance(source, ast.UnaryExpression) and source.op.name == '~':
+                    nodes.append(source)
+                    source = source.expression
+                else:
+                    break
             selection = self.__runtime_bit_range_source(source, iterators)
             if selection is None:
                 return None
             # Validate every original count in execution order without reading
             # its value, including after a shift that could discard all bits.
-            shifts = tuple(_RuntimeBitRangePopcountShift(
-                node, self.__bit_index_info(node.rhs, iterators, role='register shift count')[0])
-                for node in reversed(nodes))
+            operations = tuple(_RuntimeBitRangePopcountOperation(
+                node, self.__bit_index_info(node.rhs, iterators, role='register shift count')[0]
+                if isinstance(node, ast.BinaryExpression) else None) for node in reversed(nodes))
+            shift_positions = [i for i, operation in enumerate(operations)
+                               if isinstance(operation.expression, ast.BinaryExpression)]
+            first_shift, last_shift = shift_positions[0], shift_positions[-1]
+            interleaved = any(isinstance(operation.expression, ast.UnaryExpression)
+                              for operation in operations[first_shift+1:last_shift])
+            # Before the first shift, every operation is a source complement.
+            complemented = bool(first_shift % 2)
+            shifts = tuple(_RuntimeBitRangePopcountShift(operation.expression, operation.count_type)
+                           for operation in operations if isinstance(operation.expression, ast.BinaryExpression))
             single = shifts[0] if len(shifts) == 1 else None
             return _RuntimeBitRangePopcountInfo(
                 selection, complemented,
                 shift=single.expression if single is not None else None,
                 count_type=single.count_type if single is not None else None,
-                outer_complemented=outer_complemented, shifts=shifts)
+                outer_complemented=outer_complemented, shifts=shifts,
+                operations=operations if interleaved else ())
         # Even complement parity still validates every bound and the source.
         # Other operators cannot turn a nested raw range into this operand.
         selection = self.__runtime_bit_range_source(argument, iterators)
