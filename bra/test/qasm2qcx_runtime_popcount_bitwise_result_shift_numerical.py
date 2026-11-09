@@ -47,6 +47,16 @@ class BackendTests(unittest.TestCase):
     program = binary.BackendTests.program
     check_exact = binary.BackendTests.check_exact
 
+    def test_documented_shifted_bitwise_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-popcount-bitwise-result-shift-example -->'
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        source = source.replace('OPENQASM 3.0;', '', 1)
+        self.check_exact(source, tuple((name, None) for name in
+            ('left', 'right', 'outer', 'before', 'mixed', 'operands', 'fixed', 'reversed',
+             'united', 'filled', 'literal', 'repeated', 'wide', 'skipped', 'fresh')),
+            (1, 1, 3, 2, 1, 2, 1, 1, 3, 3, 0, 3, 64, 0, 1))
+
     def check_case(self, left, right, constants, depths, chains):
         # Keep independent cases below the converter's per-program output limit,
         # including the fixed-width path's unrolled operations on 129-bit inputs.
