@@ -7008,8 +7008,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__expression_kind = ExpressionKind.ARITHMETIC
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
-                    if range_info.binary_complements is not None:
-                        raise UnsupportedOpenQASMError('complemented runtime-range bitwise popcount lowering')
                     if range_info.pair is not None:
                         result = self.__emit_bit_range_pair_population_count(range_info)
                     elif range_info.bitwise is not None:
@@ -7088,6 +7086,24 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__check_range_pair_popcount_output()
         return snapshot, count
 
+    def __emit_popcount_bitwise_bit(
+            self, bit: str, left: str | int, right: str | int, operator: str,
+            complements: _RuntimeBitRangePopcountComplements | None,
+            right_bit: str | None) -> None:
+        # Captures contain individual 0/1 bits. XOR with one flips exactly
+        # that bit, without extending a signed native complement's width.
+        self.__qcx_lines.append(f'LET {bit} := {left}')
+        if complements is not None:
+            if complements.left:
+                self.__qcx_lines.append(f'LET {bit} ^= 1')
+            if complements.right:
+                assert right_bit is not None
+                self.__qcx_lines.extend([f'LET {right_bit} := {right}', f'LET {right_bit} ^= 1'])
+                right = right_bit
+        self.__qcx_lines.append(f'LET {bit} {operator}= {right}')
+        if complements is not None and complements.outer:
+            self.__qcx_lines.append(f'LET {bit} ^= 1')
+
     def __emit_bit_range_pair_population_count(self, info: _RuntimeBitRangePopcountInfo) -> str:
         self.__check_range_pair_popcount_output()
         previous_declarations = self.__declared_temporary_variables.copy()
@@ -7100,13 +7116,19 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         result = self.__add_new_temporary_variable(ValueType.UINT)
         slot = self.__add_new_temporary_variable(ValueType.INT)
         bit = self.__add_new_temporary_variable(ValueType.BIT)
+        complements = info.binary_complements
+        right_bit = (self.__add_new_temporary_variable(ValueType.BIT)
+                     if complements is not None and complements.right else None)
         # Counts/indices fit INT and the accumulator never exceeds the count.
         # Runtime loops keep code size independent of the buffer capacities,
         # apart from existing constant-word lookup preparation.
         self.__qcx_lines.extend([
             f'LET {result} := 0', f'LET {slot} := 0', f'@{prefix}_PAIR_COUNT',
             f'JUMPIF {prefix}_DONE {slot} >= {count}',
-            f'LET {bit} := {left}:{slot}', f'LET {bit} {info.pair.expression.op.name}= {right}:{slot}',
+        ])
+        self.__emit_popcount_bitwise_bit(
+            bit, f'{left}:{slot}', f'{right}:{slot}', info.pair.expression.op.name, complements, right_bit)
+        self.__qcx_lines.extend([
             f'LET {result} += :UINT:{bit}', f'LET {slot} += 1',
             f'JUMP {prefix}_PAIR_COUNT', f'@{prefix}_DONE',
         ])
@@ -7116,12 +7138,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __emit_bit_range_bitwise_population_count(self, info: _RuntimeBitRangePopcountInfo) -> str:
         record = info.bitwise
+        complements = info.binary_complements
+        extra = (int(complements.left) + 2 * int(complements.right) + int(complements.outer)
+                 if complements is not None else 0)
         # Range snapshots need two instructions per bit; combining/counting
         # needs three more. Reject excessive fixed widths before allocation.
         def check_output(extra=0):
             if len(self.__qcx_lines) + extra > self.MAX_LOOP_OUTPUT_LINES:
                 raise InvalidFunctionCallException('Runtime range bitwise popcount exceeds QCX output limit')
-        check_output(5 * record.width + 2)
+        check_output((5 + extra) * record.width + 2)
         previous_declarations = self.__declared_temporary_variables.copy()
         with contextlib.ExitStack() as operands:
             def capture_fixed():
@@ -7149,15 +7174,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             else:
                 left = capture_fixed()
                 right = operands.enter_context(self.__runtime_bit_range_value(info.selection, record.width))
-            check_output(3 * record.width + 3)
+            check_output((3 + extra) * record.width + 3 + int(complements is not None and complements.right))
             result = self.__add_new_temporary_variable(ValueType.UINT)
             bit = self.__add_new_temporary_variable(ValueType.BIT)
+            right_bit = (self.__add_new_temporary_variable(ValueType.BIT)
+                         if complements is not None and complements.right else None)
             self.__qcx_lines.append(f'LET {result} := 0')
             for lhs, rhs in zip(left, right):
-                self.__qcx_lines.extend([
-                    f'LET {bit} := {lhs}', f'LET {bit} {record.expression.op.name}= {rhs}',
-                    f'LET {result} += :UINT:{bit}',
-                ])
+                self.__emit_popcount_bitwise_bit(bit, lhs, rhs, record.expression.op.name, complements, right_bit)
+                self.__qcx_lines.append(f'LET {result} += :UINT:{bit}')
             check_output()
         # The enclosing population-count visitor releases all scratch,
         # including these fixed snapshots, and keeps only the UINT result.
