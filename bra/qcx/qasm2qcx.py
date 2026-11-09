@@ -6981,10 +6981,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
                     if len(range_info.rotations) > 1:
-                        raise UnsupportedOpenQASMError('runtime range popcount nested-rotation lowering')
-                    result = self.__emit_bit_range_population_count(
-                        range_info.selection, range_info.complemented, range_info.shift,
-                        range_info.outer_complemented, range_info.rotation, range_info.shifts, range_info.operations)
+                        result = self.__emit_bit_range_population_count(
+                            range_info.selection, range_info.rotation_complemented, rotations=range_info.rotations)
+                    else:
+                        result = self.__emit_bit_range_population_count(
+                            range_info.selection, range_info.complemented, range_info.shift,
+                            range_info.outer_complemented, range_info.rotation, range_info.shifts, range_info.operations)
                 else:
                     with self.__bit_register_expression_value(argument) as values:
                         # A register can be wider than a packed UINT. Count its
@@ -7015,7 +7017,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             shift: ast.BinaryExpression | None = None, outer_complemented: bool = False,
             rotation: ast.FunctionCall | None = None,
             shifts: tuple[_RuntimeBitRangePopcountShift, ...] = (),
-            operations: tuple[_RuntimeBitRangePopcountOperation, ...] = ()) -> str:
+            operations: tuple[_RuntimeBitRangePopcountOperation, ...] = (),
+            rotations: tuple[_RuntimeBitRangePopcountRotation, ...] = ()) -> str:
         # The enclosing population-count visitor owns all scratch storage and
         # preserves only the returned accumulator, including after failures.
         if len(self.__qcx_lines) + 1 > self.MAX_LOOP_OUTPUT_LINES:
@@ -7027,13 +7030,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # preparing constant words. No fixed selected width is required.
         positions, count = self.__capture_bit_range_positions(
             selection.bounds, selection.source_width, prefix + '_RANGE')
-        if rotation is not None:
-            # Rotation only permutes positions, but evaluating its distance
-            # and checking its INT conversion must still happen when reached.
-            value, value_type, kind = self.__condition_operand(rotation.arguments[1])
+        rotation_calls = (tuple(record.expression for record in rotations) if rotations else
+                          (() if rotation is None else (rotation,)))
+        for call in rotation_calls:
+            # Each rotation only permutes positions, but every distance and
+            # checked INT conversion must execute, innermost to outermost.
+            value, value_type, kind = self.__condition_operand(call.arguments[1])
             operand, _ = self.__converted_operand(value, value_type, kind, ValueType.INT)
             distance = self.__add_new_temporary_variable(ValueType.INT)
             self.__qcx_lines.append(f'LET {distance} := {operand}')
+        if rotation_calls:
             # No zeros are introduced: complements commute with rotation.
             # Reuse unshifted counting with the combined parity, without
             # normalizing/negating the distance or materializing rotated bits.
