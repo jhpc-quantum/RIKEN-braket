@@ -7010,8 +7010,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__expression_kind = ExpressionKind.ARITHMETIC
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
-                    if range_info.result_operations:
-                        raise UnsupportedOpenQASMError('shifted runtime-range bitwise popcount lowering')
                     if range_info.pair is not None:
                         result = self.__emit_bit_range_pair_population_count(range_info)
                     elif range_info.bitwise is not None:
@@ -7117,8 +7115,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         left, count = self.__capture_popcount_range_snapshot(info.selection, prefix + '_LEFT')
         right, _ = self.__capture_popcount_range_snapshot(
             info.pair.right_selection, prefix + '_RIGHT', expected_count=count)
-        result = self.__add_new_temporary_variable(ValueType.UINT)
-        slot = self.__add_new_temporary_variable(ValueType.INT)
+        if info.result_operations:
+            result, slot, end, inverted = self.__emit_bit_range_popcount_interleaved_window(
+                info.result_operations, count, prefix)
+        else:
+            result = self.__add_new_temporary_variable(ValueType.UINT)
+            slot = self.__add_new_temporary_variable(ValueType.INT)
+            end, inverted = count, False
         bit = self.__add_new_temporary_variable(ValueType.BIT)
         complements = info.binary_complements
         right_bit = (self.__add_new_temporary_variable(ValueType.BIT)
@@ -7126,14 +7129,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # Counts/indices fit INT and the accumulator never exceeds the count.
         # Runtime loops keep code size independent of the buffer capacities,
         # apart from existing constant-word lookup preparation.
+        if not info.result_operations:
+            self.__qcx_lines.extend([f'LET {result} := 0', f'LET {slot} := 0'])
         self.__qcx_lines.extend([
-            f'LET {result} := 0', f'LET {slot} := 0', f'@{prefix}_PAIR_COUNT',
-            f'JUMPIF {prefix}_DONE {slot} >= {count}',
+            f'@{prefix}_PAIR_COUNT', f'JUMPIF {prefix}_DONE {slot} >= {end}',
         ])
         self.__emit_popcount_bitwise_bit(
             bit, f'{left}:{slot}', f'{right}:{slot}', info.pair.expression.op.name, complements, right_bit)
         self.__qcx_lines.extend([
-            f'LET {result} += :UINT:{bit}', f'LET {slot} += 1',
+            f'LET {result} {"-=" if inverted else "+="} :UINT:{bit}', f'LET {slot} += 1',
             f'JUMP {prefix}_PAIR_COUNT', f'@{prefix}_DONE',
         ])
         self.__check_range_pair_popcount_output()
@@ -7145,12 +7149,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         complements = info.binary_complements
         extra = (int(complements.left) + 2 * int(complements.right) + int(complements.outer)
                  if complements is not None else 0)
+        shifted = bool(info.result_operations)
         # Range snapshots need two instructions per bit; combining/counting
         # needs three more. Reject excessive fixed widths before allocation.
         def check_output(extra=0):
             if len(self.__qcx_lines) + extra > self.MAX_LOOP_OUTPUT_LINES:
                 raise InvalidFunctionCallException('Runtime range bitwise popcount exceeds QCX output limit')
-        check_output((5 + extra) * record.width + 2)
+        check_output((5 + extra + 3 * shifted) * record.width + 2)
         previous_declarations = self.__declared_temporary_variables.copy()
         with contextlib.ExitStack() as operands:
             def capture_fixed():
@@ -7178,15 +7183,38 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             else:
                 left = capture_fixed()
                 right = operands.enter_context(self.__runtime_bit_range_value(info.selection, record.width))
-            check_output((3 + extra) * record.width + 3 + int(complements is not None and complements.right))
-            result = self.__add_new_temporary_variable(ValueType.UINT)
+            if shifted:
+                # QCX comparisons require a variable on the left, including
+                # the negative-distance assertion in the shared window helper.
+                count = self.__add_new_temporary_variable(ValueType.INT)
+                self.__qcx_lines.append(f'LET {count} := {record.width}')
+                prefix = f'QASM2QCX_POPCOUNT_{self.__population_count_index}'
+                self.__population_count_index += 1
+                result, first, end, inverted = self.__emit_bit_range_popcount_interleaved_window(
+                    info.result_operations, count, prefix)
+            else:
+                inverted = False
+            check_output((3 + extra + 3 * shifted) * record.width + 3
+                         + int(complements is not None and complements.right))
+            if not shifted:
+                result = self.__add_new_temporary_variable(ValueType.UINT)
             bit = self.__add_new_temporary_variable(ValueType.BIT)
             right_bit = (self.__add_new_temporary_variable(ValueType.BIT)
                          if complements is not None and complements.right else None)
-            self.__qcx_lines.append(f'LET {result} := 0')
-            for lhs, rhs in zip(left, right):
+            if not shifted:
+                self.__qcx_lines.append(f'LET {result} := 0')
+            for index, (lhs, rhs) in enumerate(zip(left, right)):
+                if shifted:
+                    self.__qcx_lines.extend([
+                        f'JUMPIF {prefix}_BIT_{index}_NEXT {first} > {index}',
+                        f'JUMPIF {prefix}_DONE {end} <= {index}',
+                    ])
                 self.__emit_popcount_bitwise_bit(bit, lhs, rhs, record.expression.op.name, complements, right_bit)
-                self.__qcx_lines.append(f'LET {result} += :UINT:{bit}')
+                self.__qcx_lines.append(f'LET {result} {"-=" if inverted else "+="} :UINT:{bit}')
+                if shifted:
+                    self.__qcx_lines.append(f'@{prefix}_BIT_{index}_NEXT')
+            if shifted:
+                self.__qcx_lines.append(f'@{prefix}_DONE')
             check_output()
         # The enclosing population-count visitor releases all scratch,
         # including these fixed snapshots, and keeps only the UINT result.
