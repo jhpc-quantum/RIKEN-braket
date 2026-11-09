@@ -2753,7 +2753,7 @@ class RuntimeRangePopcountFoundationTests(unittest.TestCase):
             else:
                 self.assertEqual(self.info(f'popcount({operand})')[1], runtime)
         for operand in ('flags[:stop]', 'flags[start:]', 'scalar[start:stop]', 'indices[start:stop]',
-                        'a[start:stop]', '(flags[start:stop] << 1) >> 1', 'flags[start:stop] ^ "1111"',
+                        'a[start:stop]', '(~(flags[start:stop] << 1)) >> 1', 'flags[start:stop] ^ "1111"',
                         'rotl(rotr(flags[start:stop],1),1)', '(flags ^ C)[start:stop]'):
             with self.subTest(operand=operand), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.info(f'popcount({operand})')
@@ -2766,7 +2766,7 @@ class RuntimeRangePopcountFoundationTests(unittest.TestCase):
         self.assertEqual(list(c), list(baseline))
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
         for source in ('popcount(flags[outer:real:stop])', 'popcount(later[outer:stop])',
-                       'popcount(C[outer:LATER])', 'popcount((flags[outer:stop] << 1) >> 1)'):
+                       'popcount(C[outer:LATER])', 'popcount((~(flags[outer:stop] << 1)) >> 1)'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(self.prefix + 'uint result = 0; for int outer in [1:0] { '
                     f'result = {source}; }} bit[8] later; const int LATER = 3;')
@@ -2878,7 +2878,7 @@ class RuntimeRangePopcountComplementFoundationTests(unittest.TestCase):
             with self.subTest(operand=operand):
                 self.assertIsNone(self.info(operand))
                 self.call_info(f'popcount({operand})')
-        for operand in ('~((flags[start:stop] << 1) >> 1)', '~(flags[start:stop] ^ "1111")',
+        for operand in ('~((~(flags[start:stop] << 1)) >> 1)', '~(flags[start:stop] ^ "1111")',
                         'rotl(~rotr(flags[start:stop],1),1)', '~a[start:stop]', '~flags[:stop]',
                         '~scalar[start:stop]', '~indices[start:stop]', '~(flags ^ C)[start:stop]'):
             with self.subTest(operand=operand), self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -2897,7 +2897,7 @@ class RuntimeRangePopcountComplementFoundationTests(unittest.TestCase):
         self.assertEqual(list(c), list(self.converter(self.prefix + 'uint result = 0;')))
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
         for source in ('popcount(~~flags[outer:real:stop])', 'popcount(~later[outer:stop])',
-                       'popcount(~~C[outer:LATER])', 'popcount(~((flags[outer:stop] << 1) >> 1))'):
+                       'popcount(~~C[outer:LATER])', 'popcount(~((~(flags[outer:stop] << 1)) >> 1))'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(self.prefix + f'uint result = 0; for int outer in [1:0] {{ result = {source}; }} '
                                'bit[8] later; const int LATER = 3;')
@@ -3011,9 +3011,9 @@ class RuntimeRangePopcountShiftFoundationTests(unittest.TestCase):
         with self.assertRaises(qasm2qcx.QASM2QCXError):
             self.call_info('popcount(flags[condition:stop] << bound)')
 
-    def test_nested_shifts_and_other_raw_range_contexts_stay_excluded(self):
-        for operand in ('(flags[start:stop] << 1) >> 1', '(flags[start:stop] >> step) << bound',
-                        '~((flags[start:stop] << 1) >> 1)', '((~flags[start:stop]) >> 1) << 1',
+    def test_interleaved_complements_and_other_raw_range_contexts_stay_excluded(self):
+        for operand in ('(~(flags[start:stop] << 1)) >> 1', '(~~(flags[start:stop] >> step)) << bound',
+                        '~((~(flags[start:stop] << 1)) >> 1)', '(~((~flags[start:stop]) >> 1)) << 1',
                         'rotl(flags[start:stop],1) << step',
                         '(flags[start:stop] ^ "1111") << 1', 'a[start:stop] << 1',
                         'flags[:stop] << 1', '(flags ^ C)[start:stop] >> 1'):
@@ -3040,7 +3040,7 @@ class RuntimeRangePopcountShiftFoundationTests(unittest.TestCase):
         self.assertEqual(list(c), list(self.converter(self.prefix + 'uint result = 0;')))
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
         for source in ('popcount(flags[outer:stop] << real)', 'popcount(later[outer:stop] >> step)',
-                       'popcount(C[outer:stop] << LATER)', 'popcount((flags[outer:stop] << 1) >> 1)'):
+                       'popcount(C[outer:stop] << LATER)', 'popcount((~(flags[outer:stop] << 1)) >> 1)'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(self.prefix + f'uint result = 0; for int outer in [1:0] {{ result = {source}; }} '
                                'bit[8] later; const int LATER = 3;')
@@ -3162,8 +3162,8 @@ class RuntimeRangePopcountComplementShiftFoundationTests(unittest.TestCase):
             self.call_info('popcount(' + self.operand(inner=1, outer=1, count='LOW') + ')',
                            {'LOW': qasm2qcx.ValueType.BOOL})
 
-    def test_only_one_shift_and_named_runtime_bit_ranges_are_accepted(self):
-        for operand in ('~(((~flags[start:stop]) << step) >> bound)',
+    def test_interleaved_complements_and_non_range_sources_stay_excluded(self):
+        for operand in ('~((~((~flags[start:stop]) << step)) >> bound)',
                         '(~((~flags[start:stop]) << step)) >> bound',
                         '~((~(flags[start:stop] ^ "1111")) << step)',
                         '~(rotl(~flags[start:stop],1) << step)',
@@ -3191,7 +3191,7 @@ class RuntimeRangePopcountComplementShiftFoundationTests(unittest.TestCase):
         self.assertEqual(list(c), list(self.converter(self.prefix + 'uint result = 0;')))
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
         for source in ('popcount(~~((~~flags[outer:stop]) << real))', 'popcount(~((~later[outer:stop]) >> bound))',
-                       'popcount(~((~C[outer:stop]) << LATER))', 'popcount(~((flags[outer:stop] << 1) >> 1))'):
+                       'popcount(~((~C[outer:stop]) << LATER))', 'popcount(~((~(flags[outer:stop] << 1)) >> 1))'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(self.prefix + f'uint result = 0; for int outer in [1:0] {{ result = {source}; }} '
                                'bit[8] later; const int LATER = 3;')
@@ -3217,6 +3217,199 @@ class RuntimeRangePopcountComplementShiftFoundationTests(unittest.TestCase):
             self.call_info('popcount(~((~missing[start:stop]) << missing),missing)')
         with self.assertRaises(qasm2qcx.NoConstantExpressionException):
             self.converter(self.prefix + 'const uint BAD = popcount(~((~C[start:stop]) << bound));')
+
+
+class RuntimeRangePopcountNestedShiftFoundationTests(unittest.TestCase):
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    prefix = RuntimeRangePopcountFoundationTests.prefix
+
+    def setUp(self):
+        self.c = self.converter(self.prefix)
+
+    @staticmethod
+    def operand(source='flags', inner=0, outer=0, operators=('<<', '>>'), counts=None):
+        if counts is None:
+            counts = ('step', 'bound', 'stop', 'start')[:len(operators)]
+        result = '~' * inner + f'{source}[start:step:stop]'
+        for operator, count in zip(operators, counts):
+            result = f'({result}) {operator} ({count})'
+        return '~' * outer + '(' + result + ')'
+
+    def info(self, operand, iterators=None):
+        return self.c._QASM2QCXConverter__runtime_bit_range_popcount_info(self.expression(operand), iterators)
+
+    def call_info(self, source, iterators=None):
+        return self.c._QASM2QCXConverter__function_call_info(self.expression(source), iterators)
+
+    def test_frozen_metadata_preserves_each_original_node_in_execution_order(self):
+        expression = self.expression('~(((~~C[start:bound:stop]) << step) >> bound)')
+        outer = expression.expression
+        inner = outer.lhs
+        leaf = inner.lhs.expression.expression
+        info = self.c._QASM2QCXConverter__runtime_bit_range_popcount_info(expression)
+        self.assertIsInstance(info.shifts, tuple)
+        self.assertEqual(len(info.shifts), 2)
+        for record, node, value_type in zip(info.shifts, (inner, outer),
+                                           (qasm2qcx.ValueType.INT, qasm2qcx.ValueType.UINT)):
+            self.assertIs(record.expression, node)
+            self.assertIs(record.expression.rhs, node.rhs)
+            self.assertEqual(record.count_type, value_type)
+            with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                record.count_type = qasm2qcx.ValueType.BOOL
+        self.assertIs(info.selection.bounds, leaf.index[0])
+        self.assertEqual(info.selection.step_type, qasm2qcx.ValueType.UINT)
+        self.assertEqual((info.complemented, info.outer_complemented), (False, True))
+        self.assertIsNone(info.shift)
+        self.assertIsNone(info.count_type)
+        with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+            info.shifts = ()
+
+    def test_direction_chains_and_endpoint_parities_on_mutable_and_constant_sources(self):
+        for source in ('flags', 'C', 'wide', 'one'):
+            for operators in (('<<', '<<'), ('<<', '>>'), ('>>', '<<'), ('>>', '>>'),
+                              ('<<', '>>', '<<'), ('>>', '<<', '>>', '<<')):
+                for inner, outer in ((0, 0), (1, 0), (0, 1), (1, 1), (2, 2), (3, 2)):
+                    operand = self.operand(source, inner, outer, operators)
+                    with self.subTest(operand=operand):
+                        info = self.info(operand)
+                        self.assertEqual(tuple(item.expression.op.name for item in info.shifts), operators)
+                        self.assertEqual(info.selection.source_name, source)
+                        self.assertEqual((info.complemented, info.outer_complemented),
+                                         (bool(inner % 2), bool(outer % 2)))
+                        self.assertIsNone(info.rotation)
+                        signature, runtime = self.call_info(f'popcount({operand})')
+                        self.assertEqual(signature.operand_types, (qasm2qcx.ValueType.BIT_REGISTER,))
+                        self.assertEqual(signature.result_type, qasm2qcx.ValueType.UINT)
+                        self.assertTrue(runtime)
+
+    def test_left_associativity_and_scalar_shifts_inside_count_expressions(self):
+        info = self.info('flags[start:stop] << (step >> bound) >> (bound + 1) << stop')
+        self.assertEqual(tuple(item.expression.op.name for item in info.shifts), ('<<', '>>', '<<'))
+        self.assertEqual(tuple(item.count_type for item in info.shifts),
+                         (qasm2qcx.ValueType.INT, qasm2qcx.ValueType.UINT, qasm2qcx.ValueType.INT))
+        self.assertEqual(info.shifts[0].expression.rhs.op.name, '>>')
+
+    def test_metadata_validates_bounds_then_every_count_once_in_execution_order(self):
+        expression = self.expression('popcount((C[start:step:stop] << bound) >> step)')
+        outer = expression.arguments[0]
+        inner = outer.lhs
+        bounds = inner.lhs.index[0]
+        expected = [bounds.start, bounds.step, bounds.end, inner.rhs, outer.rhs]
+        validate = self.c._QASM2QCXConverter__bit_index_info
+        events = []
+        def checked(node, *args, **kwargs):
+            if any(node is item for item in expected):
+                events.append(node)
+            return validate(node, *args, **kwargs)
+        with patch.object(self.c, 'visit', side_effect=AssertionError('metadata must not evaluate')), \
+             patch.object(self.c, '_QASM2QCXConverter__bit_index_info', side_effect=checked):
+            self.c._QASM2QCXConverter__function_call_info(expression)
+        self.assertEqual(events, expected)
+
+    def test_domains_and_capacity_are_deferred_even_after_complete_bit_loss(self):
+        for operand in ('(flags[start:0:999] << 999) >> -1',
+                        '(C[start/0:stop] << uint(-1)) >> (step/0)',
+                        '(wide[start:stop] >> 999999999999999999999999999) << uint(-1)',
+                        '(flags[start:stop] << 0) >> popcount(~C[start:stop])'):
+            with self.subTest(operand=operand):
+                self.assertTrue(self.call_info(f'popcount({operand})')[1])
+        with patch.object(self.c, 'MAX_RUNTIME_BIT_RANGE_POSITIONS', 1):
+            self.assertTrue(self.call_info('popcount((wide[start:stop] << 999) >> bound)')[1])
+
+    def test_every_count_requires_a_visible_scalar_integer_even_after_oversized_shifts(self):
+        for bad in ('condition', 'real', 'scalar', 'one', 'indices', 'a', 'missing', 'indices[true]'):
+            for counts in ((bad, 'bound'), ('999999999999999999999', bad), ('step', bad, 'bound')):
+                operand = self.operand(operators=('<<',) * len(counts), counts=counts)
+                with self.subTest(counts=counts), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    self.call_info(f'popcount({operand})')
+        self.c._QASM2QCXConverter__declared_constant_variables.remove('LOW')
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            self.call_info('popcount((flags[start:stop] << bound) >> LOW)')
+
+    def test_source_bound_visibility_and_iterator_shadowing(self):
+        for source in ('flags', 'C'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.call_info('popcount(' + self.operand(source) + ')', {source: qasm2qcx.ValueType.INT})
+        self.c._QASM2QCXConverter__declared_constant_variables.remove('C')
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            self.call_info('popcount(' + self.operand('C') + ')')
+        for bound in ('condition', 'real', 'missing'):
+            with self.subTest(bound=bound), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.call_info(f'popcount((flags[start:{bound}:stop] << step) >> bound)')
+        info = self.info('(flags[start:stop] << LOW) >> step', {'LOW': qasm2qcx.ValueType.UINT})
+        self.assertEqual(info.shifts[0].count_type, qasm2qcx.ValueType.UINT)
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.call_info('popcount((flags[start:stop] << LOW) >> step)', {'LOW': qasm2qcx.ValueType.BOOL})
+
+    def test_native_uint_result_does_not_infer_a_selected_width(self):
+        with patch.object(self.c, '_QASM2QCXConverter__bit_register_expression_width',
+                          side_effect=AssertionError('runtime range has no inferred width')):
+            expression = self.expression('popcount(~(((~wide[start:stop]) << bound) >> step))')
+            self.assertEqual(self.c._QASM2QCXConverter__integer_operand_info(expression, None),
+                (qasm2qcx.ValueType.UINT, qasm2qcx._UnsignedIntegerType(self.c.QCX_UINT_WIDTH, False), True))
+
+    def test_interleaved_complements_rotations_and_non_range_sources_stay_excluded(self):
+        for operand in ('(~(flags[start:stop] << 1)) >> 1', '(~~(flags[start:stop] << 1)) >> 1',
+                        '((flags[start:stop] << 1) >> 1) & flags',
+                        '(rotl(flags[start:stop], 1) << step) >> bound',
+                        'rotl((flags[start:stop] << step) >> bound, 1)',
+                        '((flags[start:stop] ^ C) << step) >> bound',
+                        '(a[start:stop] << step) >> bound', '(flags[:stop] << step) >> bound',
+                        '((flags ^ C)[start:stop] << step) >> bound'):
+            with self.subTest(operand=operand), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.call_info(f'popcount({operand})')
+
+    def test_single_shift_rotation_direct_and_fixed_width_paths_are_preserved(self):
+        for operand in ('flags[start:stop]', '~C[start:stop]', 'rotl(flags[start:stop], step)'):
+            self.assertEqual(self.info(operand).shifts, ())
+        info = self.info('~((~flags[start:stop]) << bound)')
+        self.assertEqual(len(info.shifts), 1)
+        self.assertIs(info.shift, info.shifts[0].expression)
+        self.assertEqual(info.count_type, info.shifts[0].count_type)
+        for operand in ('(flags[0:3] << step) >> bound', '~(((~C[0:3]) << bound) >> step)',
+                        '((uint[4](3) << step) >> bound)'):
+            with self.subTest(operand=operand):
+                self.assertIsNone(self.info(operand))
+                self.call_info(f'popcount({operand})')
+
+    def test_empty_loops_validate_all_counts_without_lowering(self):
+        c = self.converter(self.prefix + 'uint result=0; for int outer in [1:0] { '
+            'result=popcount(~(((~flags[outer:0:999]) << uint(-1)) >> (step/0))); '
+            'result+=popcount((C[outer/0:stop] << 999) >> -1); }')
+        self.assertEqual(list(c), list(self.converter(self.prefix + 'uint result=0;')))
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        for operand in ('(flags[outer:stop] << 999) >> real', '(later[outer:stop] << step) >> bound',
+                        '(C[outer:stop] << 999) >> LATER', '(~(flags[outer:stop] << 1)) >> 1'):
+            with self.subTest(operand=operand), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix + 'uint result=0; for int outer in [1:0] { '
+                    f'result=popcount({operand}); }} bit[8] later; const int LATER=3;')
+
+    def test_metadata_preserves_caller_fields_caches_output_and_storage(self):
+        c = self.c
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        previous = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+        lines = c._QASM2QCXConverter__qcx_lines.copy()
+        caches = (c._QASM2QCXConverter__uint_expression_types.copy(), c._QASM2QCXConverter__angle_expression_types.copy())
+        with patch.object(c, 'visit', side_effect=AssertionError('metadata must not evaluate')), \
+             patch.object(c, '_QASM2QCXConverter__add_new_temporary_variable',
+                          side_effect=AssertionError('metadata must not allocate')):
+            self.call_info('popcount(~(((~C[start/0:0:999]) << uint(-1)) >> (step/0)))')
+            with self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.call_info('popcount((flags[start:stop] << 999) >> real)')
+        self.assertEqual(previous, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+        self.assertEqual(lines, c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(caches, (c._QASM2QCXConverter__uint_expression_types, c._QASM2QCXConverter__angle_expression_types))
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+
+    def test_arity_constant_rules_and_explicit_lowering_guard(self):
+        with self.assertRaisesRegex(qasm2qcx.InvalidFunctionCallException, 'expects 1 argument'):
+            self.call_info('popcount((missing[start:stop] << missing) >> missing, missing)')
+        with self.assertRaises(qasm2qcx.NoConstantExpressionException):
+            self.converter(self.prefix + 'const uint BAD=popcount((C[start:stop] << step) >> bound);')
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'nested-shift lowering'):
+            self.converter(self.prefix + 'uint result=popcount((flags[start:stop] << step) >> bound);')
 
 
 class RuntimeRangePopcountRotationFoundationTests(unittest.TestCase):
@@ -4173,7 +4366,7 @@ class RuntimeRangePopcountShiftIntegrationTests(unittest.TestCase):
         self.assert_clean(c)
         for body in ('result = popcount(flags[outer:stop] << real);', 'result = popcount(later[outer:stop] >> step);',
                      'result = popcount(C[outer:stop] << LATER);', 'if (popcount(flags[outer:stop] << step)) { }',
-                     'result = popcount((flags[outer:stop] << 1) >> 1);',
+                     'result = popcount((~(flags[outer:stop] << 1)) >> 1);',
                      'for int C in [0:1] { result = popcount(C[outer:stop] << step); }',
                      'for int result in indices { result = int(popcount(flags[outer:stop] >> bound)); }'):
             with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -4230,7 +4423,7 @@ class RuntimeRangePopcountComplementShiftIntegrationTests(unittest.TestCase):
                      'result = popcount(~((~later[outer:stop]) >> bound));',
                      'result = popcount(~(C[outer:stop] << LATER));',
                      'if (popcount(~(flags[outer:stop] << step))) { }',
-                     'result = popcount(~((flags[outer:stop] << 1) >> 1));',
+                     'result = popcount(~((~(flags[outer:stop] << 1)) >> 1));',
                      'for int C in [0:1] { result = popcount(~((~C[outer:stop]) << step)); }'):
             with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(self.prefix + 'uint result = 6; for int outer in [1:0] { ' + body +
