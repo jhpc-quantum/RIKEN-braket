@@ -335,6 +335,13 @@ class _RuntimeBitRangePopcountBitwise:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeBitRangePopcountPair:
+    expression: ast.BinaryExpression
+    # The left selection is stored in the enclosing popcount info.
+    right_selection: _RuntimeBitRangeSelection
+
+
+@dataclasses.dataclass(frozen=True)
 class _RuntimeBitRangePopcountInfo:
     selection: _RuntimeBitRangeSelection
     # Parity on the source range; outer parity applies after a shift/rotation.
@@ -353,6 +360,7 @@ class _RuntimeBitRangePopcountInfo:
     # Mixed chains retain every original node, innermost to outermost.
     mixed_operations: tuple[_RuntimeBitRangePopcountOperation, ...] = ()
     bitwise: _RuntimeBitRangePopcountBitwise | None = None
+    pair: _RuntimeBitRangePopcountPair | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -6991,7 +6999,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__expression_kind = ExpressionKind.ARITHMETIC
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
-                    if range_info.bitwise is not None:
+                    if range_info.pair is not None:
+                        result = self.__emit_bit_range_pair_population_count(range_info)
+                    elif range_info.bitwise is not None:
                         result = self.__emit_bit_range_bitwise_population_count(range_info)
                     elif range_info.mixed_operations:
                         result = self.__emit_bit_range_population_count(
@@ -7027,6 +7037,71 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             for temporary in self.__used_temporary_variables - previous_used:
                 if not keep or kind != ValueKind.TEMPORARY or temporary != result:
                     self.__release_temporary_variable(temporary)
+
+    def __check_range_pair_popcount_output(self) -> None:
+        if len(self.__qcx_lines) + 1 > self.MAX_LOOP_OUTPUT_LINES:
+            raise InvalidFunctionCallException('Runtime range-pair popcount exceeds QCX output limit')
+
+    def __capture_popcount_range_snapshot(
+            self, selection: _RuntimeBitRangeSelection, label: str,
+            expected_count: str | None = None) -> tuple[str, str]:
+        # The enclosing popcount visitor owns all scratch storage. Counts and
+        # snapshot buffers remain reserved through both captures and counting.
+        self.__check_range_pair_popcount_output()
+        capacity = min(2 * selection.source_width, self.MAX_RUNTIME_BIT_RANGE_POSITIONS)
+        positions, count = self.__capture_bit_range_positions(
+            selection.bounds, selection.source_width, label, capacity=capacity)
+        if expected_count is not None:
+            self.__qcx_lines.append(f'ASSERT {count} == {expected_count}')
+        self.__check_range_pair_popcount_output()
+        constant = (self.__constant_bit_register(selection.source_name)
+                    if selection.source_name in self.__const_bit_register_values else None)
+        words = self.__prepare_constant_bit_lookup(constant) if constant is not None else None
+        snapshot = self.__add_temporary_int_array(capacity, 'POPCOUNT_BITS')
+        slot, position, bit = (self.__add_new_temporary_variable(ValueType.INT) for _ in range(3))
+        self.__qcx_lines.extend([
+            f'LET {slot} := 0', f'@{label}_SNAPSHOT',
+            f'JUMPIF {label}_SNAPSHOT_DONE {slot} >= {count}',
+            f'LET {position} := {positions}:{slot}',
+        ])
+        if words is None:
+            source = self.__capitalize_variable_name(selection.source_name)
+            operand = source if selection.source_width == 1 else f'{source}:{position}'
+            self.__qcx_lines.append(f'LET {bit} := {operand}')
+        else:
+            self.__copy_prepared_constant_bit(words, position, bit)
+        self.__qcx_lines.extend([
+            f'LET {snapshot}:{slot} := {bit}', f'LET {slot} += 1',
+            f'JUMP {label}_SNAPSHOT', f'@{label}_SNAPSHOT_DONE',
+        ])
+        self.__check_range_pair_popcount_output()
+        return snapshot, count
+
+    def __emit_bit_range_pair_population_count(self, info: _RuntimeBitRangePopcountInfo) -> str:
+        self.__check_range_pair_popcount_output()
+        previous_declarations = self.__declared_temporary_variables.copy()
+        prefix = f'QASM2QCX_POPCOUNT_{self.__population_count_index}'
+        self.__population_count_index += 1
+        # Complete the LHS, including its bit reads, before starting the RHS.
+        left, count = self.__capture_popcount_range_snapshot(info.selection, prefix + '_LEFT')
+        right, _ = self.__capture_popcount_range_snapshot(
+            info.pair.right_selection, prefix + '_RIGHT', expected_count=count)
+        result = self.__add_new_temporary_variable(ValueType.UINT)
+        slot = self.__add_new_temporary_variable(ValueType.INT)
+        bit = self.__add_new_temporary_variable(ValueType.BIT)
+        # Counts/indices fit INT and the accumulator never exceeds the count.
+        # Runtime loops keep code size independent of the buffer capacities,
+        # apart from existing constant-word lookup preparation.
+        self.__qcx_lines.extend([
+            f'LET {result} := 0', f'LET {slot} := 0', f'@{prefix}_PAIR_COUNT',
+            f'JUMPIF {prefix}_DONE {slot} >= {count}',
+            f'LET {bit} := {left}:{slot}', f'LET {bit} {info.pair.expression.op.name}= {right}:{slot}',
+            f'LET {result} += :UINT:{bit}', f'LET {slot} += 1',
+            f'JUMP {prefix}_PAIR_COUNT', f'@{prefix}_DONE',
+        ])
+        self.__check_range_pair_popcount_output()
+        self.__hoist_temporary_declarations(previous_declarations)
+        return result
 
     def __emit_bit_range_bitwise_population_count(self, info: _RuntimeBitRangePopcountInfo) -> str:
         record = info.bitwise
@@ -8042,6 +8117,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             iterators: set[str] | dict[str, ValueType] | None) -> _RuntimeBitRangePopcountInfo | None:
         selection = self.__runtime_bit_range_source(expression.lhs, iterators)
         if selection is not None:
+            right = self.__runtime_bit_range_source(expression.rhs, iterators)
+            if right is not None:
+                # Validate both ranges in written order without inferring a
+                # selected width or comparing their runtime lengths here.
+                return _RuntimeBitRangePopcountInfo(selection, False, pair=_RuntimeBitRangePopcountPair(
+                    expression, right))
             fixed = expression.rhs
             width = self.__runtime_range_popcount_fixed_width(fixed, iterators)
             range_on_left = True
