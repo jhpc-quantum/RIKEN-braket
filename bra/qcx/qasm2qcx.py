@@ -398,6 +398,16 @@ class _RuntimeBitRegisterAssignment:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeBitRangeExpressionAssignment:
+    target: ast.IndexedIdentifier
+    selection: _RuntimeBitRangeSelection
+    # Distinct destinations cannot outnumber the containing register's bits.
+    # This bounds destination storage, not either operand's selected length.
+    capacity: int
+    value: _RuntimeBitRegisterExpression
+
+
+@dataclasses.dataclass(frozen=True)
 class _RuntimeBitRangePopcountInfo:
     selection: _RuntimeBitRangeSelection
     # Parity on the source range; outer parity applies after a shift/rotation.
@@ -4224,6 +4234,28 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise InvalidBitOperandException('Runtime expression assignment selection width exceeds storage limit')
         value = self.__runtime_bit_register_expression_info(expression, shapes, iterators)
         return _RuntimeBitRegisterAssignment(target, selection.width, value, selection)
+
+    def __runtime_range_expression_assignment_info(
+            self, target: ast.Identifier | ast.IndexedIdentifier, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangeExpressionAssignment | None:
+        if (not isinstance(target, ast.IndexedIdentifier) or len(target.indices) != 1
+                or not isinstance(target.indices[0], list) or len(target.indices[0]) != 1
+                or not isinstance(target.indices[0][0], ast.RangeDefinition)):
+            return None
+        shapes = self.__runtime_bit_register_expression_shapes(expression, iterators)
+        if shapes[id(expression)] < 0:
+            return None  # Fixed-width RHS expressions retain their existing path.
+        self.__runtime_register_assignment_destination_width(target.name, iterators)
+        selection = self.__runtime_bit_range_destination(target, iterators)
+        if selection is None:
+            return None  # Wholly static ranges retain static-selection analysis.
+        capacity = min(selection.source_width, self.MAX_RUNTIME_BIT_RANGE_POSITIONS)
+        if not 1 <= capacity <= self.QCX_INT_MAX:
+            raise InvalidBitOperandException('Runtime range expression assignment capacity must fit QCX INT indexing')
+        # Analyze the RHS independently: destination storage/count cannot
+        # constrain a dynamic leaf's length or suppress its evaluation.
+        value = self.__runtime_bit_register_expression_info(expression, shapes, iterators)
+        return _RuntimeBitRangeExpressionAssignment(target, selection, capacity, value)
 
     def __runtime_register_assignment_destination_width(
             self, target: ast.Identifier,
