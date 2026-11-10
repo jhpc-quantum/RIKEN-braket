@@ -54,6 +54,16 @@ class BackendTests(unittest.TestCase):
     program = binary.BackendTests.program
     check_exact = binary.BackendTests.check_exact
 
+    def test_documented_rotated_bitwise_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-popcount-bitwise-result-rotation-example -->'
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        source = source.replace('OPENQASM 3.0;', '', 1)
+        self.check_exact(source, tuple((name, None) for name in
+            ('left', 'right', 'outer', 'before', 'after', 'mixed', 'fixed', 'reversed',
+             'united', 'endpoint', 'promoted', 'filled', 'repeated', 'wide', 'skipped', 'fresh')),
+            (2, 2, 2, 2, 1, 2, 1, 2, 3, 2, 2, 3, 3, 64, 0, 1))
+
     def check_case(self, left, right, constants, depths, chains):
         # Batch independent cases below the per-program output limit, including
         # fixed-width operands and constant lookups for wide registers.
