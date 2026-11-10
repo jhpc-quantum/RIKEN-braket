@@ -4764,6 +4764,57 @@ class RuntimeRangeEqualityLoweringTests(unittest.TestCase):
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
 
 
+class RuntimeRangeEqualityAuditTests(unittest.TestCase):
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+
+    def test_empty_bodies_validate_visibility_and_iterator_shadowing(self):
+        prefix = 'bit[4] a; const bit[4] B="1011"; int first=0; int last=3; '
+        for source in (
+                'for int a in [1:0] { if (a[first:last]==B) {} }',
+                'for int i in [1:0] { if (a[first:last]==later) {} } bit[4] later;',
+                'for int i in [1:0] { if ((a[first:last]<<LATER)==B) {} } const int LATER=1;',
+                'for int i in [1:0] { if ((B&"1")==a[first:last]) {} }'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(prefix+source)
+        base = prefix+'bool same=true;'
+        c = self.converter(base+'''for int first in [1:0] {
+            same=rotl(B[first/0:0:999],1/0)==(a[first:last]<<-1);
+        }''')
+        self.assertEqual(list(c),list(self.converter(base)))
+
+    def test_constant_bound_shadowing_selects_dynamic_path_only_inside_loop(self):
+        c = self.converter('''const int FIRST=0; const int LAST=3;
+            const bit[4] A="1011"; bool same=A[FIRST:LAST]==A;
+            for int FIRST in [0:1] { same=A[FIRST:LAST]==A[FIRST:LAST]; }
+            bool after=A[FIRST:LAST]==A;''')
+        lines = list(c)
+        comparisons = [line for line in lines if line.endswith('_COMPARE') and line.startswith('@QASM2QCX_REGISTER_EQUALITY_')]
+        self.assertEqual(len(comparisons),2)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables,set())
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_nested_rhs_failure_preserves_held_result_and_caller_storage(self):
+        c = self.converter(RuntimeRangePopcountFoundationTests.prefix)
+        c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        c.visit(self.expression('flags[start:stop]==C[start:stop]'))
+        held = c._QASM2QCXConverter__value
+        previous = c._QASM2QCXConverter__used_temporary_variables.copy()
+        self.assertIn(held,previous)
+        expression = self.expression('rotl(flags[start:stop] & C, bound+1) '
+                                     '== ~(wide[bound:stop] >> (step+1))')
+        target = expression.rhs.expression.rhs
+        capture = c._QASM2QCXConverter__condition_operand
+        def checked(node):
+            if node is target:
+                raise qasm2qcx.InvalidBitOperandException('nested RHS failure')
+            return capture(node)
+        with patch.object(c,'_QASM2QCXConverter__condition_operand',side_effect=checked), \
+             self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException,'nested RHS failure'):
+            c.visit(expression)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables,previous)
+
+
 class RuntimeRangePopcountTreeLoweringTests(unittest.TestCase):
     expression = staticmethod(BuiltinFunctionSignatureTests.expression)
     converter = staticmethod(BuiltinFunctionSignatureTests.converter)
