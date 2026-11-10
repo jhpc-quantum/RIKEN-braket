@@ -105,8 +105,8 @@ The converter currently covers:
   bounded storage, and a native UINT result;
 - runtime-dependent discrete-set bit-register assignment destinations, including
   bitwise and shift compound assignments;
-- equal-width bit-register `==` and `!=` comparisons, including static
-  selections, bit-string literals, and nested bitwise/shift expressions;
+- equal-width bit-register `==` and `!=` comparisons, including static/runtime
+  selections, bit-string literals, and nested bitwise/shift/rotation expressions;
 - scalar integer shift expressions (`<<`, `>>`) and compound assignments
   (`<<=`, `>>=`), with checked counts and signed left-shift overflow;
 - scalar constants, variables, assignments, and numeric casts;
@@ -4037,8 +4037,9 @@ declarations are hoisted outside
 loops; storage is released on success and failed lowering while preserving
 caller-owned temporaries. No new bra instruction or build option is required.
 
-Outside the supported UINT-cast and
-[population-count contexts](#population-counts-of-runtime-bit-register-ranges),
+Outside the supported UINT-cast,
+[population-count](#population-counts-of-runtime-bit-register-ranges), and
+[equality-comparison contexts](#equality-with-runtime-bit-register-ranges),
 runtime ranges remain unsupported in general bitwise/shift expressions,
 comparisons, and function calls. Supported scalar conversions and counts can
 be used in declaration initializers and scalar assignments.
@@ -4689,9 +4690,9 @@ block-local declarations remain unsupported.
 
 `==` and `!=` accept two register-valued operands of equal width and produce a
 scalar Boolean result. Operands may be whole `bit[n]` variables, bit-string
-literals, supported static ranges or static/runtime index sets, or nested register bitwise and
-shift expressions. Selection order defines the corresponding bits to compare;
-repeated source indices are allowed. A one-bit register or selection remains
+literals, supported static/runtime ranges or index sets, or nested register
+bitwise, shift, and rotation expressions. Selection order defines the
+corresponding bits to compare; repeated source indices are allowed. A one-bit register or selection remains
 distinct from a scalar bit: `a[0:0] == "1"` is supported, but `a[0] == "1"`
 is rejected. Scalar bit comparisons such as `a[0] == true` remain supported.
 
@@ -4723,8 +4724,69 @@ into a native integer, so registers wider than native `UINT` are supported.
 Private intermediate storage stays alive until both operands are evaluated and
 is released afterward. No new bra instruction is required. Unequal operand
 widths, scalar/register mixing, ordered register comparisons (`<`, `<=`, `>`,
-`>=`), bare register conditions, runtime-dependent range expressions, aliases, and indexing of
-computed register results remain unsupported.
+`>=`), bare register conditions, aliases, and indexing of computed register
+results remain unsupported.
+
+#### Equality with runtime bit-register ranges
+
+A range on a mutable or constant bit register may have runtime-dependent
+start, step, or stop values in either or both equality operands. Both bounds
+are required; an omitted step means `1`. Signed and unsigned integer bounds
+and steps use the same checked selection rules as runtime-range iteration
+and `popcount`: ranges must be nonempty, steps must be nonzero, and every
+selected position must be valid. Negative positions and repeated physical
+source bits are supported, with comparisons following selection order.
+
+Each operand may contain nested `&`, `|`, `^`, `~`, `<<`, `>>`, `rotl`, and
+`rotr` expressions, mixing runtime ranges with supported known-width register
+expressions. Shift and rotation distances retain their existing type and
+domain rules. A scalar `bit` remains distinct from a one-bit register.
+
+The converter supports equal-width register comparisons. Statically known
+width mismatches are rejected during conversion. When lengths depend on
+runtime values, both complete operands are evaluated into private snapshots,
+left to right, before QCX `ASSERT` checks that their lengths agree. A mismatch
+is an error for both `==` and `!=`; it does not produce a Boolean result or
+pad or truncate either operand. Each nested binary register operation also
+checks its operand lengths after completing its own children. Buffer capacities
+are storage bounds and do not determine selected lengths.
+
+Only after successful operand evaluation and length checks may a mismatching
+bit end the comparison. A mismatch cannot suppress an error in a later bit,
+range bound, or shift/rotation distance. Surrounding `!`, `&&`, and `||` retain
+their Boolean behavior; an unreached comparison performs no runtime reads or
+checks. Names, types, supported forms, known widths, and wholly static selection
+bounds are still validated on skipped paths and in empty loop bodies. A comparison
+that depends on a runtime range cannot initialize a `const bool`.
+
+<!-- runtime-range-equality-example -->
+```qasm
+OPENQASM 3.0;
+bit[4] a = "1011";
+const bit[4] B = "1101";
+int first = 0;
+int last = 3;
+bool different = a[first:last] != B;                     // true
+bool reversed = a[last:-1:first] == B;                   // true
+bool nested = ((a[first:last] & B) ^ "0011") == "1010"; // true
+bool rotated = rotl(a[first:last], 1) == "0111";          // true
+bool skipped = false && (a[first:0:last] == B);          // false; no step check
+int visits = 0;
+while (a[first:last] != B) {
+    a = B;
+    visits += 1;
+}
+bool fresh = a[first:last] == B;                         // true; visits == 1
+```
+
+Comparisons use bit snapshots and an INT-indexed QCX loop, so register widths
+may exceed native UINT width. Snapshots remain live through both operands,
+including nested comparisons in bounds or distances, and are released after
+use. Repeated execution reads the current source bits and bounds. Existing
+runtime selection storage and QCX output limits still apply. This support
+does not add general runtime-range register expressions in other contexts,
+runtime angle-bit ranges, ordered comparisons, aliases, or indexing of
+computed register results.
 
 ### Checked native INT negation
 
@@ -7600,6 +7662,8 @@ Multi-entry sets and runtime ranges have the loop-source subsets described next.
 Fixed-width runtime sets also support [expression reads](#runtime-bit-register-index-set-expressions).
 Runtime ranges also support [plain and bitwise compound assignments](#runtime-bit-register-range-assignments).
 They also support [copies into registers or selections](#copies-from-runtime-bit-register-ranges).
+Scalar consumers include the supported UINT casts, `popcount`, and
+[equality comparisons](#equality-with-runtime-bit-register-ranges).
 Other runtime range expressions, aliases, and computed register sources remain
 unsupported. Angle selection loops have their own supported forms below.
 
@@ -8110,7 +8174,7 @@ The current prototype does not reliably support:
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
 - scalar-bit shifts, runtime bit-register range expressions outside the supported
-  iteration, copy, UINT cast, population-count, and bitwise compound-assignment RHS subsets,
+  iteration, copy, UINT cast, population-count, equality-comparison, and bitwise compound-assignment RHS subsets,
   runtime bit-register range arithmetic compound assignments,
   ordered bit-register comparisons, whole-array bitwise operations, direct
   Boolean bitwise operations, or classical functions other than the
@@ -8952,6 +9016,19 @@ short-circuiting around runtime failures. Unit tests also cover width/type error
 ordered-comparison rejection, empty-loop validation, iterator shadowing, and
 temporary cleanup. The equality numerical suite also passes with UBSan enabled.
 
+`bra/test/qasm2qcx_runtime_range_equality_numerical.py` checks runtime-range
+equality and inequality against independent little-endian bit-vector
+references. It covers exhaustive small patterns, every native width, widths
+through 129 source bits, reversed and negative ranges, repeated/overlapping
+source positions, mutable and constant sources, and nested bitwise, complement,
+shift, and rotation expressions. It also checks scalar consumers, destination
+addresses, loop reentry, measurement feedback, normal/fused gate parameters,
+skipped domains, and complete operand evaluation before length checks or a
+mismatching-bit exit. Error markers verify that failures suppress destination
+writes. Unit tests cover declaration visibility, iterator shadowing, output
+limits, and temporary cleanup after nested failures. The audit passes on native
+and UBSan builds and executes the runtime-range equality example above.
+
 `bra/test/qasm2qcx_static_bit_selection_numerical.py` checks all four-bit source
 patterns across ascending/descending ranges, negative indices, reordered sets,
 singleton views, and repeated sources. A Python snapshot model checks ordinary
@@ -9622,6 +9699,7 @@ python3 bra/test/qasm2qcx_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bit_register_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bit_register_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bit_register_equality_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_range_equality_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_bit_selection_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_uint_numerical.py --bra bra/bin/bra

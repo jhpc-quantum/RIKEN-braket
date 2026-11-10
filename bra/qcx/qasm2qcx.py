@@ -358,13 +358,13 @@ class _RuntimeBitRangePopcountComplements:
 
 
 @dataclasses.dataclass(frozen=True)
-class _RuntimeBitRangePopcountTree:
+class _RuntimeBitRegisterExpression:
     expression: ast.Expression
     capacity: int
     # Fixed leaves have known widths. Runtime lengths are never inferred from
     # source widths, buffer capacities, or neighbouring fixed leaves.
     width: int | None = None
-    children: tuple['_RuntimeBitRangePopcountTree', ...] = ()
+    children: tuple['_RuntimeBitRegisterExpression', ...] = ()
     selection: _RuntimeBitRangeSelection | None = None
     count_type: ValueType | None = None
 
@@ -377,6 +377,13 @@ class _RuntimeBitRangePopcountTree:
             if selection is not None:
                 return selection
         return None
+
+
+@dataclasses.dataclass(frozen=True)
+class _RuntimeBitRegisterComparison:
+    expression: ast.BinaryExpression
+    left: _RuntimeBitRegisterExpression
+    right: _RuntimeBitRegisterExpression
 
 
 @dataclasses.dataclass(frozen=True)
@@ -404,7 +411,7 @@ class _RuntimeBitRangePopcountInfo:
     result_operations: tuple[_RuntimeBitRangePopcountOperation, ...] = ()
     # Written operand order. None entries use the existing fixed-register reader.
     operand_chains: tuple[_RuntimeBitRangePopcountOperand | None, _RuntimeBitRangePopcountOperand | None] | None = None
-    tree: _RuntimeBitRangePopcountTree | None = None
+    tree: _RuntimeBitRegisterExpression | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -846,6 +853,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__branch_index: int = 0
         self.__array_index: int = 0
         self.__register_shift_index: int = 0
+        self.__register_equality_index: int = 0
         self.__angle_shift_index: int = 0
         self.__rotation_index: int = 0
         self.__angle_trigonometric_index: int = 0
@@ -4151,6 +4159,29 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 'bit-register conditional operand')
         return self.__value, self.__value_type, self.__value_kind
 
+    def __runtime_register_comparison_info(
+            self, expression: ast.BinaryExpression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRegisterComparison | None:
+        # Probe only register-valued branches. Scalar distance arguments are
+        # opaque, even when they contain popcount calls on runtime ranges.
+        left_shapes = self.__runtime_bit_register_expression_shapes(expression.lhs, iterators)
+        right_shapes = self.__runtime_bit_register_expression_shapes(expression.rhs, iterators)
+        if left_shapes[id(expression.lhs)] < 0 and right_shapes[id(expression.rhs)] < 0:
+            return None  # Preserve the existing scalar and fixed-width paths.
+        left = self.__runtime_bit_register_expression_info(expression.lhs, left_shapes, iterators)
+        right = self.__runtime_bit_register_expression_info(expression.rhs, right_shapes, iterators)
+        if expression.op.name not in ('==', '!='):
+            raise UnsupportedOpenQASMError('ordered comparisons of bit-register values')
+        # Only fixed leaves have known widths. Capacities bound storage, never
+        # lengths; dynamic length equality must be asserted by the consumer.
+        return _RuntimeBitRegisterComparison(expression, left, right)
+
+    def __register_comparison_info(
+            self, expression: ast.BinaryExpression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> int | _RuntimeBitRegisterComparison | None:
+        runtime = self.__runtime_register_comparison_info(expression, iterators)
+        return runtime if runtime is not None else self.__register_comparison_width(expression, iterators)
+
     def __register_comparison_width(
             self, expression: ast.BinaryExpression,
             iterators: set[str] | dict[str, ValueType] | None = None) -> int | None:
@@ -4210,8 +4241,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         # Register shift/rotation counts may contain angle quotients without
         # making the comparison operands scalar angles.
-        if self.__register_comparison_width(condition) is not None:
-            self.__emit_register_equality_condition(condition, true_label, false_label)
+        register_info = self.__register_comparison_info(condition)
+        if register_info is not None:
+            if isinstance(register_info, _RuntimeBitRegisterComparison):
+                self.__emit_runtime_register_equality_condition(register_info, true_label, false_label)
+            else:
+                self.__emit_register_equality_condition(condition, true_label, false_label)
             return
         if self.__expression_mentions_angle(condition):
             angle_info = self.__angle_comparison_info(condition)
@@ -4284,6 +4319,35 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 f'JUMPIF {true_label} {lhs} {operator} {rhs}', f'JUMP {false_label}'])
         finally:
             self.__expression_kind = previous_kind
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
+    def __emit_runtime_register_equality_condition(
+            self, info: _RuntimeBitRegisterComparison, true_label: str, false_label: str) -> None:
+        previous_used = self.__used_temporary_variables.copy()
+        previous_declarations = self.__declared_temporary_variables.copy()
+        prefix = f'QASM2QCX_REGISTER_EQUALITY_{self.__register_equality_index}'
+        self.__register_equality_index += 1
+        mismatch = false_label if info.expression.op.name == '==' else true_label
+        match = true_label if info.expression.op.name == '==' else false_label
+        try:
+            with contextlib.ExitStack() as operands:
+                left, left_count = operands.enter_context(
+                    self.__runtime_bit_register_expression_value(info.left, f'{prefix}_LEFT'))
+                right, right_count = operands.enter_context(
+                    self.__runtime_bit_register_expression_value(info.right, f'{prefix}_RIGHT'))
+                # Complete both operands, including all runtime checks, before
+                # checking their lengths or exiting on a mismatching bit.
+                index = self.__add_new_temporary_variable(ValueType.INT)
+                self.__qcx_lines.extend([
+                    f'ASSERT {left_count} == {right_count}', f'LET {index} := 0',
+                    f'@{prefix}_COMPARE', f'JUMPIF {match} {index} >= {left_count}',
+                    f'JUMPIF {mismatch} {left}:{index} \\= {right}:{index}',
+                    f'LET {index} += 1', f'JUMP {prefix}_COMPARE',
+                ])
+                self.__check_runtime_register_output()
+            self.__hoist_temporary_declarations(previous_declarations)
+        finally:
             for temporary in self.__used_temporary_variables - previous_used:
                 self.__release_temporary_variable(temporary)
 
@@ -4497,7 +4561,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         else:
             angle_comparison = None
             if expression.op.name in ('==', '!=', '<', '<=', '>', '>='):
-                width = self.__register_comparison_width(expression)
+                width = self.__register_comparison_info(expression)
+                if isinstance(width, _RuntimeBitRegisterComparison):
+                    raise NoConstantExpressionException
                 if width is not None:
                     lhs = self.__constant_bit_register_value(expression.lhs, width)
                     rhs = self.__constant_bit_register_value(expression.rhs, width)
@@ -4902,11 +4968,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if expression.op.name in ('&', '|', '^') and self.__expression_mentions_angle(expression, iterators):
             value_type, _, runtime = self.__angle_operand_info(expression, iterators)
             return value_type, runtime
-        if (expression.op.name in ('==', '!=', '<', '<=', '>', '>=')
-                and self.__register_comparison_width(expression, iterators) is not None):
-            lhs_runtime = self.__register_expression_runtime(expression.lhs, iterators)
-            rhs_runtime = self.__register_expression_runtime(expression.rhs, iterators)
-            return ValueType.BOOL, lhs_runtime or rhs_runtime
+        if expression.op.name in ('==', '!=', '<', '<=', '>', '>='):
+            register_info = self.__register_comparison_info(expression, iterators)
+            if isinstance(register_info, _RuntimeBitRegisterComparison):
+                return ValueType.BOOL, True
+            if register_info is not None:
+                lhs_runtime = self.__register_expression_runtime(expression.lhs, iterators)
+                rhs_runtime = self.__register_expression_runtime(expression.rhs, iterators)
+                return ValueType.BOOL, lhs_runtime or rhs_runtime
         if (expression.op.name in ('==', '!=', '<', '<=', '>', '>=')
                 and self.__expression_mentions_angle(expression, iterators)):
             info = self.__angle_comparison_info(expression, iterators)
@@ -5445,7 +5514,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
         if (isinstance(expression, ast.BinaryExpression)
                 and expression.op.name in ('==', '!=', '<', '<=', '>', '>=')
-                and self.__register_comparison_width(expression, iterators) is not None):
+                and self.__register_comparison_info(expression, iterators) is not None):
             return  # Register selections/counts were checked by width validation.
         if isinstance(expression, ast.IndexExpression):
             selectors = expression.index
@@ -5590,7 +5659,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # still walk the assignment's destination and nested index syntax.
         if (isinstance(node, ast.BinaryExpression)
                 and node.op.name in ('==', '!=', '<', '<=', '>', '>=')
-                and self.__register_comparison_width(node, iterators) is not None):
+                and self.__register_comparison_info(node, iterators) is not None):
             return
         # Logical values and casts also need type checking when a body is
         # empty; this inspects types without executing skipped arithmetic.
@@ -7088,28 +7157,28 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if len(self.__qcx_lines) + 1 > self.MAX_LOOP_OUTPUT_LINES:
             raise InvalidFunctionCallException('Runtime range-pair popcount exceeds QCX output limit')
 
-    def __check_popcount_tree_output(self, extra: int = 0) -> None:
+    def __check_runtime_register_output(self, extra: int = 0) -> None:
         if len(self.__qcx_lines) + extra > self.MAX_LOOP_OUTPUT_LINES:
-            raise InvalidFunctionCallException('Runtime popcount tree exceeds QCX output limit')
+            raise InvalidFunctionCallException('Runtime register expression exceeds QCX output limit')
 
     @contextlib.contextmanager
-    def __popcount_tree_value(
-            self, tree: _RuntimeBitRangePopcountTree, prefix: str) -> Iterator[tuple[str, str]]:
+    def __runtime_bit_register_expression_value(
+            self, tree: _RuntimeBitRegisterExpression, prefix: str) -> Iterator[tuple[str, str]]:
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
         previous_used = self.__used_temporary_variables.copy()
         owned = None
         try:
-            self.__check_popcount_tree_output(1)
+            self.__check_runtime_register_output(1)
             if not tree.children:
                 if tree.selection is not None:
                     snapshot, count = self.__capture_popcount_range_snapshot(
                         tree.selection, prefix, capacity=tree.capacity)
                 else:
-                    self.__check_popcount_tree_output(tree.width + 3)
+                    self.__check_runtime_register_output(tree.width + 3)
                     with self.__bit_register_expression_value(tree.expression) as values:
                         if len(values) != tree.width:
-                            raise InvalidBitOperandException('Runtime popcount tree fixed-leaf width mismatch')
+                            raise InvalidBitOperandException('Runtime register expression fixed-leaf width mismatch')
                         snapshot = self.__add_temporary_int_array(tree.capacity, 'POPCOUNT_TREE_BITS')
                         count = self.__add_new_temporary_variable(ValueType.INT)
                         self.__qcx_lines.append(f'LET {count} := {tree.width}')
@@ -7119,7 +7188,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 with contextlib.ExitStack() as children:
                     # Do not propagate a parent's width into its children:
                     # complete each subtree, including its distances, first.
-                    values = [children.enter_context(self.__popcount_tree_value(child, f'{prefix}_CHILD_{index}'))
+                    values = [children.enter_context(self.__runtime_bit_register_expression_value(child, f'{prefix}_CHILD_{index}'))
                               for index, child in enumerate(tree.children)]
                     count = self.__add_new_temporary_variable(ValueType.INT)
                     self.__qcx_lines.append(f'LET {count} := {values[0][1]}')
@@ -7143,7 +7212,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                             values[0][0], count, tree.capacity, operations, prefix)
                 # Children are now released; the parent's copied count and
                 # private bits remain live for its consumer.
-            self.__check_popcount_tree_output()
+            self.__check_runtime_register_output()
             keep = {snapshot, count}
             for temporary in self.__used_temporary_variables - previous_used - keep:
                 self.__release_temporary_variable(temporary)
@@ -7157,11 +7226,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             for temporary in temporaries:
                 self.__release_temporary_variable(temporary)
 
-    def __emit_popcount_tree_population_count(self, tree: _RuntimeBitRangePopcountTree) -> str:
+    def __emit_popcount_tree_population_count(self, tree: _RuntimeBitRegisterExpression) -> str:
         previous_declarations = self.__declared_temporary_variables.copy()
         prefix = f'QASM2QCX_POPCOUNT_{self.__population_count_index}_TREE'
         self.__population_count_index += 1
-        with self.__popcount_tree_value(tree, prefix) as (snapshot, count):
+        with self.__runtime_bit_register_expression_value(tree, prefix) as (snapshot, count):
             result = self.__add_new_temporary_variable(ValueType.UINT)
             index = self.__add_new_temporary_variable(ValueType.INT)
             self.__qcx_lines.extend([
@@ -7170,7 +7239,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 f'LET {result} += :UINT:{snapshot}:{index}', f'LET {index} += 1',
                 f'JUMP {prefix}_COUNT', f'@{prefix}_COUNT_DONE',
             ])
-            self.__check_popcount_tree_output()
+            self.__check_runtime_register_output()
         self.__hoist_temporary_declarations(previous_declarations)
         return result
 
@@ -8370,9 +8439,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __runtime_bit_range_popcount_info(
             self, argument: ast.Expression,
             iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangePopcountInfo | None:
-        shapes = self.__runtime_bit_range_popcount_tree_shapes(argument, iterators)
+        shapes = self.__runtime_bit_register_expression_shapes(argument, iterators)
         if shapes[id(argument)] >= 2:
-            tree = self.__runtime_bit_range_popcount_tree_info(argument, shapes, iterators)
+            tree = self.__runtime_bit_register_expression_info(argument, shapes, iterators)
             selection = tree.first_selection
             if selection is not None:
                 return _RuntimeBitRangePopcountInfo(selection, False, tree=tree)
@@ -8435,7 +8504,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         selection = self.__runtime_bit_range_source(argument, iterators)
         return None if selection is None else _RuntimeBitRangePopcountInfo(selection, outer_complemented)
 
-    def __runtime_bit_range_popcount_tree_shapes(
+    def __runtime_bit_register_expression_shapes(
             self, expression: ast.Expression,
             iterators: set[str] | dict[str, ValueType] | None) -> dict[int, int]:
         # A structural probe only: do not validate or evaluate bounds/counts.
@@ -8469,34 +8538,34 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         scan(expression)
         return shapes
 
-    def __runtime_bit_range_popcount_tree_info(
+    def __runtime_bit_register_expression_info(
             self, expression: ast.Expression, shapes: dict[int, int],
-            iterators: set[str] | dict[str, ValueType] | None) -> _RuntimeBitRangePopcountTree:
+            iterators: set[str] | dict[str, ValueType] | None) -> _RuntimeBitRegisterExpression:
         if shapes.get(id(expression), -1) < 0:
-            width = self.__runtime_range_popcount_fixed_width(expression, iterators)
-            return _RuntimeBitRangePopcountTree(expression, width, width=width)
+            width = self.__bounded_bit_register_expression_width(expression, iterators)
+            return _RuntimeBitRegisterExpression(expression, width, width=width)
         if isinstance(expression, ast.FunctionCall):
             self.__builtin_function_overloads(expression.name.name, len(expression.arguments))
-            child = self.__runtime_bit_range_popcount_tree_info(expression.arguments[0], shapes, iterators)
+            child = self.__runtime_bit_register_expression_info(expression.arguments[0], shapes, iterators)
             count_type = self.__runtime_bit_range_popcount_rotation_distance_type(expression, iterators)
-            return _RuntimeBitRangePopcountTree(expression, child.capacity, children=(child,), count_type=count_type)
+            return _RuntimeBitRegisterExpression(expression, child.capacity, children=(child,), count_type=count_type)
         if isinstance(expression, ast.UnaryExpression):
-            child = self.__runtime_bit_range_popcount_tree_info(expression.expression, shapes, iterators)
-            return _RuntimeBitRangePopcountTree(expression, child.capacity, children=(child,))
+            child = self.__runtime_bit_register_expression_info(expression.expression, shapes, iterators)
+            return _RuntimeBitRegisterExpression(expression, child.capacity, children=(child,))
         if isinstance(expression, ast.BinaryExpression):
-            left = self.__runtime_bit_range_popcount_tree_info(expression.lhs, shapes, iterators)
+            left = self.__runtime_bit_register_expression_info(expression.lhs, shapes, iterators)
             if expression.op.name in ('<<', '>>'):
                 count_type, _ = self.__bit_index_info(expression.rhs, iterators, role='register shift count')
-                return _RuntimeBitRangePopcountTree(expression, left.capacity, children=(left,), count_type=count_type)
-            right = self.__runtime_bit_range_popcount_tree_info(expression.rhs, shapes, iterators)
+                return _RuntimeBitRegisterExpression(expression, left.capacity, children=(left,), count_type=count_type)
+            right = self.__runtime_bit_register_expression_info(expression.rhs, shapes, iterators)
             # Equality is checked when this node is reached, after both children
             # have completed. min(capacities) bounds a valid result, not its length.
-            return _RuntimeBitRangePopcountTree(expression, min(left.capacity, right.capacity), children=(left, right))
+            return _RuntimeBitRegisterExpression(expression, min(left.capacity, right.capacity), children=(left, right))
         selection = self.__runtime_bit_range_source(expression, iterators)
         if selection is None:
-            raise InvalidBitOperandException('Runtime popcount tree requires a bit-register leaf')
+            raise InvalidBitOperandException('Runtime register expression requires a bit-register leaf')
         capacity = min(2 * selection.source_width, self.MAX_RUNTIME_BIT_RANGE_POSITIONS, self.QCX_INT_MAX)
-        return _RuntimeBitRangePopcountTree(expression, capacity, selection=selection)
+        return _RuntimeBitRegisterExpression(expression, capacity, selection=selection)
 
     def __runtime_bit_range_popcount_result_info(
             self, info: _RuntimeBitRangePopcountInfo,
@@ -8556,7 +8625,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if selection is None:
                 # Validate a fixed LHS before inspecting RHS range bounds or
                 # distances. No values, lengths, or bits are evaluated here.
-                widths.append(self.__runtime_range_popcount_fixed_width(operand, iterators))
+                widths.append(self.__bounded_bit_register_expression_width(operand, iterators))
                 operands.append(None)
             else:
                 operations = self.__runtime_bit_range_popcount_operations(nodes, iterators)
@@ -8622,14 +8691,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # parities; the original AST remains available in the complement info.
         fixed = (right if range_on_left else left) if extended else (
             expression.rhs if range_on_left else expression.lhs)
-        width = self.__runtime_range_popcount_fixed_width(fixed, iterators)
+        width = self.__bounded_bit_register_expression_width(fixed, iterators)
         complements = (_RuntimeBitRangePopcountComplements(
             original, left_complemented, right_complemented, outer_complemented) if extended else None)
         return _RuntimeBitRangePopcountInfo(
             selection, False, bitwise=_RuntimeBitRangePopcountBitwise(expression, fixed, width, range_on_left),
             binary_complements=complements)
 
-    def __runtime_range_popcount_fixed_width(
+    def __bounded_bit_register_expression_width(
             self, expression: ast.Expression,
             iterators: set[str] | dict[str, ValueType] | None) -> int:
         limit = min(self.QCX_INT_MAX, self.MAX_RUNTIME_BIT_RANGE_POSITIONS)
@@ -8652,7 +8721,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         check_selections(expression)
         width = self.__bit_register_expression_width(expression, iterators)
         if width is None or not 1 <= width <= limit:
-            raise InvalidBitOperandException('Runtime range bitwise popcount requires a bounded known-width register operand')
+            raise InvalidBitOperandException('Runtime register expression requires a bounded known-width register operand')
         if not self.__is_initialization_process:
             active = set(iterators or ()) | {name for scope in self.__loop_bindings for name in scope}
             for name in self.__loop_bound_names(expression) - active:
