@@ -7020,8 +7020,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__expression_kind = ExpressionKind.ARITHMETIC
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
-                    if range_info.operand_chains is not None:
-                        raise UnsupportedOpenQASMError('runtime-range bitwise popcount operand-chain lowering')
                     if range_info.pair is not None:
                         result = self.__emit_bit_range_pair_population_count(range_info)
                     elif range_info.bitwise is not None:
@@ -7067,11 +7065,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __capture_popcount_range_snapshot(
             self, selection: _RuntimeBitRangeSelection, label: str,
-            expected_count: str | None = None) -> tuple[str, str]:
+            expected_count: str | None = None, *, capacity: int | None = None) -> tuple[str, str]:
         # The enclosing popcount visitor owns all scratch storage. Counts and
         # snapshot buffers remain reserved through both captures and counting.
         self.__check_range_pair_popcount_output()
-        capacity = min(2 * selection.source_width, self.MAX_RUNTIME_BIT_RANGE_POSITIONS)
+        capacity = min(2 * selection.source_width, self.MAX_RUNTIME_BIT_RANGE_POSITIONS) if capacity is None else capacity
         positions, count = self.__capture_bit_range_positions(
             selection.bounds, selection.source_width, label, capacity=capacity)
         if expected_count is not None:
@@ -7100,6 +7098,75 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__check_range_pair_popcount_output()
         return snapshot, count
 
+    def __capture_popcount_operand(
+            self, operand: _RuntimeBitRangePopcountOperand, label: str,
+            expected_count: str | None = None, *, width: int | None = None) -> tuple[str, str]:
+        capacity = min(2 * operand.selection.source_width, self.MAX_RUNTIME_BIT_RANGE_POSITIONS) if width is None else width
+        snapshot, count = self.__capture_popcount_range_snapshot(
+            operand.selection, label, expected_count, capacity=capacity)
+        if not operand.operations:
+            return snapshot, count
+        prefix = label + '_OPERAND'
+        # Capture every distance before mapping any bit, including later
+        # distances after a shift that discards the entire operand.
+        distances = self.__capture_bit_range_popcount_distances(operand.operations, count, prefix)
+        result = self.__add_temporary_int_array(capacity, 'POPCOUNT_OPERAND_BITS')
+        slot, index, bit, remaining = (self.__add_new_temporary_variable(ValueType.INT) for _ in range(4))
+        self.__qcx_lines.extend([
+            f'LET {slot} := 0', f'@{prefix}_LOOP', f'JUMPIF {prefix}_DONE {slot} >= {count}',
+            f'LET {index} := {slot}',
+        ])
+        self.__emit_popcount_operand_bit(snapshot, count, operand.operations, distances, index, bit, remaining, prefix)
+        self.__qcx_lines.extend([
+            f'@{prefix}_STORE', f'LET {result}:{slot} := {bit}', f'LET {slot} += 1',
+            f'JUMP {prefix}_LOOP', f'@{prefix}_DONE',
+        ])
+        self.__check_range_pair_popcount_output()
+        return result, count
+
+    def __emit_popcount_operand_bit(
+            self, snapshot: str, count: str, operations: tuple[_RuntimeBitRangePopcountOperation, ...],
+            distances: tuple[str | None, ...], index: str, bit: str, remaining: str, prefix: str) -> None:
+        # Trace one output position backward. Every index stays in [0,count),
+        # and subtraction-based wrapping avoids index+count or negating INT_MIN.
+        inverted = False
+        fills = []
+        for number in reversed(range(len(operations))):
+            node = operations[number].expression
+            if isinstance(node, ast.UnaryExpression):
+                inverted = not inverted
+                continue
+            distance = distances[number]
+            label = f'{prefix}_MAP_{number}'
+            if isinstance(node, ast.FunctionCall):
+                self.__qcx_lines.extend([
+                    f'JUMPIF {label}_WRAP {index} < {distance}',
+                    f'LET {index} -= {distance}', f'JUMP {label}_NEXT', f'@{label}_WRAP',
+                    f'LET {remaining} := {count}', f'LET {remaining} -= {distance}',
+                    f'LET {index} += {remaining}', f'@{label}_NEXT',
+                ])
+            else:
+                if node.op.name == '<<':
+                    self.__qcx_lines.extend([
+                        f'JUMPIF {label}_FILL {index} < {distance}', f'LET {index} -= {distance}',
+                    ])
+                else:
+                    self.__qcx_lines.extend([
+                        f'LET {remaining} := {count}', f'LET {remaining} -= {distance}',
+                        f'JUMPIF {label}_FILL {index} >= {remaining}', f'LET {index} += {distance}',
+                    ])
+                # A fill bit sees only complements outside this particular
+                # shift, and never reads an original source position.
+                fills.append((label, inverted))
+        self.__qcx_lines.append(f'LET {bit} := {snapshot}:{index}')
+        if inverted:
+            self.__qcx_lines.append(f'LET {bit} ^= 1')
+        self.__qcx_lines.append(f'JUMP {prefix}_STORE')
+        for label, complemented in fills:
+            self.__qcx_lines.extend([
+                f'@{label}_FILL', f'LET {bit} := {int(complemented)}', f'JUMP {prefix}_STORE',
+            ])
+
     def __emit_popcount_bitwise_bit(
             self, bit: str, left: str | int, right: str | int, operator: str,
             complements: _RuntimeBitRangePopcountComplements | None,
@@ -7124,9 +7191,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         prefix = f'QASM2QCX_POPCOUNT_{self.__population_count_index}'
         self.__population_count_index += 1
         # Complete the LHS, including its bit reads, before starting the RHS.
-        left, count = self.__capture_popcount_range_snapshot(info.selection, prefix + '_LEFT')
-        right, _ = self.__capture_popcount_range_snapshot(
-            info.pair.right_selection, prefix + '_RIGHT', expected_count=count)
+        if info.operand_chains is not None:
+            left, count = self.__capture_popcount_operand(info.operand_chains[0], prefix + '_LEFT')
+            right, _ = self.__capture_popcount_operand(info.operand_chains[1], prefix + '_RIGHT', expected_count=count)
+        else:
+            left, count = self.__capture_popcount_range_snapshot(info.selection, prefix + '_LEFT')
+            right, _ = self.__capture_popcount_range_snapshot(
+                info.pair.right_selection, prefix + '_RIGHT', expected_count=count)
         rotated = any(isinstance(record.expression, ast.FunctionCall) for record in info.result_operations)
         if rotated:
             result, starts, ends, intervals, inverted = self.__emit_bit_range_popcount_mixed_intervals(
@@ -7207,12 +7278,22 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # Capture complete operands at their written evaluation points.
             # Range capture checks the count before lookup or any bit read;
             # borrowed fixed-register reads must be frozen before the RHS.
+            def capture_range():
+                if info.operand_chains is None:
+                    return operands.enter_context(self.__runtime_bit_range_value(info.selection, record.width))
+                position = 0 if record.range_on_left else 1
+                prefix = f'QASM2QCX_POPCOUNT_{self.__population_count_index}'
+                self.__population_count_index += 1
+                label = prefix + ('_LEFT' if record.range_on_left else '_RIGHT')
+                snapshot, _ = self.__capture_popcount_operand(
+                    info.operand_chains[position], label, str(record.width), width=record.width)
+                return tuple(f'{snapshot}:{index}' for index in range(record.width))
             if record.range_on_left:
-                left = operands.enter_context(self.__runtime_bit_range_value(info.selection, record.width))
+                left = capture_range()
                 right = capture_fixed()
             else:
                 left = capture_fixed()
-                right = operands.enter_context(self.__runtime_bit_range_value(info.selection, record.width))
+                right = capture_range()
             if windowed:
                 # QCX comparisons require a variable on the left, including
                 # the negative-distance assertion in the shared window/interval helpers.
