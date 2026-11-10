@@ -53,6 +53,16 @@ class BackendTests(unittest.TestCase):
     program = operands.BackendTests.program
     check_exact = operands.BackendTests.check_exact
 
+    def test_documented_tree_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-popcount-tree-example -->'
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        source = source.replace('OPENQASM 3.0;', '', 1)
+        self.check_exact(source, tuple((name, None) for name in
+            ('left', 'right', 'balanced', 'outer', 'inner', 'complemented', 'fixed', 'promoted',
+             'endpoint', 'oversized', 'nested', 'self', 'skipped', 'repeated', 'wide', 'fresh')),
+            (2, 1, 4, 1, 2, 2, 1, 2, 3, 2, 1, 2, 0, 4, 65, 1))
+
     def check_nodes(self, source, nodes, *, preservation=(), batch_size=64):
         for first in range(0, len(nodes), batch_size):
             batch = nodes[first:first + batch_size]
