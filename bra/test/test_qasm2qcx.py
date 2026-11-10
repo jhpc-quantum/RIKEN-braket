@@ -5164,6 +5164,61 @@ class RuntimeRangeStaticSelectionAssignmentLoweringTests(unittest.TestCase):
                 self.assertFalse(any(line.startswith(f'LET {name}:') for line in c._QASM2QCXConverter__qcx_lines))
 
 
+class RuntimeRangeSetExpressionAssignmentAuditTests(unittest.TestCase):
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    prefix = RuntimeRangeRegisterAssignmentFoundationTests.prefix
+    assignment = staticmethod(RuntimeRangeSetExpressionAssignmentLoweringTests.assignment)
+
+    def test_actual_final_write_budget_failure_restores_state_without_writes(self):
+        statement = self.assignment('result[{stop,1,2,start}]=~flags[start:stop];')
+        reference = self.converter(self.prefix)
+        reference._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        info = reference._QASM2QCXConverter__runtime_register_assignment_info(statement.lvalue,statement.rvalue)
+        reference._QASM2QCXConverter__emit_runtime_register_assignment(info)
+        budget = len(reference._QASM2QCXConverter__qcx_lines)-1
+        c = self.converter(self.prefix)
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        info = c._QASM2QCXConverter__runtime_register_assignment_info(statement.lvalue,statement.rvalue)
+        fields = ('expression_kind','value','value_type','value_kind','evaluate_constant')
+        before = [getattr(c,'_QASM2QCXConverter__'+field) for field in fields]
+        original_lines = len(c._QASM2QCXConverter__qcx_lines)
+        with patch.object(c,'MAX_LOOP_OUTPUT_LINES',budget), self.assertRaisesRegex(
+                qasm2qcx.QASM2QCXError,'output limit'):
+            c._QASM2QCXConverter__emit_runtime_register_assignment(info)
+        lines = c._QASM2QCXConverter__qcx_lines
+        self.assertIn('@QASM2QCX_REGISTER_ASSIGNMENT_0_VALUE_DONE',lines)
+        name = c._QASM2QCXConverter__capitalize_variable_name('result')
+        self.assertFalse(any(line.startswith(f'LET {name}:') for line in lines[original_lines:]))
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables,{caller})
+        self.assertEqual(before,[getattr(c,'_QASM2QCXConverter__'+field) for field in fields])
+
+    def test_duplicate_check_budget_rejects_before_destination_evaluation(self):
+        c = self.converter(self.prefix)
+        statement = self.assignment('flags[{start,1,2,3,4,5,6,7}]=~C[start:stop];')
+        info = c._QASM2QCXConverter__runtime_register_assignment_info(statement.lvalue,statement.rvalue)
+        lines = c._QASM2QCXConverter__qcx_lines.copy()
+        # Eight entries require 28 pairwise comparisons, even with a short RHS.
+        with patch.object(c,'MAX_LOOP_OUTPUT_LINES',len(lines)+27), \
+             patch.object(c,'_QASM2QCXConverter__capture_array_index',side_effect=AssertionError('no capture')), \
+             self.assertRaisesRegex(qasm2qcx.QASM2QCXError,'output limit'):
+            c._QASM2QCXConverter__emit_runtime_register_assignment(info)
+        self.assertEqual(c._QASM2QCXConverter__qcx_lines,lines)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables,set())
+
+    def test_destination_forward_references_and_iterator_shadowing_in_skipped_bodies(self):
+        for body in ('flags[{outer,LATER}]=~C[start:stop];',
+                     'later[{outer,1}]=~C[start:stop];',
+                     'for int flags in [0:1] { flags[{outer,1}]=~C[start:stop]; }',
+                     'flags[{outer,indices[missing]}]=~C[start:stop];'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix+'for int outer in [1:0] {'+body+'}'
+                    'const int LATER=1; bit[4] later;')
+        c = self.converter(self.prefix+'''for int outer in [1:0] {
+            for int LOW in [0:1] { flags[{LOW,outer/0}]=~C[outer:0:999]; }
+        }''')
+        self.assertEqual(list(c),list(self.converter(self.prefix)))
+
+
 class RuntimeRangeStaticSelectionAssignmentAuditTests(unittest.TestCase):
     converter = staticmethod(BuiltinFunctionSignatureTests.converter)
     prefix = RuntimeRangeRegisterAssignmentFoundationTests.prefix
