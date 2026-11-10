@@ -391,9 +391,10 @@ class _RuntimeBitRegisterAssignment:
     target: ast.Identifier | ast.IndexedIdentifier
     width: int
     value: _RuntimeBitRegisterExpression
-    # None denotes a whole register. Static selections retain normalized
-    # destination positions in written order, independently of RHS lengths.
-    selection: _StaticBitSelection | None = None
+    # None denotes a whole register. Static positions are normalized; runtime
+    # index sets retain original expressions until destination capture.
+    # Neither selection width is an inferred length for a dynamic RHS leaf.
+    selection: _StaticBitSelection | _RuntimeBitSetSelection | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -2649,7 +2650,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return variable_name, indices, is_register
 
     @staticmethod
-    def __qcx_bit_name(variable_name: str, size: int, index: int) -> str:
+    def __qcx_bit_name(variable_name: str, size: int, index: int | str) -> str:
         return variable_name if size == 1 else f'{variable_name}:{index}'
 
     @contextlib.contextmanager
@@ -4174,8 +4175,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, target: ast.Identifier | ast.IndexedIdentifier, expression: ast.Expression,
             iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRegisterAssignment | None:
         # Ordinary '=' assignments and declaration initializers share RHS
-        # snapshots. Runtime-selected destinations retain their separate paths.
+        # snapshots. Runtime-range destinations retain their separate paths.
         if not isinstance(target, ast.Identifier):
+            runtime_set = self.__runtime_set_expression_assignment_info(target, expression, iterators)
+            if runtime_set is not None:
+                return runtime_set
             return self.__runtime_static_selection_assignment_info(target, expression, iterators)
         shapes = self.__runtime_bit_register_expression_shapes(expression, iterators)
         if shapes[id(expression)] < 0:
@@ -4198,6 +4202,26 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         selection = self.__static_bit_selection(
             target, iterators, destination=True,
             max_indices=min(self.QCX_INT_MAX, self.MAX_RUNTIME_BIT_RANGE_POSITIONS))
+        value = self.__runtime_bit_register_expression_info(expression, shapes, iterators)
+        return _RuntimeBitRegisterAssignment(target, selection.width, value, selection)
+
+    def __runtime_set_expression_assignment_info(
+            self, target: ast.Identifier | ast.IndexedIdentifier, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRegisterAssignment | None:
+        # A set has a known entry count even when its destination positions
+        # require runtime capture. Other target forms keep their own paths.
+        if (not isinstance(target, ast.IndexedIdentifier) or len(target.indices) != 1
+                or not isinstance(target.indices[0], ast.DiscreteSet)):
+            return None
+        shapes = self.__runtime_bit_register_expression_shapes(expression, iterators)
+        if shapes[id(expression)] < 0:
+            return None  # Preserve fixed-width RHS handling, including scalar counts.
+        self.__runtime_register_assignment_destination_width(target.name, iterators)
+        selection = self.__runtime_bit_set_selection(target, iterators, destination=True)
+        if selection is None:
+            return None  # A wholly static set belongs to static-selection analysis.
+        if not 1 <= selection.width <= self.MAX_RUNTIME_BIT_RANGE_POSITIONS:
+            raise InvalidBitOperandException('Runtime expression assignment selection width exceeds storage limit')
         value = self.__runtime_bit_register_expression_info(expression, shapes, iterators)
         return _RuntimeBitRegisterAssignment(target, selection.width, value, selection)
 
@@ -10282,12 +10306,25 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__emit_bit_value_assignment(target_names, target_is_register, expression)
 
     def __emit_runtime_register_assignment(self, info: _RuntimeBitRegisterAssignment) -> None:
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
         previous_used = self.__used_temporary_variables.copy()
         previous_declarations = self.__declared_temporary_variables.copy()
         prefix = f'QASM2QCX_REGISTER_ASSIGNMENT_{self.__register_assignment_index}'
         self.__register_assignment_index += 1
         destination = self.__capitalize_variable_name(self.__operand_name(info.target))
         try:
+            positions: tuple[int | str, ...] = ()
+            if isinstance(info.selection, _RuntimeBitSetSelection):
+                self.__expression_kind = ExpressionKind.ARITHMETIC
+                comparisons = info.width * (info.width - 1) // 2
+                self.__check_runtime_register_output(comparisons + info.width)
+                positions = tuple(self.__capture_array_index(index, info.selection.source_width)
+                                  for index in info.selection.indices)
+                self.__check_runtime_register_output(comparisons)
+                self.__check_distinct_bit_indices(positions)
+            elif info.selection is not None:
+                positions = info.selection.indices
             with self.__runtime_bit_register_expression_value(info.value, f'{prefix}_VALUE') as (snapshot, count):
                 # No destination bit is written until the complete RHS and
                 # all nested checks have finished and its final length agrees.
@@ -10305,12 +10342,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     self.__check_runtime_register_output(info.width + 3)
                     self.__qcx_lines.extend([f'ASSERT {count} == {info.width}', f'@{prefix}_WRITE'])
                     size = self.__bit_variable_name_size_map[destination]
-                    for offset, position in enumerate(info.selection.indices):
+                    for offset, position in enumerate(positions):
                         target = self.__qcx_bit_name(destination, size, position)
                         self.__qcx_lines.append(f'LET {target} := {snapshot}:{offset}')
                     self.__qcx_lines.append(f'@{prefix}_END')
             self.__hoist_temporary_declarations(previous_declarations)
         finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
             for temporary in self.__used_temporary_variables - previous_used:
                 self.__release_temporary_variable(temporary)
 
@@ -11181,6 +11220,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if angle_bits is not None:
             self.__emit_angle_bit_assignment(angle_bits.selection, statement.rvalue, angle_bits.binary_operator)
             return
+        if statement.op.name == '=':
+            runtime_set = self.__runtime_set_expression_assignment_info(statement.lvalue, statement.rvalue)
+            if runtime_set is not None:
+                self.__emit_runtime_register_assignment(runtime_set)
+                return
         bit_set = self.__runtime_bit_set_assignment_info(statement)
         if bit_set is not None:
             self.__emit_runtime_bit_set_assignment(bit_set.selection, statement.rvalue, bit_set.binary_operator)
