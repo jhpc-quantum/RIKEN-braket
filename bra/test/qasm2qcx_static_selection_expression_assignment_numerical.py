@@ -45,6 +45,14 @@ class BackendTests(unittest.TestCase):
     program = registers.BackendTests.program
     check_exact = registers.BackendTests.check_exact
 
+    def test_documented_static_selection_expression_assignment_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- static-selection-expression-assignment-example -->'
+        source = document.split(marker,1)[1].split('```qasm\n',1)[1].split('```',1)[0]
+        source = source.replace('OPENQASM 3.0;','',1)
+        self.check_exact(source,(('result',8),('a',4),('one',1),('range_ok',None),
+                                ('set_ok',None),('untouched',None)),(95,2,1,1,1,1))
+
     def check_nodes(self, source, nodes, before, selections, preservation=()):
         statements, outputs, expected = [source], [], []
         for selector,positions in selections:
