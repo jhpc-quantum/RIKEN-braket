@@ -387,6 +387,13 @@ class _RuntimeBitRegisterComparison:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeBitRegisterAssignment:
+    target: ast.Identifier
+    width: int
+    value: _RuntimeBitRegisterExpression
+
+
+@dataclasses.dataclass(frozen=True)
 class _RuntimeBitRangePopcountInfo:
     selection: _RuntimeBitRangeSelection
     # Parity on the source range; outer parity applies after a shift/rotation.
@@ -854,6 +861,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__array_index: int = 0
         self.__register_shift_index: int = 0
         self.__register_equality_index: int = 0
+        self.__register_assignment_index: int = 0
         self.__angle_shift_index: int = 0
         self.__rotation_index: int = 0
         self.__angle_trigonometric_index: int = 0
@@ -4159,6 +4167,39 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 'bit-register conditional operand')
         return self.__value, self.__value_type, self.__value_kind
 
+    def __runtime_register_assignment_info(
+            self, target: ast.Identifier | ast.IndexedIdentifier, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRegisterAssignment | None:
+        # This entry point is for whole-register '=' and declaration
+        # initializers. Selected destinations retain their separate paths.
+        if not isinstance(target, ast.Identifier):
+            return None
+        shapes = self.__runtime_bit_register_expression_shapes(expression, iterators)
+        if shapes[id(expression)] < 0:
+            return None  # Preserve fixed-width and scalar assignment analysis.
+        name = target.name
+        if ((iterators is not None and name in iterators)
+                or any(name in scope for scope in self.__loop_bindings)):
+            raise UnsupportedOpenQASMError('assignment to a for-loop iterator')
+        self.__reject_constant_bit_target(target, iterators)
+        source_type = self.__classical_source_types.get(name)
+        if source_type is None and name not in self.__constant_source_types:
+            raise NoVariableNameException(name)
+        if not isinstance(source_type, ast.BitType) or source_type.size is None:
+            raise InvalidBitOperandException('Runtime register assignment requires a mutable bit-register destination')
+        if (not self.__is_initialization_process
+                and self.__capitalize_variable_name(name) not in self.__sized_bit_variables):
+            raise NoVariableNameException(name)
+        # Width was resolved in declaration scope. Do not re-evaluate the
+        # type's size expression under an iterator that shadows a constant.
+        width = self.__bit_register_source_sizes[name]
+        if not 1 <= width <= self.QCX_INT_MAX:
+            raise InvalidBitOperandException('Runtime register assignment destination width must fit QCX INT indexing')
+        value = self.__runtime_bit_register_expression_info(expression, shapes, iterators)
+        # The destination width is a required result length, never an inferred
+        # width for dynamic leaves or permission to pad/truncate their values.
+        return _RuntimeBitRegisterAssignment(target, width, value)
+
     def __runtime_register_comparison_info(
             self, expression: ast.BinaryExpression,
             iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRegisterComparison | None:
@@ -5536,6 +5577,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, statement: ast.ClassicalAssignment,
             iterators: dict[str, ValueType] | None = None) -> bool:
         if self.__runtime_bit_range_copy_info(statement, iterators) is not None:
+            return True
+        if (statement.op.name == '='
+                and self.__runtime_register_assignment_info(statement.lvalue, statement.rvalue, iterators) is not None):
             return True
         if self.__validate_angle_bit_assignment(statement, iterators):
             return True
@@ -10206,8 +10250,36 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_bit_expression_assignment(
             self, target: ast.Identifier | ast.IndexedIdentifier,
             expression: ast.Expression) -> None:
+        runtime = self.__runtime_register_assignment_info(target, expression)
+        if runtime is not None:
+            self.__emit_runtime_register_assignment(runtime)
+            return
         with self.__bit_assignment_target(target) as (target_names, target_is_register):
             self.__emit_bit_value_assignment(target_names, target_is_register, expression)
+
+    def __emit_runtime_register_assignment(self, info: _RuntimeBitRegisterAssignment) -> None:
+        previous_used = self.__used_temporary_variables.copy()
+        previous_declarations = self.__declared_temporary_variables.copy()
+        prefix = f'QASM2QCX_REGISTER_ASSIGNMENT_{self.__register_assignment_index}'
+        self.__register_assignment_index += 1
+        destination = self.__capitalize_variable_name(info.target.name)
+        try:
+            with self.__runtime_bit_register_expression_value(info.value, f'{prefix}_VALUE') as (snapshot, count):
+                index = self.__add_new_temporary_variable(ValueType.INT)
+                self.__check_runtime_register_output(8)
+                target = destination if info.width == 1 else f'{destination}:{index}'
+                # No destination bit is written until the complete RHS and
+                # all nested checks have finished and its final length agrees.
+                self.__qcx_lines.extend([
+                    f'ASSERT {count} == {info.width}', f'LET {index} := 0',
+                    f'@{prefix}_WRITE', f'JUMPIF {prefix}_END {index} >= {info.width}',
+                    f'LET {target} := {snapshot}:{index}', f'LET {index} += 1',
+                    f'JUMP {prefix}_WRITE', f'@{prefix}_END',
+                ])
+            self.__hoist_temporary_declarations(previous_declarations)
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
 
     @contextlib.contextmanager
     def __bit_assignment_target(
