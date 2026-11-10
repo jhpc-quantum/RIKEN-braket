@@ -388,9 +388,12 @@ class _RuntimeBitRegisterComparison:
 
 @dataclasses.dataclass(frozen=True)
 class _RuntimeBitRegisterAssignment:
-    target: ast.Identifier
+    target: ast.Identifier | ast.IndexedIdentifier
     width: int
     value: _RuntimeBitRegisterExpression
+    # None denotes a whole register. Static selections retain normalized
+    # destination positions in written order, independently of RHS lengths.
+    selection: _StaticBitSelection | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -4177,6 +4180,30 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         shapes = self.__runtime_bit_register_expression_shapes(expression, iterators)
         if shapes[id(expression)] < 0:
             return None  # Preserve fixed-width and scalar assignment analysis.
+        width = self.__runtime_register_assignment_destination_width(target, iterators)
+        value = self.__runtime_bit_register_expression_info(expression, shapes, iterators)
+        # The destination width is a required result length, never an inferred
+        # width for dynamic leaves or permission to pad/truncate their values.
+        return _RuntimeBitRegisterAssignment(target, width, value)
+
+    def __runtime_static_selection_assignment_info(
+            self, target: ast.Identifier | ast.IndexedIdentifier, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRegisterAssignment | None:
+        if not isinstance(target, ast.IndexedIdentifier) or not self.__is_register_bit_selection(target):
+            return None  # Whole-register and scalar destinations have separate paths.
+        shapes = self.__runtime_bit_register_expression_shapes(expression, iterators)
+        if shapes[id(expression)] < 0:
+            return None  # Preserve the existing fixed-width selection paths.
+        self.__runtime_register_assignment_destination_width(target.name, iterators)
+        selection = self.__static_bit_selection(
+            target, iterators, destination=True,
+            max_indices=min(self.QCX_INT_MAX, self.MAX_RUNTIME_BIT_RANGE_POSITIONS))
+        value = self.__runtime_bit_register_expression_info(expression, shapes, iterators)
+        return _RuntimeBitRegisterAssignment(target, selection.width, value, selection)
+
+    def __runtime_register_assignment_destination_width(
+            self, target: ast.Identifier,
+            iterators: set[str] | dict[str, ValueType] | None) -> int:
         name = target.name
         if ((iterators is not None and name in iterators)
                 or any(name in scope for scope in self.__loop_bindings)):
@@ -4195,10 +4222,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         width = self.__bit_register_source_sizes[name]
         if not 1 <= width <= self.QCX_INT_MAX:
             raise InvalidBitOperandException('Runtime register assignment destination width must fit QCX INT indexing')
-        value = self.__runtime_bit_register_expression_info(expression, shapes, iterators)
-        # The destination width is a required result length, never an inferred
-        # width for dynamic leaves or permission to pad/truncate their values.
-        return _RuntimeBitRegisterAssignment(target, width, value)
+        return width
 
     def __runtime_register_comparison_info(
             self, expression: ast.BinaryExpression,
