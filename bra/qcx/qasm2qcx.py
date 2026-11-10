@@ -861,6 +861,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__array_index: int = 0
         self.__register_shift_index: int = 0
         self.__register_equality_index: int = 0
+        self.__register_assignment_index: int = 0
         self.__angle_shift_index: int = 0
         self.__rotation_index: int = 0
         self.__angle_trigonometric_index: int = 0
@@ -5577,6 +5578,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             iterators: dict[str, ValueType] | None = None) -> bool:
         if self.__runtime_bit_range_copy_info(statement, iterators) is not None:
             return True
+        if (statement.op.name == '='
+                and self.__runtime_register_assignment_info(statement.lvalue, statement.rvalue, iterators) is not None):
+            return True
         if self.__validate_angle_bit_assignment(statement, iterators):
             return True
         if self.__runtime_bit_set_assignment_info(statement, iterators) is not None:
@@ -10246,8 +10250,36 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_bit_expression_assignment(
             self, target: ast.Identifier | ast.IndexedIdentifier,
             expression: ast.Expression) -> None:
+        runtime = self.__runtime_register_assignment_info(target, expression)
+        if runtime is not None:
+            self.__emit_runtime_register_assignment(runtime)
+            return
         with self.__bit_assignment_target(target) as (target_names, target_is_register):
             self.__emit_bit_value_assignment(target_names, target_is_register, expression)
+
+    def __emit_runtime_register_assignment(self, info: _RuntimeBitRegisterAssignment) -> None:
+        previous_used = self.__used_temporary_variables.copy()
+        previous_declarations = self.__declared_temporary_variables.copy()
+        prefix = f'QASM2QCX_REGISTER_ASSIGNMENT_{self.__register_assignment_index}'
+        self.__register_assignment_index += 1
+        destination = self.__capitalize_variable_name(info.target.name)
+        try:
+            with self.__runtime_bit_register_expression_value(info.value, f'{prefix}_VALUE') as (snapshot, count):
+                index = self.__add_new_temporary_variable(ValueType.INT)
+                self.__check_runtime_register_output(8)
+                target = destination if info.width == 1 else f'{destination}:{index}'
+                # No destination bit is written until the complete RHS and
+                # all nested checks have finished and its final length agrees.
+                self.__qcx_lines.extend([
+                    f'ASSERT {count} == {info.width}', f'LET {index} := 0',
+                    f'@{prefix}_WRITE', f'JUMPIF {prefix}_END {index} >= {info.width}',
+                    f'LET {target} := {snapshot}:{index}', f'LET {index} += 1',
+                    f'JUMP {prefix}_WRITE', f'@{prefix}_END',
+                ])
+            self.__hoist_temporary_declarations(previous_declarations)
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
 
     @contextlib.contextmanager
     def __bit_assignment_target(
