@@ -7044,8 +7044,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 range_info = self.__runtime_bit_range_popcount_info(argument)
                 if range_info is not None:
                     if range_info.tree is not None:
-                        raise UnsupportedOpenQASMError('runtime-range popcount expression-tree lowering')
-                    if range_info.pair is not None:
+                        result = self.__emit_popcount_tree_population_count(range_info.tree)
+                    elif range_info.pair is not None:
                         result = self.__emit_bit_range_pair_population_count(range_info)
                     elif range_info.bitwise is not None:
                         result = self.__emit_bit_range_bitwise_population_count(range_info)
@@ -7087,6 +7087,92 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __check_range_pair_popcount_output(self) -> None:
         if len(self.__qcx_lines) + 1 > self.MAX_LOOP_OUTPUT_LINES:
             raise InvalidFunctionCallException('Runtime range-pair popcount exceeds QCX output limit')
+
+    def __check_popcount_tree_output(self, extra: int = 0) -> None:
+        if len(self.__qcx_lines) + extra > self.MAX_LOOP_OUTPUT_LINES:
+            raise InvalidFunctionCallException('Runtime popcount tree exceeds QCX output limit')
+
+    @contextlib.contextmanager
+    def __popcount_tree_value(
+            self, tree: _RuntimeBitRangePopcountTree, prefix: str) -> Iterator[tuple[str, str]]:
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        owned = None
+        try:
+            self.__check_popcount_tree_output(1)
+            if not tree.children:
+                if tree.selection is not None:
+                    snapshot, count = self.__capture_popcount_range_snapshot(
+                        tree.selection, prefix, capacity=tree.capacity)
+                else:
+                    self.__check_popcount_tree_output(tree.width + 3)
+                    with self.__bit_register_expression_value(tree.expression) as values:
+                        if len(values) != tree.width:
+                            raise InvalidBitOperandException('Runtime popcount tree fixed-leaf width mismatch')
+                        snapshot = self.__add_temporary_int_array(tree.capacity, 'POPCOUNT_TREE_BITS')
+                        count = self.__add_new_temporary_variable(ValueType.INT)
+                        self.__qcx_lines.append(f'LET {count} := {tree.width}')
+                        for index, value in enumerate(values):
+                            self.__qcx_lines.append(f'LET {snapshot}:{index} := {value}')
+            else:
+                with contextlib.ExitStack() as children:
+                    # Do not propagate a parent's width into its children:
+                    # complete each subtree, including its distances, first.
+                    values = [children.enter_context(self.__popcount_tree_value(child, f'{prefix}_CHILD_{index}'))
+                              for index, child in enumerate(tree.children)]
+                    count = self.__add_new_temporary_variable(ValueType.INT)
+                    self.__qcx_lines.append(f'LET {count} := {values[0][1]}')
+                    if len(values) == 2:
+                        self.__qcx_lines.append(f'ASSERT {count} == {values[1][1]}')
+                        snapshot = self.__add_temporary_int_array(tree.capacity, 'POPCOUNT_TREE_BITS')
+                        index = self.__add_new_temporary_variable(ValueType.INT)
+                        bit = self.__add_new_temporary_variable(ValueType.BIT)
+                        self.__qcx_lines.extend([
+                            f'LET {index} := 0', f'@{prefix}_COMBINE', f'JUMPIF {prefix}_DONE {index} >= {count}',
+                        ])
+                        self.__emit_popcount_bitwise_bit(
+                            bit, f'{values[0][0]}:{index}', f'{values[1][0]}:{index}', tree.expression.op.name, None, None)
+                        self.__qcx_lines.extend([
+                            f'LET {snapshot}:{index} := {bit}', f'LET {index} += 1',
+                            f'JUMP {prefix}_COMBINE', f'@{prefix}_DONE',
+                        ])
+                    else:
+                        operations = (_RuntimeBitRangePopcountOperation(tree.expression, tree.count_type),)
+                        snapshot = self.__transform_popcount_snapshot(
+                            values[0][0], count, tree.capacity, operations, prefix)
+                # Children are now released; the parent's copied count and
+                # private bits remain live for its consumer.
+            self.__check_popcount_tree_output()
+            keep = {snapshot, count}
+            for temporary in self.__used_temporary_variables - previous_used - keep:
+                self.__release_temporary_variable(temporary)
+            owned = keep
+            yield snapshot, count
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            temporaries = (self.__used_temporary_variables - previous_used if owned is None
+                           else self.__used_temporary_variables & owned)
+            for temporary in temporaries:
+                self.__release_temporary_variable(temporary)
+
+    def __emit_popcount_tree_population_count(self, tree: _RuntimeBitRangePopcountTree) -> str:
+        previous_declarations = self.__declared_temporary_variables.copy()
+        prefix = f'QASM2QCX_POPCOUNT_{self.__population_count_index}_TREE'
+        self.__population_count_index += 1
+        with self.__popcount_tree_value(tree, prefix) as (snapshot, count):
+            result = self.__add_new_temporary_variable(ValueType.UINT)
+            index = self.__add_new_temporary_variable(ValueType.INT)
+            self.__qcx_lines.extend([
+                f'LET {result} := 0', f'LET {index} := 0', f'@{prefix}_COUNT',
+                f'JUMPIF {prefix}_COUNT_DONE {index} >= {count}',
+                f'LET {result} += :UINT:{snapshot}:{index}', f'LET {index} += 1',
+                f'JUMP {prefix}_COUNT', f'@{prefix}_COUNT_DONE',
+            ])
+            self.__check_popcount_tree_output()
+        self.__hoist_temporary_declarations(previous_declarations)
+        return result
 
     def __capture_popcount_range_snapshot(
             self, selection: _RuntimeBitRangeSelection, label: str,
@@ -7132,22 +7218,27 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if not operand.operations:
             return snapshot, count
         prefix = label + '_OPERAND'
+        return self.__transform_popcount_snapshot(snapshot, count, capacity, operand.operations, prefix), count
+
+    def __transform_popcount_snapshot(
+            self, snapshot: str, count: str, capacity: int,
+            operations: tuple[_RuntimeBitRangePopcountOperation, ...], prefix: str) -> str:
         # Capture every distance before mapping any bit, including later
         # distances after a shift that discards the entire operand.
-        distances = self.__capture_bit_range_popcount_distances(operand.operations, count, prefix)
+        distances = self.__capture_bit_range_popcount_distances(operations, count, prefix)
         result = self.__add_temporary_int_array(capacity, 'POPCOUNT_OPERAND_BITS')
         slot, index, bit, remaining = (self.__add_new_temporary_variable(ValueType.INT) for _ in range(4))
         self.__qcx_lines.extend([
             f'LET {slot} := 0', f'@{prefix}_LOOP', f'JUMPIF {prefix}_DONE {slot} >= {count}',
             f'LET {index} := {slot}',
         ])
-        self.__emit_popcount_operand_bit(snapshot, count, operand.operations, distances, index, bit, remaining, prefix)
+        self.__emit_popcount_operand_bit(snapshot, count, operations, distances, index, bit, remaining, prefix)
         self.__qcx_lines.extend([
             f'@{prefix}_STORE', f'LET {result}:{slot} := {bit}', f'LET {slot} += 1',
             f'JUMP {prefix}_LOOP', f'@{prefix}_DONE',
         ])
         self.__check_range_pair_popcount_output()
-        return result, count
+        return result
 
     def __emit_popcount_operand_bit(
             self, snapshot: str, count: str, operations: tuple[_RuntimeBitRangePopcountOperation, ...],
