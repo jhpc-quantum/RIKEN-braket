@@ -28,6 +28,15 @@ class BackendTests(unittest.TestCase):
     program = registers.BackendTests.program
     check_exact = registers.BackendTests.check_exact
 
+    def test_documented_runtime_range_destination_expression_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-range-destination-expression-example -->'
+        source = document.split(marker,1)[1].split('```qasm\n',1)[1].split('```',1)[0]
+        source = source.replace('OPENQASM 3.0;','',1)
+        self.check_exact(source,(('result',8),('a',4),('one',1),('captured',4),
+                                 ('visits',None),('rotated',None),('combined',None),('untouched',None)),
+                         (236,2,1,3,2,1,1,1))
+
     # These generators depend on self.check_nodes only for destination handling.
     # Reuse their source patterns and independent expression-tree references.
     check_case = index_sets.BackendTests.check_case
