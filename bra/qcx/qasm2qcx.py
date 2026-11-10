@@ -387,6 +387,13 @@ class _RuntimeBitRegisterComparison:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeBitRegisterAssignment:
+    target: ast.Identifier
+    width: int
+    value: _RuntimeBitRegisterExpression
+
+
+@dataclasses.dataclass(frozen=True)
 class _RuntimeBitRangePopcountInfo:
     selection: _RuntimeBitRangeSelection
     # Parity on the source range; outer parity applies after a shift/rotation.
@@ -4158,6 +4165,39 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError(
                 'bit-register conditional operand')
         return self.__value, self.__value_type, self.__value_kind
+
+    def __runtime_register_assignment_info(
+            self, target: ast.Identifier | ast.IndexedIdentifier, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRegisterAssignment | None:
+        # This entry point is for whole-register '=' and declaration
+        # initializers. Selected destinations retain their separate paths.
+        if not isinstance(target, ast.Identifier):
+            return None
+        shapes = self.__runtime_bit_register_expression_shapes(expression, iterators)
+        if shapes[id(expression)] < 0:
+            return None  # Preserve fixed-width and scalar assignment analysis.
+        name = target.name
+        if ((iterators is not None and name in iterators)
+                or any(name in scope for scope in self.__loop_bindings)):
+            raise UnsupportedOpenQASMError('assignment to a for-loop iterator')
+        self.__reject_constant_bit_target(target, iterators)
+        source_type = self.__classical_source_types.get(name)
+        if source_type is None and name not in self.__constant_source_types:
+            raise NoVariableNameException(name)
+        if not isinstance(source_type, ast.BitType) or source_type.size is None:
+            raise InvalidBitOperandException('Runtime register assignment requires a mutable bit-register destination')
+        if (not self.__is_initialization_process
+                and self.__capitalize_variable_name(name) not in self.__sized_bit_variables):
+            raise NoVariableNameException(name)
+        # Width was resolved in declaration scope. Do not re-evaluate the
+        # type's size expression under an iterator that shadows a constant.
+        width = self.__bit_register_source_sizes[name]
+        if not 1 <= width <= self.QCX_INT_MAX:
+            raise InvalidBitOperandException('Runtime register assignment destination width must fit QCX INT indexing')
+        value = self.__runtime_bit_register_expression_info(expression, shapes, iterators)
+        # The destination width is a required result length, never an inferred
+        # width for dynamic leaves or permission to pad/truncate their values.
+        return _RuntimeBitRegisterAssignment(target, width, value)
 
     def __runtime_register_comparison_info(
             self, expression: ast.BinaryExpression,

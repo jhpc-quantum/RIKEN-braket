@@ -4543,6 +4543,130 @@ class RuntimeRangePopcountTreeFoundationTests(unittest.TestCase):
         self.converter(self.prefix+'uint out=popcount((flags[start:stop] & C) ^ wide[bound:stop]);')
 
 
+class RuntimeRangeRegisterAssignmentFoundationTests(unittest.TestCase):
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    prefix = (RuntimeRangePopcountFoundationTests.prefix +
+              'const int WIDTH=4; bit[WIDTH] result; bit[129] large; bit[1] single;')
+
+    def setUp(self):
+        self.c = self.converter(self.prefix)
+
+    def info(self, source, target='result', iterators=None):
+        return self.c._QASM2QCXConverter__runtime_register_assignment_info(
+            qasm2qcx.ast.Identifier(target), self.expression(source), iterators)
+
+    def test_assignments_and_initializers_share_original_target_and_rhs_metadata(self):
+        for source in ('result = flags[start:stop];',
+                       'bit[4] result = rotl(flags[start:step:stop], bound);'):
+            statement = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; '+source).statements[0]
+            target = statement.lvalue if isinstance(statement, qasm2qcx.ast.ClassicalAssignment) else statement.identifier
+            value = statement.rvalue if isinstance(statement, qasm2qcx.ast.ClassicalAssignment) else statement.init_expression
+            info = self.c._QASM2QCXConverter__runtime_register_assignment_info(target, value)
+            self.assertIsInstance(info, qasm2qcx._RuntimeBitRegisterAssignment)
+            self.assertIs(info.target, target)
+            self.assertIs(info.value.expression, value)
+            self.assertEqual(info.width, 4)
+            self.assertIsNotNone(info.value.first_selection)
+            with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                info.width = 1
+
+    def test_nested_operations_preserve_dynamic_lengths_and_count_types(self):
+        info = self.info('~rotr((flags[start:step:stop] & C) ^ (wide[bound:stop] << bound), condition)')
+        self.assertEqual(info.width, 4)
+        self.assertIsNone(info.value.width)
+        rotation = info.value.children[0]
+        self.assertEqual(rotation.count_type, qasm2qcx.ValueType.BOOL)
+        binary = rotation.children[0]
+        self.assertEqual(binary.children[0].children[1].width, 8)
+        self.assertEqual(binary.children[1].count_type, qasm2qcx.ValueType.UINT)
+        self.assertEqual(info.value.capacity, 8)
+        # Neither destination size nor source capacity is a selected length.
+        info = self.info('one[start:start]', 'large')
+        self.assertEqual((info.width, info.value.capacity), (129, 2))
+        self.assertIsNone(info.value.width)
+        info = self.info('wide[start:stop]', 'single')
+        self.assertEqual((info.width, info.value.capacity), (1, 258))
+
+    def test_fixed_width_scalar_and_nested_scalar_count_paths_are_not_claimed(self):
+        for value in ('C', '"1010"', 'flags[0:3]', 'flags[{start,stop}]',
+                      'flags & C', 'rotl(flags,step)',
+                      'flags << int(flags[start:stop]==C[start:stop])',
+                      'popcount(flags[start:stop])', 'flags[start:stop]==C', 'scalar'):
+            with self.subTest(value=value):
+                self.assertIsNone(self.info(value))
+
+    def test_destination_types_constants_visibility_and_read_only_iterators(self):
+        for target in ('scalar', 'start', 'bound', 'condition', 'real', 'a', 'indices'):
+            with self.subTest(target=target), self.assertRaisesRegex(
+                    qasm2qcx.InvalidBitOperandException, 'mutable bit-register destination'):
+                self.info('flags[start:stop]', target)
+        with self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException, 'read-only'):
+            self.info('flags[start:stop]', 'C')
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            self.info('flags[start:stop]', 'missing')
+        for iterators in ({'result': qasm2qcx.ValueType.INT}, {'result'}):
+            with self.subTest(iterators=iterators), self.assertRaisesRegex(
+                    qasm2qcx.UnsupportedOpenQASMError, 'for-loop iterator'):
+                self.info('flags[start:stop]', iterators=iterators)
+        self.c._QASM2QCXConverter__loop_bindings.append({'result': 1})
+        try:
+            with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                self.info('flags[start:stop]')
+        finally:
+            self.c._QASM2QCXConverter__loop_bindings.pop()
+        name = self.c._QASM2QCXConverter__capitalize_variable_name('result')
+        self.c._QASM2QCXConverter__sized_bit_variables.remove(name)
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            self.info('flags[start:stop]')
+
+    def test_destination_width_uses_declaration_scope_and_int_indexing_limit(self):
+        with patch.object(self.c, '_QASM2QCXConverter__bit_type_size', side_effect=AssertionError('no width evaluation')):
+            self.assertEqual(self.info('flags[start:stop]', iterators={'WIDTH': qasm2qcx.ValueType.INT}).width, 4)
+        with patch.object(self.c, 'QCX_INT_MAX', 3), self.assertRaisesRegex(
+                qasm2qcx.InvalidBitOperandException, 'destination width must fit'):
+            self.info('flags[start:stop]')
+
+    def test_invalid_rhs_names_types_and_known_widths_are_rejected(self):
+        for value in ('flags[start:stop] & "1" & missing', 'flags[start:real:stop]',
+                      'flags[start:stop] & scalar', 'flags[start:stop] & (C & "1")',
+                      'flags[start:stop] | C[0:99]', 'rotl(flags[start:stop],real)',
+                      'rotl(flags[start:stop])', 'flags[start:stop] << condition'):
+            with self.subTest(value=value), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(value)
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.info('flags[start:stop]', iterators={'flags': qasm2qcx.ValueType.INT})
+        self.c._QASM2QCXConverter__declared_constant_variables.remove('C')
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            self.info('flags[start:stop] & C')
+
+    def test_selected_destinations_fall_through_and_direct_copy_analysis_is_unchanged(self):
+        for target in ('result[0]', 'result[0:3]', 'flags[start:stop]', 'flags[{start,stop}]'):
+            statement = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; '+target+'=flags[start:stop];').statements[0]
+            self.assertIsNone(self.c._QASM2QCXConverter__runtime_register_assignment_info(
+                statement.lvalue, statement.rvalue))
+        statement = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; result=flags[start:stop];').statements[0]
+        copy = self.c._QASM2QCXConverter__runtime_bit_range_copy_info(statement)
+        self.assertIsInstance(copy, qasm2qcx._RuntimeBitRangeCopyInfo)
+        self.assertEqual(copy.destination_width, self.info('flags[start:stop]').width)
+
+    def test_metadata_preserves_output_state_caches_and_held_storage(self):
+        c = self.c
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__'+field) for field in fields]
+        lines = c._QASM2QCXConverter__qcx_lines.copy()
+        caches = (c._QASM2QCXConverter__uint_expression_types.copy(), c._QASM2QCXConverter__angle_expression_types.copy())
+        with patch.object(c, 'visit', side_effect=AssertionError('metadata must not evaluate')), \
+             patch.object(c, '_QASM2QCXConverter__add_new_temporary_variable', side_effect=AssertionError('no allocation')):
+            info = self.info('rotl((C[start/0:0:999] & flags[bound:stop]) ^ (C << -1),step/0)')
+        self.assertEqual(info.width, 4)
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__'+field) for field in fields])
+        self.assertEqual(lines, c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(caches, (c._QASM2QCXConverter__uint_expression_types, c._QASM2QCXConverter__angle_expression_types))
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+
+
 class RuntimeRangeEqualityFoundationTests(unittest.TestCase):
     expression = staticmethod(BuiltinFunctionSignatureTests.expression)
     converter = staticmethod(BuiltinFunctionSignatureTests.converter)
