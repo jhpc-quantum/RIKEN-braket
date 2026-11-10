@@ -29,6 +29,14 @@ class BackendTests(unittest.TestCase):
     program = registers.BackendTests.program
     check_exact = registers.BackendTests.check_exact
 
+    def test_documented_runtime_range_assignment_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-range-expression-assignment-example -->'
+        source = document.split(marker,1)[1].split('```qasm\n',1)[1].split('```',1)[0]
+        source = source.replace('OPENQASM 3.0;','',1)
+        self.check_exact(source,(('initialized',4),('rotated',4),('result',4),('a',4),
+                                 ('single',1),('visits',None),('preserved',None)),(10,7,12,7,0,2,1))
+
     def check_nodes(self, source, nodes, preservation=()):
         statements, outputs, expected = [source], [], []
         for index,(expression,bits) in enumerate(nodes):
