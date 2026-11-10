@@ -4762,6 +4762,55 @@ class RuntimeRangeRegisterAssignmentLoweringTests(unittest.TestCase):
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables,{caller})
 
 
+class RuntimeRangeRegisterAssignmentAuditTests(unittest.TestCase):
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    prefix = RuntimeRangeRegisterAssignmentFoundationTests.prefix
+
+    def test_final_copy_budget_failure_restores_caller_state_and_storage(self):
+        c = self.converter(self.prefix)
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        info = c._QASM2QCXConverter__runtime_register_assignment_info(
+            qasm2qcx.ast.Identifier('result'),self.expression('~flags[start:stop]'))
+        fields = ('expression_kind','value','value_type','value_kind','evaluate_constant')
+        before = [getattr(c,'_QASM2QCXConverter__'+field) for field in fields]
+        check = c._QASM2QCXConverter__check_runtime_register_output
+        def checked(extra=0):
+            if extra == 8:
+                self.assertIn('@QASM2QCX_REGISTER_ASSIGNMENT_0_VALUE_DONE',c._QASM2QCXConverter__qcx_lines)
+                raise qasm2qcx.InvalidFunctionCallException('final copy budget')
+            return check(extra)
+        with patch.object(c,'_QASM2QCXConverter__check_runtime_register_output',side_effect=checked), \
+             self.assertRaisesRegex(qasm2qcx.InvalidFunctionCallException,'final copy budget'):
+            c._QASM2QCXConverter__emit_runtime_register_assignment(info)
+        self.assertEqual(before,[getattr(c,'_QASM2QCXConverter__'+field) for field in fields])
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables,{caller})
+        target = c._QASM2QCXConverter__capitalize_variable_name('result')
+        self.assertFalse(any(line.startswith(f'LET {target}:') for line in c._QASM2QCXConverter__qcx_lines))
+
+    def test_copy_code_does_not_unroll_or_infer_length_from_destination_width(self):
+        small = self.converter(self.prefix+'single=~one[start:start];')
+        large = self.converter(self.prefix+'large=~one[start:start];')
+        small_lines,large_lines = list(small),list(large)
+        self.assertEqual(len(small_lines),len(large_lines))
+        for c,lines,width in ((small,small_lines,1),(large,large_lines,129)):
+            self.assertEqual(lines.count('@QASM2QCX_REGISTER_ASSIGNMENT_0_WRITE'),1)
+            self.assertTrue(any(line.startswith('ASSERT ') and line.endswith(f' == {width}') for line in lines))
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables,set())
+
+    def test_empty_body_preserves_declaration_width_and_checks_visibility(self):
+        c = self.converter(self.prefix+'''for int WIDTH in [1:0] {
+            result=rotl(C[WIDTH/0:0:999],step/0);
+        }''')
+        self.assertEqual(list(c),list(self.converter(self.prefix)))
+        for source in ('bit[4] initialized=~later[start:stop]; bit[4] later;',
+                       'bit[4] initialized=~LATER[start:stop]; const bit[4] LATER="1011";',
+                       'for int i in [1:0] { result=rotl(C[i:stop],LATER); } const int LATER=1;',
+                       'for bit result in flags { result=~C[start:stop]; }'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix+source)
+
+
 class RuntimeRangeEqualityFoundationTests(unittest.TestCase):
     expression = staticmethod(BuiltinFunctionSignatureTests.expression)
     converter = staticmethod(BuiltinFunctionSignatureTests.converter)
