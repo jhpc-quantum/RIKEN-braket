@@ -4173,10 +4173,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __runtime_register_assignment_info(
             self, target: ast.Identifier | ast.IndexedIdentifier, expression: ast.Expression,
             iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRegisterAssignment | None:
-        # This entry point is for whole-register '=' and declaration
-        # initializers. Selected destinations retain their separate paths.
+        # Ordinary '=' assignments and declaration initializers share RHS
+        # snapshots. Runtime-selected destinations retain their separate paths.
         if not isinstance(target, ast.Identifier):
-            return None
+            return self.__runtime_static_selection_assignment_info(target, expression, iterators)
         shapes = self.__runtime_bit_register_expression_shapes(expression, iterators)
         if shapes[id(expression)] < 0:
             return None  # Preserve fixed-width and scalar assignment analysis.
@@ -10286,20 +10286,29 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         previous_declarations = self.__declared_temporary_variables.copy()
         prefix = f'QASM2QCX_REGISTER_ASSIGNMENT_{self.__register_assignment_index}'
         self.__register_assignment_index += 1
-        destination = self.__capitalize_variable_name(info.target.name)
+        destination = self.__capitalize_variable_name(self.__operand_name(info.target))
         try:
             with self.__runtime_bit_register_expression_value(info.value, f'{prefix}_VALUE') as (snapshot, count):
-                index = self.__add_new_temporary_variable(ValueType.INT)
-                self.__check_runtime_register_output(8)
-                target = destination if info.width == 1 else f'{destination}:{index}'
                 # No destination bit is written until the complete RHS and
                 # all nested checks have finished and its final length agrees.
-                self.__qcx_lines.extend([
-                    f'ASSERT {count} == {info.width}', f'LET {index} := 0',
-                    f'@{prefix}_WRITE', f'JUMPIF {prefix}_END {index} >= {info.width}',
-                    f'LET {target} := {snapshot}:{index}', f'LET {index} += 1',
-                    f'JUMP {prefix}_WRITE', f'@{prefix}_END',
-                ])
+                if info.selection is None:
+                    index = self.__add_new_temporary_variable(ValueType.INT)
+                    self.__check_runtime_register_output(8)
+                    target = destination if info.width == 1 else f'{destination}:{index}'
+                    self.__qcx_lines.extend([
+                        f'ASSERT {count} == {info.width}', f'LET {index} := 0',
+                        f'@{prefix}_WRITE', f'JUMPIF {prefix}_END {index} >= {info.width}',
+                        f'LET {target} := {snapshot}:{index}', f'LET {index} += 1',
+                        f'JUMP {prefix}_WRITE', f'@{prefix}_END',
+                    ])
+                else:
+                    self.__check_runtime_register_output(info.width + 3)
+                    self.__qcx_lines.extend([f'ASSERT {count} == {info.width}', f'@{prefix}_WRITE'])
+                    size = self.__bit_variable_name_size_map[destination]
+                    for offset, position in enumerate(info.selection.indices):
+                        target = self.__qcx_bit_name(destination, size, position)
+                        self.__qcx_lines.append(f'LET {target} := {snapshot}:{offset}')
+                    self.__qcx_lines.append(f'@{prefix}_END')
             self.__hoist_temporary_declarations(previous_declarations)
         finally:
             for temporary in self.__used_temporary_variables - previous_used:
