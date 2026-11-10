@@ -100,9 +100,9 @@ The converter currently covers:
 - runtime-dependent discrete-set bit-register expression operands with fixed
   result widths and snapshot reads;
 - `popcount` on runtime ranges, arbitrary complement/shift/rotation chains,
-  and bitwise combinations of two runtime ranges or one range with a known-width
-  register operand, including independent operand chains and outer-result chains
-  mixing shifts, rotations, and complements, with bounded storage and a native UINT result;
+  and nested bitwise expression trees mixing runtime ranges and known-width
+  register operands, with shifts, rotations, and complements at any level,
+  bounded storage, and a native UINT result;
 - runtime-dependent discrete-set bit-register assignment destinations, including
   bitwise and shift compound assignments;
 - equal-width bit-register `==` and `!=` comparisons, including static
@@ -2513,11 +2513,97 @@ a = "0001";
 uint fresh = popcount(rotl(a[first:last], 1) & mask); // 0, using fresh bits.
 ```
 
-General nested register-valued binary trees involving runtime ranges remain
-unsupported in `popcount`. Each runtime-range operand must be a direct selection
-wrapped only in the operation chains above. Scalar distance expressions
-may contain supported nested calls, as shown in the example.
-Existing fixed-width contexts retain their own supported expression rules.
+`popcount` also accepts nested register-valued expression trees containing
+`&`, `|`, and `^`, with `~`, shifts, and rotations at any level. For example,
+`popcount((a[first:last] & mask) ^ b[start:stop])` and
+`popcount(rotl((a[first:last] | b[start:stop]) & mask, distance))` need no
+explicit cast or globally known selected width. Leaves may be direct runtime
+bit-register ranges or existing supported fixed-width register expressions.
+Both operands of every binary bitwise node must have equal lengths; unary
+register operations preserve their child's length. There is no padding,
+truncation, or scalar broadcasting. Scalar distance expressions may contain
+supported nested calls, including other population counts.
+
+For these new tree forms, the converter completes the left subtree before the
+right subtree. A runtime-range leaf captures and validates all bounds/positions
+before reading its selected bits. A fixed-width leaf captures its existing
+expression, including borrowed register reads. Each binary node checks equal
+lengths **after both children complete**, then combines their private snapshots.
+A parent shift or rotation evaluates its distance only after its register child
+is complete. Consequently, a right-child distance error can occur before that
+parent binary node's length-mismatch check. Earlier failures suppress later
+children, parent operations, and assignment to the count's destination. This
+timing is converter policy. Existing simple-expression paths retain their
+earlier capture and selected-length checks described above.
+
+Runtime lengths are not inferred from containing widths, neighbouring fixed
+leaves, or buffer capacities. A runtime-range leaf uses position and snapshot
+buffers bounded by `min(2*N, L, INT_MAX)`, with containing width `N` and the
+existing range-position limit `L`; a fixed leaf's snapshot is bounded by its
+known width. Unary nodes inherit their child's capacity bound. A binary node's
+private result capacity is the smaller child bound, safe once their lengths
+have been checked. These bounds are not selected lengths or global width
+constraints. Child storage is released after producing a private parent result,
+so completed siblings can reuse buffers. Combining, unary transformations, and
+counting use runtime loops; fixed-leaf capture and existing constant-lookup
+preparation can still grow with known widths. Existing storage/output limits
+apply to the complete generated program.
+
+Sources remain unchanged, and parent operations do not modify their live child
+snapshots. The tree's root bits are counted
+into native unspecified-width UINT without packing the register into an integer,
+including for selections wider than native UINT. Existing checked distance
+conversions, later errors after oversized shifts, skipped-path validation,
+declaration placement, caller-state preservation, temporary cleanup, and fresh
+captures on loop reentry apply. No new bra instruction or build option is required.
+
+<!-- runtime-popcount-tree-example -->
+```qasm
+OPENQASM 3.0;
+bit[4] a = "1011";
+const bit[8] B = "11011101";
+bit[4] c = "0011";
+bit[4] mask = "0101";
+int first = 0;
+int last = 3;
+int start = 0;
+int stop = 3;
+int rotation = -1;
+uint shift = 1;
+uint left = popcount((a[first:last] & B[start:stop]) ^ c[first:last]); // 2: "1001" ^ "0011".
+uint right = popcount(a[first:last] ^ (B[start:stop] | c[first:last])); // 1: "1011" ^ "1111".
+uint balanced = popcount((a[first:last] & B[start:stop]) | (c[first:last] ^ mask)); // 4: "1111".
+uint outer = popcount(rotl((a[first:last] & B[start:stop]) ^ c[first:last], rotation) >> shift); // 1.
+uint inner = popcount(rotl(a[first:last] & B[start:stop], 1) ^ (c[first:last] << shift)); // 2.
+uint complemented = popcount(~((a[first:last] | B[start:stop]) & c[first:last])); // 2.
+uint fixed = popcount((mask | "1000") ^ (a[first:last] & B[start:stop])); // 1; fixed subtree uses its existing reader.
+bool distance = true;
+uint promoted = popcount(rotl((a[first:last] & B[start:stop]) ^ c[first:last], distance)); // 2.
+int minimum = -2147483648;
+uint endpoint = popcount(rotr((a[first:last] & B[start:stop]) | c[first:last], minimum)); // 3.
+uint huge = uint(-1);
+uint oversized = popcount(((a[first:last] & B[start:stop]) << huge) ^ c[first:last]); // 2; right child still executes.
+uint nested = popcount(rotl((a[first:last] & B[start:stop]) ^ c[first:last], popcount((a[first:last] ^ B[start:stop]) & c[first:last])) >> shift); // 1.
+uint self = 1;
+self = popcount((rotl(a[first:last] & B[start:stop], self) ^ c[first:last]) | mask); // 2; distance uses the previous value.
+int zero = 0;
+bool skipped = false && bool(popcount((a[first:last] & mask) ^ rotl(B[start:1], 1/zero))); // false; reached RHS distance would fail before the parent width check.
+first = -4;
+stop = 7;
+uint repeated = popcount((a[first:last] & B[start:stop]) ^ c[first:last]); // 4 across eight logical entries.
+const bit[65] WIDE = "1_00000000_00000000_00000000_00000000_00000000_00000000_00000000_00000001";
+int low = 0;
+int high = 64;
+uint wide = popcount((WIDE[low:high] & WIDE[high:-1:low]) ^ (~WIDE[low:high])); // 65, without native UINT packing.
+first = 0;
+stop = 3;
+a = "0001";
+uint fresh = popcount((a[first:last] & B[start:stop]) ^ c[first:last]); // 1, using fresh bits.
+```
+
+This extends `popcount` only; other register-consuming contexts retain their
+existing rules. Computed-result indexing and extensions to casts are outside
+these tree forms; fixed-width leaves retain their existing supported cast rules.
 For a known selected width, an explicit UINT cast can bridge to existing
 sized-UINT operations, such as `popcount(uint[4](~(flags[start:stop] << count)))`.
 
@@ -8639,6 +8725,25 @@ preservation, temporary cleanup, output limits, and deferred trees. Independent
 cases are batched below per-program output limits. Run with `--bra /path/to/bra`,
 including a UBSan build.
 
+`bra/test/qasm2qcx_runtime_popcount_tree_numerical.py` checks left-deep,
+right-deep, balanced, and seeded deeper trees against independent little-endian
+bit-vector references. It covers exhaustive small patterns, all binary operator
+pairs and complement parities, native widths and wider selections through 129
+bits, aliases, strides, source kinds, intermediate operations, INT endpoints,
+oversized shifts, BOOL promotions, nested counts, source preservation, and fresh
+reads. Integration cases cover arrays, casts, self-referencing destinations,
+shrinking loop selections, loop conditions and transfers, skipped domains,
+measurement feedback, and normal/fused gate parameters and powers. Reached
+errors verify subtree completion, length checks after both children, later
+errors after bit loss, checked conversions, capacity limits, parent-distance
+order, and destination-write suppression. The tree example above is executed.
+Unit tests additionally check original AST retention, ordered metadata/capture,
+capacity bounds independent of runtime lengths, child-buffer reuse, caller and
+consumer storage ownership, declaration placement, cleanup after failures,
+output limits, and computed-result indexing rejection. Independent cases are
+batched below per-program output limits. Run with `--bra /path/to/bra`, including
+a UBSan build.
+
 `bra/test/qasm2qcx_constant_scalar_bit_numerical.py` checks scalar constant
 bit truth tables, runtime copies, indexed destinations, casts, array and nested
 function integration, short-circuiting, loops and transfers, iterator shadowing,
@@ -9467,6 +9572,7 @@ python3 bra/test/qasm2qcx_runtime_popcount_bitwise_complement_numerical.py --bra
 python3 bra/test/qasm2qcx_runtime_popcount_bitwise_result_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_popcount_bitwise_result_rotation_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_popcount_operand_chain_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_popcount_tree_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_bit_register_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_bit_register_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_bit_selection_loop_numerical.py --bra bra/bin/bra
