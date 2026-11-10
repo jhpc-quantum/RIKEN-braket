@@ -5088,6 +5088,66 @@ class RuntimeRangeExpressionAssignmentLoweringTests(unittest.TestCase):
                                      c._QASM2QCXConverter__qcx_lines[original_lines:]))
 
 
+class RuntimeRangeExpressionAssignmentAuditTests(unittest.TestCase):
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    prefix = RuntimeRangeRegisterAssignmentFoundationTests.prefix
+    assignment = staticmethod(RuntimeRangeExpressionAssignmentLoweringTests.assignment)
+
+    def test_actual_final_write_budget_failure_restores_state_without_writes(self):
+        statement = self.assignment('flags[stop:-step:start]=rotl(C[start:stop],bound+1);')
+        reference = self.converter(self.prefix)
+        reference._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        info = reference._QASM2QCXConverter__runtime_register_assignment_info(statement.lvalue,statement.rvalue)
+        reference._QASM2QCXConverter__emit_runtime_register_assignment(info)
+        budget = len(reference._QASM2QCXConverter__qcx_lines)-1
+        c = self.converter(self.prefix)
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        info = c._QASM2QCXConverter__runtime_register_assignment_info(statement.lvalue,statement.rvalue)
+        fields = ('expression_kind','value','value_type','value_kind','evaluate_constant')
+        before = [getattr(c,'_QASM2QCXConverter__'+field) for field in fields]
+        original_lines = len(c._QASM2QCXConverter__qcx_lines)
+        with patch.object(c,'MAX_LOOP_OUTPUT_LINES',budget), self.assertRaisesRegex(
+                qasm2qcx.QASM2QCXError,'output limit'):
+            c._QASM2QCXConverter__emit_runtime_register_assignment(info)
+        lines = c._QASM2QCXConverter__qcx_lines
+        self.assertIn('@QASM2QCX_REGISTER_ASSIGNMENT_0_VALUE_DONE',lines)
+        name = c._QASM2QCXConverter__capitalize_variable_name('flags')
+        self.assertFalse(any(line.startswith(f'LET {name}:') for line in lines[original_lines:]))
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables,{caller})
+        self.assertEqual(before,[getattr(c,'_QASM2QCXConverter__'+field) for field in fields])
+
+    def test_write_budget_preflight_rejects_before_destination_capture(self):
+        c = self.converter(self.prefix)
+        statement = self.assignment('flags[stop:-step:start]=~C[start:stop];')
+        info = c._QASM2QCXConverter__runtime_register_assignment_info(statement.lvalue,statement.rvalue)
+        lines = c._QASM2QCXConverter__qcx_lines.copy()
+        with patch.object(c,'MAX_LOOP_OUTPUT_LINES',len(lines)+8), \
+             patch.object(c,'_QASM2QCXConverter__capture_bit_range_positions',side_effect=AssertionError('no capture')), \
+             self.assertRaisesRegex(qasm2qcx.QASM2QCXError,'output limit'):
+            c._QASM2QCXConverter__emit_runtime_register_assignment(info)
+        self.assertEqual(c._QASM2QCXConverter__qcx_lines,lines)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables,set())
+
+    def test_budget_after_destination_capture_rejects_before_rhs_and_cleans_storage(self):
+        c = self.converter(self.prefix)
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        statement = self.assignment('flags[stop:-step:start]=~C[start:stop];')
+        info = c._QASM2QCXConverter__runtime_register_assignment_info(statement.lvalue,statement.rvalue)
+        distinct = c._QASM2QCXConverter__check_distinct_bit_range_positions
+        def checked(*args):
+            distinct(*args)
+            c.MAX_LOOP_OUTPUT_LINES = len(c._QASM2QCXConverter__qcx_lines)+8
+        fields = ('expression_kind','value','value_type','value_kind','evaluate_constant')
+        before = [getattr(c,'_QASM2QCXConverter__'+field) for field in fields]
+        with patch.object(c,'MAX_LOOP_OUTPUT_LINES',c.MAX_LOOP_OUTPUT_LINES), \
+             patch.object(c,'_QASM2QCXConverter__check_distinct_bit_range_positions',side_effect=checked), \
+             patch.object(c,'_QASM2QCXConverter__runtime_bit_register_expression_value',side_effect=AssertionError('no RHS evaluation')), \
+             self.assertRaisesRegex(qasm2qcx.QASM2QCXError,'output limit'):
+            c._QASM2QCXConverter__emit_runtime_register_assignment(info)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables,{caller})
+        self.assertEqual(before,[getattr(c,'_QASM2QCXConverter__'+field) for field in fields])
+
+
 class RuntimeRangeSetExpressionAssignmentFoundationTests(unittest.TestCase):
     converter = staticmethod(BuiltinFunctionSignatureTests.converter)
     prefix = RuntimeRangeRegisterAssignmentFoundationTests.prefix
