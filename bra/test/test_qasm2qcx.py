@@ -7939,6 +7939,86 @@ class RuntimeRangePopcountNestedRotationIntegrationTests(unittest.TestCase):
         self.assert_clean(c)
 
 
+class RuntimeRangePopcountTreeIntegrationTests(unittest.TestCase):
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    prefix = RuntimeRangePopcountFoundationTests.prefix
+    assert_clean = RuntimeRangePopcountIntegrationTests.assert_clean
+
+    def test_nested_consumers_loop_bounds_sets_conditions_and_iterator_scopes(self):
+        c = self.converter(self.prefix +
+            'array[uint,2] values={popcount((flags[start:stop] & C) ^ wide[start:stop]),0}; '
+            'values[uint[1](popcount((one[start:start] ^ one[start:start]) & one[start:start]))]'
+            '+=popcount((C | flags[start:stop]) ^ C[start:stop]); '
+            'uint nested=popcount(uint[8](popcount((flags[start:stop] & C) ^ wide[start:stop]))); '
+            'bit[4] packed=bit[4](uint[4](popcount((flags[start:stop] | C) ^ wide[start:stop]))); '
+            'float root=sqrt(popcount((flags[start:stop] & C) ^ wide[start:stop])); '
+            'for int start in indices { bound+=popcount(rotl((flags[start:stop] ^ C) & wide[start:stop],bound)); } '
+            'for int i in [popcount((one[start:start] & one[start:start]) ^ one[start:start]):'
+            'popcount((C[start:stop] ^ flags[start:stop]) & C)] { bound+=uint(i); start=99; } '
+            'start=0; for int i in {popcount((one[start:start] ^ one[start:start]) & one[start:start]),'
+            'popcount((C | flags[start:stop]) ^ wide[start:stop])} { bound+=uint(i); start=99; } '
+            'while (condition && bool(popcount((flags[start:stop] & C) ^ wide[start:stop]))) { break; }')
+        self.assert_clean(c)
+
+    def test_skipped_domains_preserve_static_validation_and_hoist_all_declarations(self):
+        for wrapper in ('if (condition) {{ {} }}', 'while (condition) {{ {} }}',
+                        'for int i in [1:0] {{ {} }}', 'while (true) {{ break; {} }}',
+                        'for int i in [0:1] {{ continue; {} }}'):
+            c = self.converter(self.prefix + wrapper.format(
+                'bound+=popcount(rotr((flags[start:0:999] & C) ^ '
+                '(wide[start/0:stop] << uint(-1)),uint(-1)) >> -1);'))
+            self.assert_clean(c)
+            lines = list(c)
+            labels = [i for i, line in enumerate(lines) if line.startswith('@QASM2QCX_')]
+            if labels:
+                self.assertFalse(any(line.startswith('VAR ') for line in lines[min(labels):]))
+        for value in ('(flags[i:stop] & C) ^ rotl(wide[start:stop],real)',
+                      '(flags[i:stop] & C) ^ (wide[start:stop] << condition)',
+                      'rotr((flags[i:stop] & C) ^ wide[start:stop],missing)',
+                      '((flags ^ C)[i:stop] & C) ^ wide[start:stop]'):
+            with self.subTest(value=value), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix + f'for int i in [1:0] {{ bound+=popcount({value}); }}')
+
+    def test_broadcast_gate_captures_each_subtree_and_parent_distance_once(self):
+        prefix = ('include "stdgates.inc"; qubit[2] q; bit[2] measured; bit[2] mask="01"; bit[2] spare="10"; '
+                  'int start=0; int stride=1; int stop=1; int begin=0; int step=1; int finish=1; '
+                  'int distance=1; measured=measure q; ')
+        for value in ('rotr((rotl(measured[start:stride:stop],distance+1) & mask[begin:step:finish]) '
+                      '^ rotr(spare[start:stop],distance+2),distance+3)',
+                      '(rotl(mask,distance+1) ^ measured[start:stride:stop]) & spare[start:stop]'):
+            c = self.converter(prefix)
+            statement = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; '
+                f'p(float(popcount({value}))) q;').statements[0]
+            tree = c._QASM2QCXConverter__runtime_bit_range_popcount_info(statement.arguments[0].argument.arguments[0]).tree
+            expected = []
+            def collect(node):
+                if node.selection is not None:
+                    bounds = node.selection.bounds
+                    expected.extend(x for x in (bounds.start, bounds.step, bounds.end) if x is not None)
+                elif not node.children and isinstance(node.expression, qasm2qcx.ast.FunctionCall):
+                    expected.append(node.expression.arguments[1])
+                for child in node.children:
+                    collect(child)
+                if node.count_type is not None:
+                    expected.append(node.expression.arguments[1] if isinstance(node.expression,qasm2qcx.ast.FunctionCall)
+                                    else node.expression.rhs)
+            collect(tree)
+            condition = c._QASM2QCXConverter__condition_operand
+            capture = c._QASM2QCXConverter__capture_bit_range_positions
+            events = []
+            def operand(node):
+                if any(node is item for item in expected):
+                    events.append(node)
+                return condition(node)
+            with self.subTest(value=value), \
+                 patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions', wraps=capture) as selected, \
+                 patch.object(c, '_QASM2QCXConverter__condition_operand', side_effect=operand):
+                c.visit(statement)
+            self.assertEqual(selected.call_count, sum(node.selection is not None for node in RuntimeRangePopcountTreeFoundationTests.walk(tree)))
+            self.assertEqual(events, expected)
+            self.assert_clean(c)
+
+
 class RuntimeRangePopcountOperandChainIntegrationTests(unittest.TestCase):
     converter = staticmethod(BuiltinFunctionSignatureTests.converter)
     prefix = RuntimeRangePopcountFoundationTests.prefix
