@@ -64,6 +64,14 @@ class BackendTests(unittest.TestCase):
     program = backend.BackendTests.program
     check_exact = backend.BackendTests.check_exact
 
+    def test_documented_runtime_range_equality_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-range-equality-example -->'
+        source = document.split(marker,1)[1].split('```qasm\n',1)[1].split('```',1)[0]
+        source = source.replace('OPENQASM 3.0;','',1)
+        self.check_exact(source,tuple((name,None) for name in
+            ('different','reversed','nested','rotated','skipped','visits','fresh')),(1,1,1,1,0,1,1))
+
     def check_pairs(self, source, pairs):
         statements, outputs, expected = [source], [], []
         for left, right in pairs:
