@@ -67,6 +67,16 @@ class BackendTests(unittest.TestCase):
     program = binary.BackendTests.program
     check_exact = binary.BackendTests.check_exact
 
+    def test_documented_operand_chain_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-popcount-operand-chain-example -->'
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        source = source.replace('OPENQASM 3.0;', '', 1)
+        self.check_exact(source, tuple((name, None) for name in
+            ('left', 'right', 'both', 'before', 'after', 'filled', 'fixed', 'reversed', 'nested',
+             'mixed', 'promoted', 'oversized', 'endpoint', 'self', 'repeated', 'wide', 'skipped', 'fresh')),
+            (1, 1, 2, 1, 2, 3, 0, 0, 2, 1, 4, 3, 2, 2, 3, 62, 0, 0))
+
     def check_case(self, left, right, constants, depths, scenarios):
         # Bound generated programs, including fixed-width unrolling and wide
         # constant lookups, without reducing the combinations being checked.
