@@ -452,12 +452,24 @@ class _BitRangeCastOperation:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeAngleBitRangeSelection:
+    # A range has no compile-time selection width. Keep it out of the fixed-
+    # width register-expression APIs and retain all expressions unevaluated.
+    source: ast.Identifier | ast.IndexExpression
+    angle_type: _AngleType
+    bounds: ast.RangeDefinition
+    start_type: ValueType
+    step_type: ValueType
+    stop_type: ValueType
+
+
+@dataclasses.dataclass(frozen=True)
 class _BitRangeCastExpression:
     expression: ast.Expression
     # Required width, not an inferred count for a runtime range.
     width: int
     children: tuple['_BitRangeCastExpression', ...] = ()
-    selection: _RuntimeBitRangeSelection | None = None
+    selection: _RuntimeBitRangeSelection | _RuntimeAngleBitRangeSelection | None = None
     count_type: ValueType | None = None
 
 
@@ -549,18 +561,6 @@ class _RuntimeAngleBitSetSelection:
 
 
 _AngleBitSelection = _StaticAngleBitSelection | _RuntimeAngleBitSelection | _RuntimeAngleBitSetSelection
-
-
-@dataclasses.dataclass(frozen=True)
-class _RuntimeAngleBitRangeSelection:
-    # A range has no compile-time selection width. Keep it out of the fixed-
-    # width register-expression APIs and retain all expressions unevaluated.
-    source: ast.Identifier | ast.IndexExpression
-    angle_type: _AngleType
-    bounds: ast.RangeDefinition
-    start_type: ValueType
-    step_type: ValueType
-    stop_type: ValueType
 
 
 _AngleBitLoopSelection = _AngleBitSelection | _RuntimeAngleBitRangeSelection
@@ -9422,26 +9422,37 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __contains_uint_bit_range(
             self, expression: ast.Expression,
-            iterators: set[str] | dict[str, ValueType] | None) -> bool:
+            iterators: set[str] | dict[str, ValueType] | None, *,
+            allow_runtime_angle_ranges: bool = False) -> bool:
         # Follow register operands only. Ranges inside scalar counts or nested
         # casts have their own contexts and cannot make this a register tree.
         if isinstance(expression, ast.UnaryExpression) and expression.op.name == '~':
-            return self.__contains_uint_bit_range(expression.expression, iterators)
+            return self.__contains_uint_bit_range(
+                expression.expression, iterators, allow_runtime_angle_ranges=allow_runtime_angle_ranges)
         if (isinstance(expression, ast.FunctionCall) and expression.name.name in ('rotl', 'rotr')
                 and expression.arguments):
-            return self.__contains_uint_bit_range(expression.arguments[0], iterators)
+            return self.__contains_uint_bit_range(
+                expression.arguments[0], iterators, allow_runtime_angle_ranges=allow_runtime_angle_ranges)
         if isinstance(expression, ast.BinaryExpression):
             if expression.op.name in ('<<', '>>'):
-                return self.__contains_uint_bit_range(expression.lhs, iterators)
+                return self.__contains_uint_bit_range(
+                    expression.lhs, iterators, allow_runtime_angle_ranges=allow_runtime_angle_ranges)
             if expression.op.name in ('&', '|', '^'):
-                return (self.__contains_uint_bit_range(expression.lhs, iterators)
-                        or self.__contains_uint_bit_range(expression.rhs, iterators))
+                return (self.__contains_uint_bit_range(
+                            expression.lhs, iterators, allow_runtime_angle_ranges=allow_runtime_angle_ranges)
+                        or self.__contains_uint_bit_range(
+                            expression.rhs, iterators, allow_runtime_angle_ranges=allow_runtime_angle_ranges))
+        if allow_runtime_angle_ranges:
+            selection = self.__angle_bit_selection(expression, iterators, allow_runtime_range=True)
+            if isinstance(selection, _RuntimeAngleBitRangeSelection):
+                return True
         return self.__runtime_bit_range_source(expression, iterators) is not None
 
     def __uint_bit_range_tree_info(
             self, expression: ast.Expression, width: int,
             iterators: set[str] | dict[str, ValueType] | None, *,
-            allow_runtime_angle_selections: bool = False) -> _BitRangeCastExpression:
+            allow_runtime_angle_selections: bool = False,
+            allow_runtime_angle_ranges: bool = False) -> _BitRangeCastExpression:
         if isinstance(expression, ast.FunctionCall) and expression.name.name in ('rotl', 'rotr'):
             # The required cast width supplies the register context; generic
             # function inference cannot infer a runtime range's width. Keep
@@ -9449,18 +9460,21 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__builtin_function_overloads(expression.name.name, len(expression.arguments))
             argument, distance = expression.arguments
             child = self.__uint_bit_range_tree_info(
-                argument, width, iterators, allow_runtime_angle_selections=allow_runtime_angle_selections)
+                argument, width, iterators, allow_runtime_angle_selections=allow_runtime_angle_selections,
+                allow_runtime_angle_ranges=allow_runtime_angle_ranges)
             distance_type, _ = self.__loop_expression_info(distance, iterators)
             self.__resolve_builtin_function(expression.name.name, (ValueType.BIT_REGISTER, distance_type))
             self.__validate_bitwise_indices(distance, iterators)
             return _BitRangeCastExpression(expression, width, (child,), count_type=distance_type)
         if isinstance(expression, ast.UnaryExpression) and expression.op.name == '~':
             child = self.__uint_bit_range_tree_info(
-                expression.expression, width, iterators, allow_runtime_angle_selections=allow_runtime_angle_selections)
+                expression.expression, width, iterators, allow_runtime_angle_selections=allow_runtime_angle_selections,
+                allow_runtime_angle_ranges=allow_runtime_angle_ranges)
             return _BitRangeCastExpression(expression, width, (child,))
         if isinstance(expression, ast.BinaryExpression) and expression.op.name in ('&', '|', '^', '<<', '>>'):
             lhs = self.__uint_bit_range_tree_info(
-                expression.lhs, width, iterators, allow_runtime_angle_selections=allow_runtime_angle_selections)
+                expression.lhs, width, iterators, allow_runtime_angle_selections=allow_runtime_angle_selections,
+                allow_runtime_angle_ranges=allow_runtime_angle_ranges)
             if expression.op.name in ('<<', '>>'):
                 count_type, _ = self.__loop_expression_info(expression.rhs, iterators)
                 if count_type not in (ValueType.INT, ValueType.UINT):
@@ -9468,8 +9482,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__validate_bitwise_indices(expression.rhs, iterators)
                 return _BitRangeCastExpression(expression, width, (lhs,), count_type=count_type)
             rhs = self.__uint_bit_range_tree_info(
-                expression.rhs, width, iterators, allow_runtime_angle_selections=allow_runtime_angle_selections)
+                expression.rhs, width, iterators, allow_runtime_angle_selections=allow_runtime_angle_selections,
+                allow_runtime_angle_ranges=allow_runtime_angle_ranges)
             return _BitRangeCastExpression(expression, width, (lhs, rhs))
+        if allow_runtime_angle_ranges:
+            angle_selection = self.__angle_bit_selection(expression, iterators, allow_runtime_range=True)
+            if isinstance(angle_selection, _RuntimeAngleBitRangeSelection):
+                return _BitRangeCastExpression(expression, width, selection=angle_selection)
         selection = self.__runtime_bit_range_source(expression, iterators)
         if selection is not None:
             return _BitRangeCastExpression(expression, width, selection=selection)
@@ -9488,7 +9507,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __uint_bit_cast_info(
             self, expression: ast.Cast,
             iterators: set[str] | dict[str, ValueType] | None = None, *,
-            allow_runtime_angle_selections: bool = False) -> _UIntBitCastInfo | None:
+            allow_runtime_angle_selections: bool = False,
+            allow_runtime_angle_ranges: bool = False) -> _UIntBitCastInfo | None:
         # Infer bit patterns and UINT widths without executing the operand or
         # consulting mutable expression-result caches. Numeric casts and the
         # existing angle/bit conversions retain their separate paths.
@@ -9497,11 +9517,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         range_tree = None
         if isinstance(expression.type, ast.UintType):
             range_info = self.__uint_bit_range_expression_info(expression.argument, iterators)
-            if range_info is None and self.__contains_uint_bit_range(expression.argument, iterators):
+            if range_info is None and self.__contains_uint_bit_range(
+                    expression.argument, iterators, allow_runtime_angle_ranges=allow_runtime_angle_ranges):
                 uint_type = self.__unsigned_integer_type(expression.type, iterators)
                 range_tree = self.__uint_bit_range_tree_info(
                     expression.argument, uint_type.width, iterators,
-                    allow_runtime_angle_selections=allow_runtime_angle_selections)
+                    allow_runtime_angle_selections=allow_runtime_angle_selections,
+                    allow_runtime_angle_ranges=allow_runtime_angle_ranges)
                 source_width = None
             elif range_info is None:
                 # Bound static selection expansion before generic width inference
@@ -9714,9 +9736,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __runtime_range_angle_cast_info(
             self, expression: ast.Cast,
-            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeRangeAngleCastInfo | None:
+            iterators: set[str] | dict[str, ValueType] | None = None, *,
+            allow_runtime_angle_ranges: bool = True) -> _RuntimeRangeAngleCastInfo | None:
         if (not isinstance(expression.type, ast.AngleType)
-                or not self.__contains_uint_bit_range(expression.argument, iterators)):
+                or not self.__contains_uint_bit_range(
+                    expression.argument, iterators, allow_runtime_angle_ranges=allow_runtime_angle_ranges)):
             return None  # Existing fixed-register and numeric casts keep their paths.
         angle_type = self.__angle_type(expression.type, iterators)
         # Build only a metadata view; keep the original cast and source nodes.
@@ -9724,7 +9748,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # its original width expression again in the UINT metadata analyzer.
         size = ast.IntegerLiteral(angle_type.width) if angle_type.is_sized else None
         packing = self.__uint_bit_cast_info(
-            ast.Cast(ast.UintType(size), expression.argument), iterators, allow_runtime_angle_selections=True)
+            ast.Cast(ast.UintType(size), expression.argument), iterators, allow_runtime_angle_selections=True,
+            allow_runtime_angle_ranges=allow_runtime_angle_ranges)
         if packing is None:
             return None
         return _RuntimeRangeAngleCastInfo(expression, angle_type, packing)
@@ -10816,9 +10841,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         try:
             self.__expression_kind = ExpressionKind.ARITHMETIC
             if not tree.children:
-                source = (self.__runtime_bit_range_value(tree.selection, tree.width)
-                          if tree.selection is not None
-                          else self.__bit_register_expression_value(tree.expression))
+                if isinstance(tree.selection, _RuntimeAngleBitRangeSelection):
+                    source = self.__runtime_angle_bit_range_value(tree.selection, tree.width)
+                elif tree.selection is not None:
+                    source = self.__runtime_bit_range_value(tree.selection, tree.width)
+                else:
+                    source = self.__bit_register_expression_value(tree.expression)
                 with source as bits:
                     if len(bits) != tree.width:
                         raise InvalidBitOperandException('Bitwise UINT cast operand width mismatch')
@@ -10900,6 +10928,46 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # allocated intermediates on failure, preserving consumer results.
             temporaries = (self.__used_temporary_variables - previous_used if owned is None
                            else self.__used_temporary_variables & owned)
+            for temporary in temporaries:
+                self.__release_temporary_variable(temporary)
+
+    @contextlib.contextmanager
+    def __runtime_angle_bit_range_value(
+            self, selection: _RuntimeAngleBitRangeSelection, width: int) -> Iterator[tuple[str, ...]]:
+        self.__check_uint_bit_cast_output(5 * width + 1)
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        owned = None
+        label = f'QASM2QCX_ANGLE_CAST_RANGE_{self.__array_index}'
+        self.__array_index += 1
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            # Capture the source (including an array address) before its range
+            # operands. Keep the full angle snapshot alive across bound/count
+            # arithmetic, and validate every position before extracting bits.
+            snapshot = self.__angle_arithmetic_operand(selection.source, selection.angle_type)
+            positions, count = self.__capture_bit_range_positions(
+                selection.bounds, selection.angle_type.width, label, capacity=width)
+            self.__qcx_lines.append(f'ASSERT {count} == {width}')
+            position = self.__add_new_temporary_variable(ValueType.INT)
+            scratch = self.__add_new_temporary_variable(ValueType.UINT)
+            values = []
+            for offset in range(width):
+                bit = self.__add_new_temporary_variable(ValueType.BIT)
+                self.__qcx_lines.extend([
+                    f'LET {position} := {positions}:{offset}', f'LET {scratch} := {snapshot}',
+                    f'LET {scratch} >>= {position}', f'LET {scratch} &= 1',
+                    f'LET {bit} := :INT:{scratch}',
+                ])
+                values.append(bit)
+            self.__check_uint_bit_cast_output()
+            owned = self.__used_temporary_variables - previous_used
+            yield tuple(values)
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            temporaries = owned if owned is not None else self.__used_temporary_variables - previous_used
             for temporary in temporaries:
                 self.__release_temporary_variable(temporary)
 
