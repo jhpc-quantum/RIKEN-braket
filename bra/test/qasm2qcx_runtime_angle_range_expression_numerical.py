@@ -22,6 +22,14 @@ class BackendTests(unittest.TestCase):
     program = registers.BackendTests.program
     check_exact = registers.BackendTests.check_exact
 
+    def test_documented_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-angle-range-expression-assignment-example -->'
+        self.assertEqual(document.count(marker), 1)
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        self.check_exact(source.replace('OPENQASM 3.0;', '', 1),
+                         (('inverted', 4), ('result', 4)), (5, 14))
+
     def test_patterns_widths_sources_and_composed_operations(self):
         rng = random.Random(535)
         native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
