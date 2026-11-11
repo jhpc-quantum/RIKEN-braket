@@ -9737,8 +9737,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __runtime_range_angle_cast_info(
             self, expression: ast.Cast,
             iterators: set[str] | dict[str, ValueType] | None = None, *,
-            allow_runtime_angle_ranges: bool = False) -> _RuntimeRangeAngleCastInfo | None:
-        # Angle-range analysis remains opt-in until its runtime reader is wired.
+            allow_runtime_angle_ranges: bool = True) -> _RuntimeRangeAngleCastInfo | None:
         if (not isinstance(expression.type, ast.AngleType)
                 or not self.__contains_uint_bit_range(
                     expression.argument, iterators, allow_runtime_angle_ranges=allow_runtime_angle_ranges)):
@@ -10842,9 +10841,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         try:
             self.__expression_kind = ExpressionKind.ARITHMETIC
             if not tree.children:
-                source = (self.__runtime_bit_range_value(tree.selection, tree.width)
-                          if tree.selection is not None
-                          else self.__bit_register_expression_value(tree.expression))
+                if isinstance(tree.selection, _RuntimeAngleBitRangeSelection):
+                    source = self.__runtime_angle_bit_range_value(tree.selection, tree.width)
+                elif tree.selection is not None:
+                    source = self.__runtime_bit_range_value(tree.selection, tree.width)
+                else:
+                    source = self.__bit_register_expression_value(tree.expression)
                 with source as bits:
                     if len(bits) != tree.width:
                         raise InvalidBitOperandException('Bitwise UINT cast operand width mismatch')
@@ -10926,6 +10928,46 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # allocated intermediates on failure, preserving consumer results.
             temporaries = (self.__used_temporary_variables - previous_used if owned is None
                            else self.__used_temporary_variables & owned)
+            for temporary in temporaries:
+                self.__release_temporary_variable(temporary)
+
+    @contextlib.contextmanager
+    def __runtime_angle_bit_range_value(
+            self, selection: _RuntimeAngleBitRangeSelection, width: int) -> Iterator[tuple[str, ...]]:
+        self.__check_uint_bit_cast_output(5 * width + 1)
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        owned = None
+        label = f'QASM2QCX_ANGLE_CAST_RANGE_{self.__array_index}'
+        self.__array_index += 1
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            # Capture the source (including an array address) before its range
+            # operands. Keep the full angle snapshot alive across bound/count
+            # arithmetic, and validate every position before extracting bits.
+            snapshot = self.__angle_arithmetic_operand(selection.source, selection.angle_type)
+            positions, count = self.__capture_bit_range_positions(
+                selection.bounds, selection.angle_type.width, label, capacity=width)
+            self.__qcx_lines.append(f'ASSERT {count} == {width}')
+            position = self.__add_new_temporary_variable(ValueType.INT)
+            scratch = self.__add_new_temporary_variable(ValueType.UINT)
+            values = []
+            for offset in range(width):
+                bit = self.__add_new_temporary_variable(ValueType.BIT)
+                self.__qcx_lines.extend([
+                    f'LET {position} := {positions}:{offset}', f'LET {scratch} := {snapshot}',
+                    f'LET {scratch} >>= {position}', f'LET {scratch} &= 1',
+                    f'LET {bit} := :INT:{scratch}',
+                ])
+                values.append(bit)
+            self.__check_uint_bit_cast_output()
+            owned = self.__used_temporary_variables - previous_used
+            yield tuple(values)
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            temporaries = owned if owned is not None else self.__used_temporary_variables - previous_used
             for temporary in temporaries:
                 self.__release_temporary_variable(temporary)
 
