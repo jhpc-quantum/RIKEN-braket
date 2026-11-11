@@ -4328,6 +4328,25 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         value = self.__runtime_bit_register_expression_info(expression, shapes, iterators)
         return _RuntimeBitRegisterAssignment(target, selection.width, value, selection)
 
+    def __runtime_angle_range_set_expression_assignment_info(
+            self, target: ast.Identifier | ast.IndexedIdentifier, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRegisterAssignment | None:
+        if (not isinstance(target, ast.IndexedIdentifier) or len(target.indices) != 1
+                or not isinstance(target.indices[0], ast.DiscreteSet)
+                or not self.__contains_angle_bit_range(expression, iterators)):
+            return None
+        shapes = self.__runtime_bit_register_expression_shapes(expression, iterators, allow_angle_ranges=True)
+        if shapes[id(expression)] < 0:
+            return None
+        self.__runtime_register_assignment_destination_width(target.name, iterators)
+        selection = self.__runtime_bit_set_selection(target, iterators, destination=True)
+        if selection is None:
+            return None  # Static destinations retain their existing path.
+        if not 1 <= selection.width <= self.MAX_RUNTIME_BIT_RANGE_POSITIONS:
+            raise InvalidBitOperandException('Runtime expression assignment selection width exceeds storage limit')
+        value = self.__runtime_bit_register_expression_info(expression, shapes, iterators, allow_angle_ranges=True)
+        return _RuntimeBitRegisterAssignment(target, selection.width, value, selection)
+
     def __runtime_range_expression_assignment_info(
             self, target: ast.Identifier | ast.IndexedIdentifier, expression: ast.Expression,
             iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangeExpressionAssignment | None:
@@ -5780,6 +5799,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if (statement.op.name == '=' and self.__runtime_angle_range_static_selection_assignment_info(
                 statement.lvalue, statement.rvalue, iterators) is not None):
             return True
+        if (statement.op.name == '=' and self.__runtime_angle_range_set_expression_assignment_info(
+                statement.lvalue, statement.rvalue, iterators) is not None):
+            return True
         if self.__runtime_bit_range_copy_info(statement, iterators) is not None:
             return True
         if self.__runtime_register_compound_assignment_info(statement, iterators) is not None:
@@ -5856,6 +5878,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     node.lvalue, node.rvalue, iterators) is not None):
                 return
             if (node.op.name == '=' and self.__runtime_angle_range_static_selection_assignment_info(
+                    node.lvalue, node.rvalue, iterators) is not None):
+                return
+            if (node.op.name == '=' and self.__runtime_angle_range_set_expression_assignment_info(
                     node.lvalue, node.rvalue, iterators) is not None):
                 return
             if self.__runtime_bit_range_copy_info(node, iterators) is not None:
@@ -11777,6 +11802,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             angle_selection = self.__runtime_angle_range_static_selection_assignment_info(statement.lvalue, statement.rvalue)
             if angle_selection is not None:
                 self.__emit_runtime_register_assignment(angle_selection)
+                return
+            angle_set = self.__runtime_angle_range_set_expression_assignment_info(statement.lvalue, statement.rvalue)
+            if angle_set is not None:
+                self.__emit_runtime_register_assignment(angle_set)
                 return
         bit_range_copy = self.__runtime_bit_range_copy_info(statement)
         if bit_range_copy is not None:
