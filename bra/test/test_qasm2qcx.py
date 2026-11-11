@@ -4813,6 +4813,153 @@ class RuntimeRangeStaticSelectionAssignmentFoundationTests(unittest.TestCase):
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables,{caller})
 
 
+class RuntimeRegisterExpressionCompoundAssignmentFoundationTests(unittest.TestCase):
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    prefix = RuntimeRangeRegisterAssignmentFoundationTests.prefix
+
+    def setUp(self):
+        self.c = self.converter(self.prefix)
+
+    @staticmethod
+    def statement(target, operator, value):
+        return qasm2qcx.openqasm3.parser.parse('OPENQASM 3; '+target+operator+value+';').statements[0]
+
+    def info(self, target='result', operator='&=', value='~flags[start:stop]', iterators=None):
+        statement = self.statement(target,operator,value)
+        return self.c._QASM2QCXConverter__runtime_register_compound_assignment_info(statement,iterators)
+
+    def test_all_operators_and_destination_forms_retain_original_target_and_rhs(self):
+        targets = ('result','flags[7:-2:1]','flags[{7,1,5,0}]',
+                   'flags[{stop,1,bound,start}]','flags[stop:-step:start]')
+        for operator in ('&=','|=','^='):
+            for target in targets:
+                with self.subTest(operator=operator,target=target):
+                    statement = self.statement(target,operator,'rotl((flags[start:stop]&C)^wide[bound:stop],step)')
+                    info = self.c._QASM2QCXConverter__runtime_register_compound_assignment_info(statement)
+                    self.assertIs(info.target,statement.lvalue)
+                    self.assertIs(info.value.expression,statement.rvalue)
+                    self.assertEqual((info.operator,info.binary_operator),(operator,operator[:-1]))
+                    self.assertIsNone(info.value.width)
+                    if target == targets[-1]:
+                        self.assertIsInstance(info,qasm2qcx._RuntimeBitRangeExpressionAssignment)
+                        self.assertIs(info.selection.bounds,statement.lvalue.indices[0][0])
+                        self.assertEqual(info.capacity,8)
+                    else:
+                        self.assertIsInstance(info,qasm2qcx._RuntimeBitRegisterAssignment)
+                        self.assertEqual(info.width,4)
+                        if target == 'result':
+                            self.assertIsNone(info.selection)
+                        elif target == targets[-2]:
+                            self.assertIsInstance(info.selection,qasm2qcx._RuntimeBitSetSelection)
+                            for original,recorded in zip(statement.lvalue.indices[0].values,info.selection.indices):
+                                self.assertIs(recorded,original)
+                        else:
+                            self.assertIsInstance(info.selection,qasm2qcx._StaticBitSelection)
+                    with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                        info.operator = '='
+
+    def test_plain_assignment_metadata_retains_default_operator(self):
+        for target in ('result','flags[7:-2:1]','flags[{start,1}]','flags[start:stop]'):
+            statement = self.statement(target,'=','~flags[start:stop]')
+            plain = self.c._QASM2QCXConverter__runtime_register_assignment_info(statement.lvalue,statement.rvalue)
+            self.assertEqual(plain.operator,'=')
+            self.assertIsNone(plain.binary_operator)
+            compound = self.info(target,'^=')
+            self.assertEqual(compound.binary_operator,'^')
+            self.assertEqual(plain.operator,'=')
+
+    def test_destination_lengths_and_storage_do_not_constrain_rhs_lengths(self):
+        for target in ('single','single[0:0]','single[{start}]','single[start:start]'):
+            with self.subTest(target=target):
+                info = self.info(target,value='~wide[start:stop]')
+                capacity = info.capacity if isinstance(info,qasm2qcx._RuntimeBitRangeExpressionAssignment) else info.width
+                self.assertEqual((capacity,info.value.capacity),(1,258))
+                self.assertIsNone(info.value.width)
+        info = self.info('large',value='~one[start:start]')
+        self.assertEqual((info.width,info.value.capacity),(129,2))
+        with patch.object(self.c,'MAX_RUNTIME_BIT_RANGE_POSITIONS',2):
+            with self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException,'compound snapshot exceeds storage limit'):
+                self.info('large',value='~one[start:start]')
+            self.assertEqual(self.info('large[start:stop]',value='~one[start:start]').capacity,2)
+            self.assertEqual(self.info('large[{start,1}]',value='~one[start:start]').width,2)
+
+    def test_other_operators_direct_ranges_and_fixed_width_rhs_are_not_claimed(self):
+        for operator in ('=','<<=','>>=','+=','-='):
+            with self.subTest(operator=operator):
+                self.assertIsNone(self.info(operator=operator))
+        for value in ('C','~C','flags[{start,stop}]','rotl(flags,step)',
+                      'flags << int(flags[start:stop]==C[start:stop])','popcount(flags[start:stop])'):
+            with self.subTest(value=value):
+                self.assertIsNone(self.info(value=value))
+        for target in ('result','flags[7:-2:1]','flags[{start,1}]','flags[start:stop]'):
+            with self.subTest(target=target):
+                self.assertIsNone(self.info(target,value='C[start:stop]'))
+                statement = self.statement(target,'&=','C[start:stop]')
+                self.assertIsNotNone(self.c._QASM2QCXConverter__runtime_bit_range_copy_info(statement))
+        # Stage 1 adds metadata without enabling the new lowering path.
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.converter(self.prefix+'result&=~flags[start:stop];')
+
+    def test_destination_types_visibility_and_read_only_bindings_are_checked(self):
+        for target in ('C','C[start:stop]','scalar','indices','a','a[0:3]',
+                       'missing','flags[{start,real}]','flags[start:real:stop]',
+                       'flags[{0,-8}]','flags[0:8]'):
+            with self.subTest(target=target), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(target)
+        self.assertIsNone(self.info('flags[0]'))
+        for target in ('result','result[start:stop]','result[{start,1}]'):
+            with self.subTest(target=target), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                self.info(target,iterators={'result':qasm2qcx.ValueType.INT})
+        name = self.c._QASM2QCXConverter__capitalize_variable_name('result')
+        self.c._QASM2QCXConverter__sized_bit_variables.remove(name)
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            self.info()
+
+    def test_rhs_names_types_and_known_lengths_are_checked(self):
+        for value in ('flags[start:real:stop]','flags[start:stop]&scalar',
+                      'flags[start:stop]&(C&"1")','rotl(flags[start:stop],real)',
+                      'flags[start:stop]<<condition','flags[start:stop]^missing'):
+            with self.subTest(value=value), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(value=value)
+        self.c._QASM2QCXConverter__declared_constant_variables.remove('C')
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            self.info(value='flags[start:stop]&C')
+
+    def test_runtime_destination_and_rhs_domains_are_deferred(self):
+        for target in ('flags[{start,1/0,999,-8,0}]',
+                       'flags[indices[999]:step/0:999]','flags[-1:step:7]'):
+            with self.subTest(target=target):
+                info = self.info(target,value='rotl((C[start/0:0:999]&flags[start:stop])^(C<<-1),step/0)')
+                self.assertEqual(info.operator,'&=')
+                self.assertIsNone(info.value.width)
+
+    def test_scoped_iterators_and_declared_widths_are_preserved_without_evaluation(self):
+        for target,selection_type in (('flags[{LOW,1}]',qasm2qcx._RuntimeBitSetSelection),
+                                      ('flags[LOW:HIGH]',qasm2qcx._RuntimeBitRangeSelection)):
+            with self.subTest(target=target):
+                info = self.info(target,iterators={'LOW':qasm2qcx.ValueType.INT})
+                self.assertIsInstance(info.selection,selection_type)
+        with patch.object(self.c,'_QASM2QCXConverter__bit_type_size',side_effect=AssertionError('no width evaluation')):
+            self.assertEqual(self.info(iterators={'WIDTH':qasm2qcx.ValueType.INT}).width,4)
+
+    def test_metadata_preserves_state_caches_output_and_caller_storage(self):
+        c = self.c
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        fields = ('expression_kind','value','value_type','value_kind','evaluate_constant')
+        before = [getattr(c,'_QASM2QCXConverter__'+field) for field in fields]
+        lines = c._QASM2QCXConverter__qcx_lines.copy()
+        caches = (c._QASM2QCXConverter__uint_expression_types.copy(),c._QASM2QCXConverter__angle_expression_types.copy())
+        with patch.object(c,'visit',side_effect=AssertionError('no evaluation or implicit LHS read')), \
+             patch.object(c,'_QASM2QCXConverter__add_new_temporary_variable',side_effect=AssertionError('no allocation')):
+            for target in ('result','flags[7:-2:1]','flags[{start,1/0,999}]','flags[start/0:0:999]'):
+                info = self.info(target,value='rotl((C[start/0:0:999]&flags[start:stop])^(C<<-1),step/0)')
+                self.assertEqual(info.operator,'&=')
+        self.assertEqual(before,[getattr(c,'_QASM2QCXConverter__'+field) for field in fields])
+        self.assertEqual(lines,c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(caches,(c._QASM2QCXConverter__uint_expression_types,c._QASM2QCXConverter__angle_expression_types))
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables,{caller})
+
+
 class RuntimeRangeExpressionAssignmentFoundationTests(unittest.TestCase):
     converter = staticmethod(BuiltinFunctionSignatureTests.converter)
     prefix = RuntimeRangeRegisterAssignmentFoundationTests.prefix

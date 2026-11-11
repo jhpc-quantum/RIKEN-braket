@@ -395,6 +395,11 @@ class _RuntimeBitRegisterAssignment:
     # index sets retain original expressions until destination capture.
     # Neither selection width is an inferred length for a dynamic RHS leaf.
     selection: _StaticBitSelection | _RuntimeBitSetSelection | None = None
+    operator: str = '='
+
+    @property
+    def binary_operator(self) -> str | None:
+        return None if self.operator == '=' else self.operator[:-1]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -405,6 +410,11 @@ class _RuntimeBitRangeExpressionAssignment:
     # This bounds destination storage, not either operand's selected length.
     capacity: int
     value: _RuntimeBitRegisterExpression
+    operator: str = '='
+
+    @property
+    def binary_operator(self) -> str | None:
+        return None if self.operator == '=' else self.operator[:-1]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -4259,6 +4269,25 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # constrain a dynamic leaf's length or suppress its evaluation.
         value = self.__runtime_bit_register_expression_info(expression, shapes, iterators)
         return _RuntimeBitRangeExpressionAssignment(target, selection, capacity, value)
+
+    def __runtime_register_compound_assignment_info(
+            self, statement: ast.ClassicalAssignment,
+            iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> _RuntimeBitRegisterAssignment | _RuntimeBitRangeExpressionAssignment | None:
+        operator = statement.op.name
+        if operator not in ('&=', '|=', '^='):
+            return None
+        if self.__runtime_bit_range_source(statement.rvalue, iterators) is not None:
+            return None  # Preserve the direct-range path and its check timing.
+        info = self.__runtime_register_assignment_info(statement.lvalue, statement.rvalue, iterators)
+        if info is None:
+            return None  # Fixed-width and scalar RHS expressions keep their paths.
+        # Original LHS bits need a bounded snapshot as well as the independent
+        # RHS tree. Runtime-range destinations already have a bounded capacity.
+        if (isinstance(info, _RuntimeBitRegisterAssignment)
+                and not 1 <= info.width <= self.MAX_RUNTIME_BIT_RANGE_POSITIONS):
+            raise InvalidBitOperandException('Runtime register compound snapshot exceeds storage limit')
+        return dataclasses.replace(info, operator=operator)
 
     def __runtime_register_assignment_destination_width(
             self, target: ast.Identifier,
