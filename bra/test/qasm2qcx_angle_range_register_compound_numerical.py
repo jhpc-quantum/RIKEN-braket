@@ -27,6 +27,14 @@ class BackendTests(unittest.TestCase):
     program = registers.BackendTests.program
     check_exact = registers.BackendTests.check_exact
 
+    def test_documented_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- angle-range-register-compound-example -->'
+        self.assertEqual(document.count(marker), 1)
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        self.check_exact(source.replace('OPENQASM 3.0;', '', 1),
+                         (('direct', 4), ('nested', 4), ('rotated', 4)), (8, 8, 13))
+
     def check_nodes(self, source, nodes, before):
         statements, outputs, expected = [source], [], []
         width = len(before)
