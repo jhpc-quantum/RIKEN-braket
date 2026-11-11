@@ -5678,6 +5678,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __validate_bitwise_indices(
             self, expression: ast.Expression, iterators: dict[str, ValueType]) -> None:
+        if (isinstance(expression, ast.Cast)
+                and self.__runtime_range_angle_cast_info(expression, iterators) is not None):
+            return  # Angle range casts validate register operands as a unit.
         if isinstance(expression, ast.Cast) and isinstance(expression.type, ast.UintType):
             info = self.__uint_bit_cast_info(expression, iterators)
             if info is not None and (info.range_selection is not None or info.range_tree is not None):
@@ -9580,6 +9583,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__validate_uint_bit_register_source(
                 expression.arguments[0], iterators, allow_runtime_angle_selections=allow_runtime_angle_selections)
         elif isinstance(expression, ast.Cast) and isinstance(expression.type, (ast.BitType, ast.AngleType)):
+            if self.__runtime_range_angle_cast_info(expression, iterators) is not None:
+                return  # This scalar angle cast owns its range validation.
             self.__validate_uint_bit_register_source(
                 expression.argument, iterators, allow_runtime_angle_selections=allow_runtime_angle_selections)
 
@@ -9613,39 +9618,46 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if len(self.__qcx_lines) + extra > self.MAX_LOOP_OUTPUT_LINES:
             raise InvalidBitOperandException('UINT/bit-register cast exceeds QCX output limit')
 
-    def __visit_runtime_bit_to_uint_cast(self, expression: ast.Cast, info: _UIntBitCastInfo) -> None:
+    def __pack_bit_register_cast(
+            self, argument: ast.Expression, info: _UIntBitCastInfo) -> tuple[str | int, ValueKind]:
+        # The scalar consumer owns the result and error cleanup. Packing itself
+        # does not register UINT or ANGLE type metadata for the original cast.
         self.__check_uint_bit_cast_output(1)
+        if info.range_tree is not None:
+            source = self.__runtime_bit_range_tree_value(info.range_tree)
+        elif info.range_selection is not None:
+            source = self.__runtime_bit_range_cast_value(argument, info)
+        else:
+            source = self.__bit_register_expression_value(argument)
+        with source as values:
+            literal = sum(value << index for index, value in enumerate(values) if isinstance(value, int))
+            if all(isinstance(value, int) for value in values):
+                result, kind = literal, ValueKind.LITERAL
+            else:
+                result = self.__add_new_temporary_variable(ValueType.UINT, info.uint_type)
+                self.__qcx_lines.append(f'LET {result} := {literal}')
+                scratch = None
+                for index, value in enumerate(values):
+                    if isinstance(value, int):
+                        continue
+                    if scratch is None:
+                        scratch = self.__add_new_temporary_variable(ValueType.UINT)
+                    self.__qcx_lines.append(f'LET {scratch} := :UINT:{value}')
+                    if index:
+                        self.__qcx_lines.append(f'LET {scratch} <<= {index}')
+                    self.__qcx_lines.append(f'LET {result} |= {scratch}')
+                kind = ValueKind.TEMPORARY
+        self.__check_uint_bit_cast_output()
+        return result, kind
+
+    def __visit_runtime_bit_to_uint_cast(self, expression: ast.Cast, info: _UIntBitCastInfo) -> None:
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
         previous_used = self.__used_temporary_variables.copy()
         keep = None
         try:
             self.__expression_kind = ExpressionKind.ARITHMETIC
-            if info.range_tree is not None:
-                source = self.__runtime_bit_range_tree_value(info.range_tree)
-            elif info.range_selection is not None:
-                source = self.__runtime_bit_range_cast_value(expression.argument, info)
-            else:
-                source = self.__bit_register_expression_value(expression.argument)
-            with source as values:
-                literal = sum(value << index for index, value in enumerate(values) if isinstance(value, int))
-                if all(isinstance(value, int) for value in values):
-                    result, kind = literal, ValueKind.LITERAL
-                else:
-                    result = self.__add_new_temporary_variable(ValueType.UINT, info.uint_type)
-                    self.__qcx_lines.append(f'LET {result} := {literal}')
-                    scratch = None
-                    for index, value in enumerate(values):
-                        if isinstance(value, int):
-                            continue
-                        if scratch is None:
-                            scratch = self.__add_new_temporary_variable(ValueType.UINT)
-                        self.__qcx_lines.append(f'LET {scratch} := :UINT:{value}')
-                        if index:
-                            self.__qcx_lines.append(f'LET {scratch} <<= {index}')
-                        self.__qcx_lines.append(f'LET {result} |= {scratch}')
-                    kind = ValueKind.TEMPORARY
-            self.__check_uint_bit_cast_output()
+            result, kind = self.__pack_bit_register_cast(expression.argument, info)
             self.__expression_kind = previous[0]
             self.__value, self.__value_type, self.__value_kind = result, ValueType.UINT, kind
             self.__uint_expression_types[id(expression)] = (expression, info.uint_type)
@@ -9723,6 +9735,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             ) -> tuple[ValueType, int, bool] | None:
         # Width/type inference must not read bits, evaluate angle operands,
         # or emit instructions, including in skipped and empty bodies.
+        runtime_range = self.__runtime_range_angle_cast_info(expression, iterators)
+        if runtime_range is not None:
+            return runtime_range.result_type, runtime_range.width, runtime_range.runtime
         if isinstance(expression.type, ast.AngleType):
             source_width = self.__bit_register_expression_width(expression.argument, iterators)
             if source_width is None:
@@ -9774,7 +9789,32 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             for temporary in self.__used_temporary_variables - previous_used:
                 self.__release_temporary_variable(temporary)
 
+    def __visit_runtime_range_angle_cast(self, info: _RuntimeRangeAngleCastInfo) -> None:
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        keep = None
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            result, kind = self.__pack_bit_register_cast(info.expression.argument, info.packing)
+            self.__angle_expression_types[id(info.expression)] = (info.expression, info.angle_type)
+            self.__expression_kind = previous[0]
+            self.__value, self.__value_type, self.__value_kind = result, ValueType.ANGLE, kind
+            keep = result if kind == ValueKind.TEMPORARY else None
+        except Exception:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            raise
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                if temporary != keep:
+                    self.__release_temporary_variable(temporary)
+
     def __visit_runtime_bit_to_angle_cast(self, expression: ast.Cast) -> None:
+        runtime_range = self.__runtime_range_angle_cast_info(expression)
+        if runtime_range is not None:
+            self.__visit_runtime_range_angle_cast(runtime_range)
+            return
         previous = (self.__expression_kind, self.__value, self.__value_type, self.__value_kind)
         previous_used = self.__used_temporary_variables.copy()
         keep = None

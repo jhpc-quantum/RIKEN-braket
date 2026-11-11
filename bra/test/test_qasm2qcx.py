@@ -33967,7 +33967,7 @@ class RuntimeBitRangeUIntCastFoundationTests(unittest.TestCase):
                 self.info(source)
 
     def test_other_raw_range_expressions_and_source_forms_remain_excluded(self):
-        for operand in ('bit[4](angle[4](wide[index:count]))', '(b ^ B)[index:count]',
+        for operand in ('bit[3](angle[4](wide[index:count]))', '(b ^ B)[index:count]',
                         'wide[index:count][0:3]', 'scalar[index:count]', 'u[index:count]',
                         'positions[index:count]', 'a[index:count]', 'wide[:count]', 'wide[index:]'):
             with self.subTest(operand=operand), self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -34154,7 +34154,7 @@ class RuntimeRangeUnaryShiftUIntCastFoundationTests(unittest.TestCase):
     def test_other_register_functions_and_source_forms_remain_excluded(self):
         for operand in ('B << wide[index:count]',
                         '-wide[index:count]', '!wide[index:count]',
-                        '~bit[4](angle[4](wide[index:count]))', '~a[index:count]',
+                        '~bit[3](angle[4](wide[index:count]))', '~a[index:count]',
                         '~(b ^ B)[index:count]', '~wide[:count]', '~wide[index:]',
                         '~scalar[index:count]', '~wide[index:count][0:3]'):
             with self.subTest(operand=operand), self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -36229,9 +36229,8 @@ class RuntimeRangeAngleCastFoundationTests(unittest.TestCase):
                        'angle[1](popcount(wide[index:count]))'):
             with self.subTest(source=source):
                 self.assertIsNone(self.info(source))
-        # Stage 1 provides metadata only; conversion is enabled in Stage 2.
-        with self.assertRaises(qasm2qcx.QASM2QCXError):
-            self.converter(self.prefix+'angle[4] phase=angle[4](wide[index:count]);')
+        c = self.converter(self.prefix+'angle[4] phase=angle[4](wide[index:count]);')
+        self.assertTrue(any(line.startswith('LET PHASE') for line in c))
 
     def test_fixed_runtime_angle_bit_operands_keep_angle_cast_support_and_uint_restrictions(self):
         for width,source in ((4,'wide[index:count]&a[{index,1,2,3}]'),
@@ -36326,6 +36325,121 @@ class RuntimeRangeAngleCastFoundationTests(unittest.TestCase):
         self.assertEqual(lines,c._QASM2QCXConverter__qcx_lines)
         self.assertEqual(caches,(c._QASM2QCXConverter__uint_expression_types,c._QASM2QCXConverter__angle_expression_types))
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables,{caller})
+
+
+class RuntimeRangeAngleCastLoweringTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    expression = ScalarAngleArithmeticFoundationTests.expression
+    prefix = RuntimeBitSetUIntCastFoundationTests.prefix
+
+    def test_capture_order_count_guard_and_angle_result_ownership(self):
+        c = self.converter(self.prefix)
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONDITIONAL
+        expression = self.expression('angle[4](wide[index:count:7])')
+        bounds = expression.argument.index[0]
+        capture = c._QASM2QCXConverter__capture_bit_range_integer
+        start = len(c._QASM2QCXConverter__qcx_lines)
+        with patch.object(c, '_QASM2QCXConverter__capture_bit_range_integer', wraps=capture) as captured:
+            c.visit(expression)
+        self.assertEqual([call.args[0] for call in captured.call_args_list],
+                         [bounds.start, bounds.step, bounds.end])
+        lines = c._QASM2QCXConverter__qcx_lines[start:]
+        source = c._QASM2QCXConverter__capitalize_variable_name('wide')
+        reads = [i for i, line in enumerate(lines) if f' := {source}:' in line]
+        snapshots = {lines[i].split()[1] for i in reads}
+        packs = [i for i, line in enumerate(lines)
+                 if any(line.endswith(' := :UINT:' + bit) for bit in snapshots)]
+        guard = max(i for i, line in enumerate(lines) if line.startswith('ASSERT ') and line.endswith(' == 4'))
+        self.assertEqual((len(reads), len(packs)), (4, 4))
+        self.assertLess(guard, min(reads))
+        self.assertLess(max(reads), min(packs))
+        self.assertEqual(c._QASM2QCXConverter__expression_kind, qasm2qcx.ExpressionKind.CONDITIONAL)
+        self.assertEqual(c._QASM2QCXConverter__value_type, qasm2qcx.ValueType.ANGLE)
+        self.assertEqual(c._QASM2QCXConverter__angle_expression_type(expression), qasm2qcx._AngleType(4, True))
+        self.assertNotIn(id(expression), c._QASM2QCXConverter__uint_expression_types)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables,
+                         {caller, c._QASM2QCXConverter__value})
+
+    def test_packing_matches_uint_without_float_conversion(self):
+        for operand in ('wide[index:count]', '~wide[index:count] << u',
+                        'rotl(wide[index:count] ^ B, count)',
+                        '(wide[index:count] & B) | rotr(C[count:-1:index], u)'):
+            results = []
+            for kind in ('angle', 'uint'):
+                c = self.converter(self.prefix)
+                c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+                start = len(c._QASM2QCXConverter__qcx_lines)
+                c.visit(self.expression(f'{kind}[4]({operand})'))
+                results.append(c._QASM2QCXConverter__qcx_lines[start:])
+            with self.subTest(operand=operand):
+                self.assertEqual(*results)
+                self.assertFalse(any('FLOAT' in line or ' <- ANGLEBITS ' in line for line in results[0]))
+
+    def test_native_unsized_result_and_scalar_composition(self):
+        width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        c = self.converter(f'bit[{width}] b; int first=0; int last={width-1};')
+        c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        expression = self.expression('angle(b[first:last])')
+        c.visit(expression)
+        self.assertEqual(c._QASM2QCXConverter__angle_expression_type(expression),
+                         qasm2qcx._AngleType(width, False))
+        self.assertEqual([int(line.split()[-1]) for line in c._QASM2QCXConverter__qcx_lines if ' <<= ' in line],
+                         list(range(1, width)))
+        c = self.converter('bit[4] b="1011"; int first=0; int last=3; '
+                           'angle[4] a=angle[4](b[first:last])+angle[4](pi); '
+                           'bool same=angle[4](b[first:last])==a; '
+                           'float sine=sin(angle[4](b[first:last])); '
+                           'uint[4] back=uint[4](~bit[4](angle[4](b[first:last]))); '
+                           'uint count=popcount(bit[4](angle[4](b[first:last])));')
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        for kind in ('int', 'uint[4]'):
+            with self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(f'bit[4] b; int first=0; {kind} n={kind}(angle[4](b[first:3]));')
+
+    def test_runtime_angle_leaves_indexed_destinations_and_overlapping_roundtrip(self):
+        c = self.converter('bit[4] b="1011"; int first=0; int last=3; int slot=1; '
+                           'array[angle[4],2] values={pi,0.0}; '
+                           'values[slot]=angle[4](b[first:last] ^ values[0][{first,1,2,3}]); '
+                           'angle[4] a=angle[4](b[first:last] & values[slot][{0,1,2,last}]); '
+                           'b=bit[4](angle[4](b[last:-1:first]));')
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, {})
+        ForLoopControlLoweringTests.assert_resolved_jumps(list(c))
+
+    def test_skipped_domains_are_deferred_but_types_and_names_are_validated(self):
+        c = self.converter('bit[8] b; int first=-1; int step=0; '
+                           'angle[4] a; bool no=false && bool(angle[4](b[first:step:20] << -1)); '
+                           'for int i in [1:0] { a=angle[4](rotl(b[first:step:20],-1)); } '
+                           'if (false) { a=angle[4](b[first:step:20]); }')
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        for source in ('b[missing:3]', 'b[true:3]', 'b[first:3] ^ "000"', 'b[first:3] << true'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('bit[8] b; int first=0; angle[4] a; '
+                               f'for int i in [1:0] {{ a=angle[4]({source}); }}')
+        with self.assertRaises(qasm2qcx.NoConstantExpressionException):
+            self.converter('bit[8] b; int first=0; const angle[4] A=angle[4](b[first:3]);')
+
+    def test_capture_and_packing_failures_release_scratch_and_restore_fields(self):
+        for method in ('__capture_bit_range_positions', '__pack_bit_register_cast'):
+            c = self.converter(self.prefix)
+            caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+            c._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+            fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+            before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+            original = getattr(c, '_QASM2QCXConverter' + method)
+            def failed(*args, **kwargs):
+                original(*args, **kwargs)
+                raise RuntimeError('injected failure')
+            expression = self.expression('angle[4](~wide[index:count] << u)')
+            with self.subTest(method=method), patch.object(c, '_QASM2QCXConverter' + method, side_effect=failed):
+                with self.assertRaisesRegex(RuntimeError, 'injected failure'):
+                    c.visit(expression)
+            self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+            self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertEqual(c._QASM2QCXConverter__captured_bit_register_values, {})
+            self.assertNotIn(id(expression), c._QASM2QCXConverter__angle_expression_types)
 
 
 class AngleBitCastFoundationTests(unittest.TestCase):
