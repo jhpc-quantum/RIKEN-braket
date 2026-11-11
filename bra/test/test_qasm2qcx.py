@@ -5122,6 +5122,48 @@ class RuntimeRegisterExpressionCompoundAssignmentLoweringTests(unittest.TestCase
                     self.assertFalse(any(line.startswith(f'LET {name}') for line in c._QASM2QCXConverter__qcx_lines[start:]))
 
 
+class RuntimeRegisterExpressionCompoundAssignmentAuditTests(unittest.TestCase):
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    prefix = RuntimeRegisterExpressionCompoundAssignmentLoweringTests.prefix
+    targets = RuntimeRegisterExpressionCompoundAssignmentLoweringTests.targets
+    statement = staticmethod(RuntimeRegisterExpressionCompoundAssignmentFoundationTests.statement)
+
+    def test_exact_output_budget_and_final_write_failure_preserve_state_and_storage(self):
+        for target in self.targets:
+            for operator in ('&=','|=','^='):
+                statement = self.statement(target,operator,'rotl(C[start:stop],bound+1)')
+                reference = self.converter(self.prefix)
+                reference._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+                info = reference._QASM2QCXConverter__runtime_register_compound_assignment_info(statement)
+                reference._QASM2QCXConverter__emit_runtime_register_assignment(info)
+                required = len(reference._QASM2QCXConverter__qcx_lines)
+                for missing in (0,1):
+                    with self.subTest(target=target,operator=operator,missing=missing):
+                        c = self.converter(self.prefix)
+                        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+                        info = c._QASM2QCXConverter__runtime_register_compound_assignment_info(statement)
+                        fields = ('expression_kind','value','value_type','value_kind','evaluate_constant')
+                        before = [getattr(c,'_QASM2QCXConverter__'+field) for field in fields]
+                        start = len(c._QASM2QCXConverter__qcx_lines)
+                        with patch.object(c,'MAX_LOOP_OUTPUT_LINES',required-missing):
+                            if missing:
+                                with self.assertRaisesRegex(qasm2qcx.QASM2QCXError,'output limit'):
+                                    c._QASM2QCXConverter__emit_runtime_register_assignment(info)
+                            else:
+                                c._QASM2QCXConverter__emit_runtime_register_assignment(info)
+                        lines = c._QASM2QCXConverter__qcx_lines
+                        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables,{caller})
+                        self.assertEqual(before,[getattr(c,'_QASM2QCXConverter__'+field) for field in fields])
+                        if missing:
+                            self.assertIn('@QASM2QCX_REGISTER_ASSIGNMENT_0_BITWISE',lines)
+                            self.assertNotIn('@QASM2QCX_REGISTER_ASSIGNMENT_0_WRITE',lines)
+                            name = c._QASM2QCXConverter__capitalize_variable_name(target.split('[')[0])
+                            self.assertFalse(any(line.startswith(f'LET {name}') for line in lines[start:]))
+                        else:
+                            self.assertEqual(len(lines),required)
+                            self.assertEqual(lines,reference._QASM2QCXConverter__qcx_lines)
+
+
 class RuntimeRangeExpressionAssignmentFoundationTests(unittest.TestCase):
     converter = staticmethod(BuiltinFunctionSignatureTests.converter)
     prefix = RuntimeRangeRegisterAssignmentFoundationTests.prefix
