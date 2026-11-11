@@ -25,6 +25,15 @@ class BackendTests(unittest.TestCase):
     program = backend.BackendTests.program
     check_exact = backend.BackendTests.check_exact
 
+    def test_documented_runtime_angle_range_uint_cast_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-angle-range-uint-cast-example -->'
+        self.assertEqual(document.count(marker), 1)
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        source = source.replace('OPENQASM 3.0;', '', 1)
+        self.check_exact(source, (('saved', None), ('combined', None), ('copied', 4),
+                                  ('element', None), ('fresh', None)), (10, 15, 10, 10, 0))
+
     def test_every_width_exact_patterns_sources_and_roundtrips(self):
         native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
         mask = (1 << native)-1
