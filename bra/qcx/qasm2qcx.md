@@ -153,7 +153,8 @@ The converter currently covers:
 - copies from runtime ranges on mutable or constant bit registers into whole
   mutable registers, static selections, or runtime index-set/range destinations;
 - bitwise compound assignments into whole registers or static/runtime selections
-  with a complete runtime bit-register range RHS;
+  with runtime bit-register range RHS values, including nested bitwise,
+  complement, shift, and rotation expressions;
 - plain and bitwise compound assignments into runtime bit-register ranges with
   known-width register RHS values;
 - shift compound assignments into runtime bit-register ranges using their
@@ -3608,8 +3609,9 @@ their existing paths. Static selections also accept the
 [expression assignment subset](#assigning-runtime-range-expressions-to-static-selections)
 below, as do [runtime index-set destinations](#assigning-runtime-range-expressions-to-runtime-index-sets)
 and [runtime-range destinations](#assigning-runtime-range-expressions-to-runtime-ranges).
-Nested runtime-range RHS expressions for compound assignments remain separate
-work; their existing direct-copy and fixed-width subsets remain available. Runtime-dependent `const`
+The same destinations support
+[bitwise compounds with runtime-range expressions](#bitwise-compound-assignments-with-runtime-range-expressions).
+Shift and arithmetic compound extensions remain separate work. Runtime-dependent `const`
 initializers, declaration widths, general block-local declarations, runtime
 angle-bit ranges, aliases, concatenation, and computed-result indexing remain
 outside this subset.
@@ -3821,9 +3823,9 @@ Existing [direct runtime-range copies](#copies-from-runtime-bit-register-ranges)
 retain their capture/check timing, and fixed-width selected assignments retain
 their existing paths. [Runtime index-set destinations](#assigning-runtime-range-expressions-to-runtime-index-sets)
 and [runtime-range destinations](#assigning-runtime-range-expressions-to-runtime-ranges)
-also accept this RHS subset. Nested runtime-range RHS expressions for compound
-assignments remain unsupported.
-Their existing direct-copy and fixed-width subsets remain available. Scalar
+also accept this RHS subset, as do
+[bitwise compound assignments](#bitwise-compound-assignments-with-runtime-range-expressions).
+Existing direct-copy and fixed-width subsets remain available. Scalar
 elements, angle-bit destinations, aliases, concatenation, computed-result
 indexing, and general block-local declarations remain outside this subset.
 
@@ -4260,7 +4262,7 @@ positions must be distinct. Even constant entries of a mixed runtime set are
 checked at execution. Repeated normalized source positions remain allowed.
 Bits outside a selected destination are preserved.
 
-The converter uses this execution order:
+For a direct runtime range RHS, the converter uses this execution order:
 
 1. For runtime destinations, capture and bounds-check every set entry once in
    written order, or capture range start, step, and stop once in that order.
@@ -4393,8 +4395,116 @@ Runtime index-set destinations also support
 Runtime-range destinations support
 [ordinary expression assignments](#assigning-runtime-range-expressions-to-runtime-ranges) as well.
 Shift and arithmetic compound assignments with a runtime range RHS, scalar
-destinations, nested runtime-range RHS expressions for compound assignments,
-computed sources, aliases, and further indexing remain unsupported.
+destinations, computed sources, aliases, and further indexing remain unsupported.
+Nested runtime-range RHS expressions have the separate bitwise compound subset below.
+
+#### Bitwise compound assignments with runtime-range expressions
+
+Whole mutable bit registers and static or runtime range/discrete-set selections
+on named mutable bit registers accept `&=`, `|=`, and `^=` with the RHS expression
+subset described for
+[whole-register assignments](#whole-register-assignments-from-runtime-range-expressions).
+This includes nested `&`, `|`, `^`, `~`, `<<`, `>>`, `rotl`, and `rotr` operations
+mixing ranges on mutable or constant bit registers with supported known-width
+register values. Known-width destinations have a required entry count; runtime
+range destinations capture their count during execution.
+
+Execution follows this order:
+
+1. Resolve and validate destination positions. Runtime index-set entries are
+   captured once in written order; runtime range start, step, and stop are
+   captured once in that order. Apply existing bounds, INT/UINT conversion,
+   normalization, nonempty-selection, and duplicate-destination rules before
+   any read of the original LHS or RHS evaluation.
+2. Snapshot the original selected LHS bits in selection order, without
+   recapturing destination expressions. Keep both the addresses and original
+   values reserved while evaluating the RHS.
+3. Evaluate the complete RHS left to right into private snapshots. Each nested
+   binary register operation checks equal lengths after both children finish.
+4. Require the final RHS length to equal the destination count, using QCX
+   `ASSERT`. The destination count does not determine a dynamic source leaf's
+   length, shorten evaluation, or permit padding, truncation, or broadcasting.
+5. Compute every result bit privately as the original LHS bit `&`, `|`, or `^`
+   the corresponding RHS bit, then write the complete result in selection order.
+
+The implicit LHS read uses its original-value snapshot. Explicit RHS references
+to the same register still perform their own reads and checks. Overlap and
+self-references therefore use original values, and unselected bits remain
+unchanged. Destination failures precede original reads and RHS evaluation;
+RHS errors and length mismatches can follow original reads but prevent all
+result writes. A singleton selection remains a register, including on `bit[1]`,
+rather than a scalar bit.
+
+<!-- runtime-expression-bitwise-compound-example -->
+```qasm
+OPENQASM 3.0;
+bit[4] a = "1011";
+const bit[4] B = "1101";
+bit[4] result = "1111";
+int first = 0;
+uint last = 3;
+result &= ~(a[first:last] & B);                 // "0110"
+result |= rotl(a[first:last], 1);               // "0111"
+result ^= a[first:last] & B;                    // "1110"
+bit[8] flags = "01010101";
+flags[7:-2:1] |= rotl(a[first:last], 1);         // "11111101"
+flags[{7, 1, 5, 0}] ^= (a[first:last] & B) ^ "0011"; // "11111110"
+bool static_ok = flags == "11111110";
+int high = -1;
+uint low = 1;
+flags[{high, low, 5, 0}] &= ~a[first:last];      // "01111100"
+bool set_ok = flags == "01111100";
+int start = 7;
+int step = -2;
+int stop = 1;
+flags[start:step:stop] ^= rotl(a[first:last], 1); // "11010100"
+bool range_ok = flags == "11010100";
+a[last:-1:first] ^= rotl(a[first:last], int(a[first:last] != B)); // "0101"
+if (false) { flags[{high, -1}] |= ~a[first:0:last]; } // No duplicate or step check.
+bit[1] one = "1";
+const bit[1] ZERO = "0";
+int single = -1;
+one[single:single] ^= ~ZERO[first:first];       // "0"
+const bit[2] ZEROS = "00";
+bit[4] captured = "0000";
+captured[{0, int(captured[0]) + 1}] |= ~ZEROS[first:1]; // "0011"; addresses saved first
+int visits = 0;
+while (visits < 2) {
+    result ^= ~a[first:last];
+    visits += 1;
+}                                             // "1110" restored
+bool untouched = flags[{6, 4, 2}] == "111";    // true
+```
+
+Assignments work in supported branches and loops, including `break` and
+`continue`. Every reached execution captures fresh positions, original LHS
+bits, RHS bounds, scalar counts, and source bits. Scalar logical short-circuiting
+is preserved. Skipped paths and empty loop bodies validate names, visibility,
+types, known widths, and syntax without evaluating runtime-dependent domains.
+Entirely static destinations retain conversion-time bounds and duplicate checks.
+Constants and active loop iterators remain read-only. Nested array and bit
+accesses within indices retain their own validation rules.
+
+Storage for the original LHS is bounded by the known entry count, or by the smaller of
+the parent width and the runtime-position limit for runtime-range destinations.
+A known entry count exceeding that limit is rejected during conversion;
+runtime capacity failures occur only when reached. RHS snapshots retain
+independent capacities and limits. Whole-register and
+runtime-range original reads and final writes use loops; static selections and
+runtime index sets emit one original read and final write per selected bit.
+Result computation uses a runtime loop over the snapshots. Output limits are
+checked before emitting original reads, combination code, and the complete
+final write sequence. Temporary declarations are hoisted outside branches and
+loops, and cleanup preserves caller-owned state and storage on success and
+failed lowering. Registers may exceed native UINT width; QCX INT indexing
+limits still apply. No new bra instruction or build option is required.
+
+Existing compound assignments with a direct runtime range or fixed-width RHS
+retain their own capture/check timing. Scalar-bit and angle-bit destinations, shift and
+arithmetic compound extensions, aliases, concatenation, computed-result indexing,
+and general block-local declarations remain outside this subset. Exact capture,
+snapshot, check ordering, duplicate rejection, and resource limits are documented
+converter policies; the specification does not explicitly prescribe that ordering.
 
 ### Runtime bit-register index-set assignments
 
@@ -4415,10 +4525,10 @@ supported whole-register, static/runtime selection, bitwise, shift, rotation,
 and angle-to-bit-register expression forms. Plain `=` also accepts the complete
 runtime range RHS described in [Copies from runtime bit-register ranges](#copies-from-runtime-bit-register-ranges),
 or [nested runtime-range expressions](#assigning-runtime-range-expressions-to-runtime-index-sets).
-Bitwise compounds accept the [runtime range RHS subset](#runtime-range-rhs-bitwise-assignments)
-above, checking the source count against the destination entry count at runtime.
-Nested runtime ranges in compound-assignment RHS expressions and runtime range
-RHS values for shift compounds remain unsupported. Shift counts follow the existing
+Bitwise compounds accept both the [direct runtime range RHS subset](#runtime-range-rhs-bitwise-assignments)
+and [nested runtime-range expressions](#bitwise-compound-assignments-with-runtime-range-expressions),
+checking the final count against the destination entry count at runtime.
+Runtime range RHS values for shift compounds remain unsupported. Shift counts follow the existing
 register policy: nonnegative INT/UINT values are accepted, negative counts fail
 when reached, and counts at least the selection width produce zero. Shifts act
 within the selection, preserving every unselected source bit.
@@ -4563,8 +4673,9 @@ Widths may exceed native UINT; no new bra instruction or build option is require
 Existing [direct runtime-range copies](#copies-from-runtime-bit-register-ranges)
 and fixed-width selected assignments retain their own capture/check timing.
 [Runtime-range destinations](#assigning-runtime-range-expressions-to-runtime-ranges)
-also accept this RHS subset. Nested runtime-range RHS expressions for compound
-assignments remain separate work. Scalar elements, angle-bit destinations,
+also accept this RHS subset, as do
+[bitwise compound assignments](#bitwise-compound-assignments-with-runtime-range-expressions).
+Scalar elements, angle-bit destinations,
 aliases, concatenation, computed-result indexing, and general block-local
 declarations remain outside this subset.
 
@@ -4602,7 +4713,9 @@ Both selected counts are then captured and checked at runtime, using its bounded
 storage policy. Bitwise compounds may also accept a complete runtime range RHS
 through the [runtime range RHS bitwise subset](#runtime-range-rhs-bitwise-assignments)
 above, using the captured destination count and preserving original values
-before RHS evaluation. The checks below describe the fixed-width RHS path.
+before RHS evaluation. They also accept
+[nested runtime-range expressions](#bitwise-compound-assignments-with-runtime-range-expressions).
+The checks below describe the fixed-width RHS path.
 Plain `=` additionally accepts
 [nested runtime-range expressions](#assigning-runtime-range-expressions-to-runtime-ranges),
 with the final length checked only after complete RHS evaluation.
@@ -4780,8 +4893,9 @@ UINT width; QCX INT indexing limits still apply. No new bra instruction or
 build option is required.
 
 Existing direct runtime-range copies and fixed-width RHS assignments retain
-their own capture/check timing. Nested runtime-range RHS expressions for
-compound assignments remain separate work. Angle-bit destinations, aliases,
+their own capture/check timing.
+[Bitwise compound assignments](#bitwise-compound-assignments-with-runtime-range-expressions)
+also accept nested runtime-range RHS expressions. Angle-bit destinations, aliases,
 concatenation, computed-result indexing, and general block-local declarations
 remain outside this subset. Exact capture/check order, duplicate rejection,
 and resource limits are documented converter policies.
@@ -8537,7 +8651,7 @@ The current prototype does not reliably support:
 - scalar-bit shifts, runtime bit-register range expressions outside the supported
   iteration, copy, whole-register assignment/initializer, static-selection assignment,
   runtime index-set assignment, runtime-range destination assignment, UINT cast, population-count,
-  equality-comparison, and bitwise compound-assignment RHS subsets,
+  equality-comparison, and bitwise compound-assignment RHS expression subsets,
   runtime bit-register range arithmetic compound assignments,
   ordered bit-register comparisons, whole-array bitwise operations, direct
   Boolean bitwise operations, or classical functions other than the
@@ -9450,6 +9564,23 @@ output limits before capture/after validation/before writes, and cleanup
 preserving caller-owned state and storage. The audit passes on native and UBSan
 builds and executes the runtime-range destination expression example above.
 
+`bra/test/qasm2qcx_runtime_expression_bitwise_compound_numerical.py` checks all
+three bitwise compound operators across whole registers, static ranges/sets,
+runtime index sets, and runtime ranges against independent bit-vector references.
+It compares complete destination registers with exhaustive small patterns, every
+native width, and sources through 129 bits, including constant sources, repeated
+source bits, deep expression trees, and native endpoint distances. It covers
+original LHS values, overlap, indices reading the destination, changing counts
+and sources across loop iterations, transfers, singleton storage, mixed INT/UINT
+indices and bounds, skipped domains, scalar consumers, measurement feedback,
+and normal/fused gate consumers. Failure markers verify destination validation
+before original reads, complete RHS evaluation before final length checks, and
+suppression of combinations/writes on errors, including later iterations and
+capacity failures. Unit tests cover once-only captures, held snapshots, caller
+state/storage preservation, and exact output budgets versus final-write failures.
+The audit passes on native and UBSan builds and executes the compound-assignment
+example above.
+
 `bra/test/qasm2qcx_static_bit_selection_numerical.py` checks all four-bit source
 patterns across ascending/descending ranges, negative indices, reordered sets,
 singleton views, and repeated sources. A Python snapshot model checks ordinary
@@ -10125,6 +10256,7 @@ python3 bra/test/qasm2qcx_runtime_range_expression_assignment_numerical.py --bra
 python3 bra/test/qasm2qcx_static_selection_expression_assignment_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_set_expression_assignment_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_range_destination_expression_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_expression_bitwise_compound_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_bit_selection_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_uint_numerical.py --bra bra/bin/bra

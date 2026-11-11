@@ -36,6 +36,15 @@ class BackendTests(unittest.TestCase):
     program = registers.BackendTests.program
     check_exact = registers.BackendTests.check_exact
 
+    def test_documented_runtime_expression_bitwise_compound_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-expression-bitwise-compound-example -->'
+        source = document.split(marker,1)[1].split('```qasm\n',1)[1].split('```',1)[0]
+        source = source.replace('OPENQASM 3.0;','',1)
+        self.check_exact(source,(('result',4),('flags',8),('a',4),('one',1),('captured',4),
+                                 ('visits',None),('static_ok',None),('set_ok',None),('range_ok',None),('untouched',None)),
+                         (14,212,5,0,3,2,1,1,1,1))
+
     # Source patterns and RHS references are independent of destination handling.
     check_case = index_sets.BackendTests.check_case
     test_exhaustive_small_patterns_and_source_kinds = index_sets.BackendTests.test_exhaustive_small_patterns_and_source_kinds
