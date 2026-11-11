@@ -264,7 +264,7 @@ conversion domain checks or skipped arithmetic. Empty loops still validate
 names, widths, types, and read-only targets.
 
 This is not full angle support. Mixed angle/non-angle comparisons and bitwise
-operations, runtime-dependent bit selections, compound assignments other than
+operations, runtime-dependent bit selections outside the supported subsets, compound assignments other than
 `+=`/`-=`/`*=`/`/=`/`&=`/`|=`/`^=`/`<<=`/`>>=`, and numeric casts from
 angles remain unsupported.
 Use an angle comparison or `bool(a)` explicitly in a condition; a bare angle
@@ -358,8 +358,9 @@ conversion before modulo normalization and negative distances reversing directio
 Fixed-width operands include literals, named registers, static and runtime
 discrete-set selections, supported explicit `bit[n]` casts, and supported
 single-bit/discrete-set selections on sized angles or angle-array elements.
-Runtime-dependent **angle-bit ranges** remain outside this cast subset. Direct
-UINT casts retain their existing restrictions on runtime angle-bit selections;
+Runtime-dependent ranges on explicitly sized angles are also supported in
+ANGLE casts, including mixed trees with bit-register ranges. Direct UINT casts
+retain their existing restrictions on runtime angle-bit selections;
 an explicit `bit[n](angle[n](...))` bridge can supply a separate UINT cast.
 Computed-source indexing, aliases, omitted range endpoints, and scalar-bit
 sources remain unsupported.
@@ -406,6 +407,39 @@ start = 0;
 step = 1;
 stop = 3;
 angle[4] fresh = angle[4](flags[start:step:stop]); // Stored bits: 13; saved is still 5.
+```
+
+#### Angle casts from runtime angle-bit ranges
+
+An ANGLE cast can use a runtime range on an explicitly sized angle variable,
+constant, array element, or supported angle iterator. For example,
+`angle[4](phase[first:last])` copies the selected pattern exactly. The selected
+count must equal the target width; unsized `angle(...)` uses native UINT width.
+The source angle itself must have an explicit width.
+
+The range can occur within the same complement, bitwise, shift, and rotation
+trees described above, including trees mixing angle and bit-register ranges.
+Array-element addresses and the complete source angle are captured before the
+range bounds. Each occurrence captures start, step, and stop once, checks all
+positions and the selected count, and then extracts bits in selection order.
+Negative aliases and repeated source positions are preserved. The complete
+expression is evaluated before a destination is written, including overlapping
+assignments. Skipped paths defer runtime errors, while names, types, and widths
+are still validated. Other runtime angle-range contexts remain limited to the
+documented scalar-bit iteration subset.
+
+<!-- runtime-angle-range-cast-example -->
+```qasm
+OPENQASM 3.0;
+angle[8] phase = angle[8]("10110101");
+int first = 1;
+int last = 4;
+angle[4] selected = angle[4](phase[first:last]); // Stored bits: 10.
+bit[4] copied = bit[4](selected);               // "1010".
+array[angle[8], 2] phases = {phase, phase};
+int slot = 1;
+phases[slot] = angle[4](~phases[slot][first:last]); // Widened stored bits: 80.
+angle[8] changed = phases[slot];
 ```
 
 #### Static bit selections on sized angles
@@ -8749,7 +8783,7 @@ The current prototype does not reliably support:
 - angle-by-angle multiplication, scaling by types other than same-width UINT,
   `uint / angle`, `angle /= angle`, mixed angle/non-angle comparisons and bitwise
   operations, compound operators other than `+=`/`-=`/`*=`/`/=`/`&=`/`|=`/`^=`/`<<=`/`>>=`,
-  runtime-dependent angle bit ranges outside scalar-bit iteration,
+  runtime-dependent angle bit ranges outside scalar-bit iteration and ANGLE casts,
   bit selections on unsized angles, arithmetic compound
   assignments to angle bit selections, INT/UINT bit slicing, multidimensional angle arrays,
   iteration over angle-valued ranges/sets,
@@ -8905,6 +8939,12 @@ and array assignments. Skipped domains, measurement feedback, phase-gate
 modifiers, trigonometric arguments, and fused execution are also checked, along
 with the runtime-range ANGLE example above. Run with `--bra /path/to/bra`,
 including a UBSan build.
+
+`bra/test/qasm2qcx_runtime_angle_range_cast_numerical.py` audits exact casts
+from runtime angle-bit ranges using independent bit-vector references. It covers
+source forms, nested expressions, capture and failure order, overlapping writes,
+loops, measurement, and gate parameters with and without fusion. Run with
+`--bra /path/to/bra`, including a UBSan build.
 
 `bra/test/qasm2qcx_static_angle_bit_selection_numerical.py` checks selected bits
 and packed angle storage against independent integer references at every
@@ -10272,6 +10312,7 @@ python3 bra/test/qasm2qcx_angle_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_array_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_bit_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_range_angle_cast_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_angle_range_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_angle_bit_selection_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_selection_compound_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_angle_bit_numerical.py --bra bra/bin/bra
