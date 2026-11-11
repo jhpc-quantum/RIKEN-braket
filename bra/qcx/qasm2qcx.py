@@ -4328,6 +4328,25 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         value = self.__runtime_bit_register_expression_info(expression, shapes, iterators)
         return _RuntimeBitRegisterAssignment(target, selection.width, value, selection)
 
+    def __runtime_angle_range_set_expression_assignment_info(
+            self, target: ast.Identifier | ast.IndexedIdentifier, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRegisterAssignment | None:
+        if (not isinstance(target, ast.IndexedIdentifier) or len(target.indices) != 1
+                or not isinstance(target.indices[0], ast.DiscreteSet)
+                or not self.__contains_angle_bit_range(expression, iterators)):
+            return None
+        shapes = self.__runtime_bit_register_expression_shapes(expression, iterators, allow_angle_ranges=True)
+        if shapes[id(expression)] < 0:
+            return None
+        self.__runtime_register_assignment_destination_width(target.name, iterators)
+        selection = self.__runtime_bit_set_selection(target, iterators, destination=True)
+        if selection is None:
+            return None  # Static destinations retain their existing path.
+        if not 1 <= selection.width <= self.MAX_RUNTIME_BIT_RANGE_POSITIONS:
+            raise InvalidBitOperandException('Runtime expression assignment selection width exceeds storage limit')
+        value = self.__runtime_bit_register_expression_info(expression, shapes, iterators, allow_angle_ranges=True)
+        return _RuntimeBitRegisterAssignment(target, selection.width, value, selection)
+
     def __runtime_range_expression_assignment_info(
             self, target: ast.Identifier | ast.IndexedIdentifier, expression: ast.Expression,
             iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangeExpressionAssignment | None:
