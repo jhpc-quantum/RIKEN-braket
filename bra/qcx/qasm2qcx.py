@@ -464,6 +464,16 @@ class _RuntimeAngleBitRangeSelection:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeAngleRangeRegisterAssignment:
+    target: ast.Identifier
+    width: int
+    selection: _RuntimeAngleBitRangeSelection
+    # Raw positions lie in [-source_width, source_width). This bounds the
+    # number of entries, including repeated positions after normalization.
+    capacity: int
+
+
+@dataclasses.dataclass(frozen=True)
 class _BitRangeCastExpression:
     expression: ast.Expression
     # Required width, not an inferred count for a runtime range.
@@ -4210,6 +4220,21 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError(
                 'bit-register conditional operand')
         return self.__value, self.__value_type, self.__value_kind
+
+    def __runtime_angle_range_register_assignment_info(
+            self, target: ast.Identifier | ast.IndexedIdentifier, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> _RuntimeAngleRangeRegisterAssignment | None:
+        # This narrow path is for direct whole-register copies. Nested
+        # expressions and selected destinations retain their existing paths.
+        if not isinstance(target, ast.Identifier):
+            return None
+        selection = self.__angle_bit_selection(expression, iterators, allow_runtime_range=True)
+        if not isinstance(selection, _RuntimeAngleBitRangeSelection):
+            return None
+        width = self.__runtime_register_assignment_destination_width(target, iterators)
+        capacity = min(width, 2 * selection.angle_type.width, self.MAX_RUNTIME_BIT_RANGE_POSITIONS)
+        return _RuntimeAngleRangeRegisterAssignment(target, width, selection, capacity)
 
     def __runtime_register_assignment_info(
             self, target: ast.Identifier | ast.IndexedIdentifier, expression: ast.Expression,
