@@ -4369,6 +4369,29 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         value = self.__runtime_bit_register_expression_info(expression, shapes, iterators)
         return _RuntimeBitRangeExpressionAssignment(target, selection, capacity, value)
 
+    def __runtime_angle_range_range_expression_assignment_info(
+            self, target: ast.Identifier | ast.IndexedIdentifier, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangeExpressionAssignment | None:
+        if (not isinstance(target, ast.IndexedIdentifier) or len(target.indices) != 1
+                or not isinstance(target.indices[0], list) or len(target.indices[0]) != 1
+                or not isinstance(target.indices[0][0], ast.RangeDefinition)
+                or not self.__contains_angle_bit_range(expression, iterators)):
+            return None
+        shapes = self.__runtime_bit_register_expression_shapes(expression, iterators, allow_angle_ranges=True)
+        if shapes[id(expression)] < 0:
+            return None
+        self.__runtime_register_assignment_destination_width(target.name, iterators)
+        selection = self.__runtime_bit_range_destination(target, iterators)
+        if selection is None:
+            return None  # Static destinations retain their existing path.
+        capacity = min(selection.source_width, self.MAX_RUNTIME_BIT_RANGE_POSITIONS)
+        if not 1 <= capacity <= self.QCX_INT_MAX:
+            raise InvalidBitOperandException('Runtime range expression assignment capacity must fit QCX INT indexing')
+        # Destination storage bounds neither the length nor the evaluation of
+        # an angle-range leaf or any other RHS operand.
+        value = self.__runtime_bit_register_expression_info(expression, shapes, iterators, allow_angle_ranges=True)
+        return _RuntimeBitRangeExpressionAssignment(target, selection, capacity, value)
+
     def __runtime_register_compound_assignment_info(
             self, statement: ast.ClassicalAssignment,
             iterators: set[str] | dict[str, ValueType] | None = None
