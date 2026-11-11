@@ -8462,6 +8462,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             iterators: set[str] | dict[str, ValueType] | None = None) -> bool:
         if self.__angle_bit_selection(expression, iterators) is not None:
             return False  # Operations outside the selection use register semantics.
+        if (isinstance(expression, ast.Cast) and isinstance(expression.type, ast.UintType)
+                and self.__runtime_angle_range_uint_cast_info(expression, iterators) is not None):
+            return False  # The cast consumes the angle selection and yields UINT.
         if isinstance(expression, ast.Cast) and isinstance(expression.type, ast.AngleType):
             return True
         if isinstance(expression, ast.Cast) and isinstance(expression.type, ast.BitType) and expression.type.size is not None:
@@ -9504,6 +9507,34 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 f'UINT/bit-register cast requires equal widths, got {source_width} and {width}')
         return _BitRangeCastExpression(expression, width)
 
+    def __contains_angle_bit_range(
+            self, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> bool:
+        # Follow register operands only; scalar counts and nested casts have
+        # their own contexts and do not determine this cast's register width.
+        if isinstance(expression, ast.UnaryExpression) and expression.op.name == '~':
+            return self.__contains_angle_bit_range(expression.expression, iterators)
+        if (isinstance(expression, ast.FunctionCall) and expression.name.name in ('rotl', 'rotr')
+                and expression.arguments):
+            return self.__contains_angle_bit_range(expression.arguments[0], iterators)
+        if isinstance(expression, ast.BinaryExpression):
+            if expression.op.name in ('<<', '>>'):
+                return self.__contains_angle_bit_range(expression.lhs, iterators)
+            if expression.op.name in ('&', '|', '^'):
+                return (self.__contains_angle_bit_range(expression.lhs, iterators)
+                        or self.__contains_angle_bit_range(expression.rhs, iterators))
+        return isinstance(self.__angle_bit_selection(expression, iterators, allow_runtime_range=True),
+                          _RuntimeAngleBitRangeSelection)
+
+    def __runtime_angle_range_uint_cast_info(
+            self, expression: ast.Cast,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _UIntBitCastInfo | None:
+        if (not isinstance(expression.type, ast.UintType)
+                or not self.__contains_angle_bit_range(expression.argument, iterators)):
+            return None
+        return self.__uint_bit_cast_info(expression, iterators, allow_runtime_angle_selections=True,
+                                         allow_runtime_angle_ranges=True)
+
     def __uint_bit_cast_info(
             self, expression: ast.Cast,
             iterators: set[str] | dict[str, ValueType] | None = None, *,
@@ -9512,6 +9543,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # Infer bit patterns and UINT widths without executing the operand or
         # consulting mutable expression-result caches. Numeric casts and the
         # existing angle/bit conversions retain their separate paths.
+        if not allow_runtime_angle_selections and not allow_runtime_angle_ranges:
+            angle_range = self.__runtime_angle_range_uint_cast_info(expression, iterators)
+            if angle_range is not None:
+                return angle_range
         range_selection = None
         range_operations = ()
         range_tree = None
