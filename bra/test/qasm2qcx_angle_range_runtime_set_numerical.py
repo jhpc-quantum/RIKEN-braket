@@ -26,6 +26,14 @@ class BackendTests(unittest.TestCase):
     check_exact = registers.BackendTests.check_exact
     check_nodes = sets.BackendTests.check_nodes
 
+    def test_documented_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- angle-range-runtime-set-assignment-example -->'
+        self.assertEqual(document.count(marker), 1)
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        self.check_exact(source.replace('OPENQASM 3.0;', '', 1),
+                         (('result', 8), ('copied', 8)), (160, 3))
+
     def test_all_angle_widths_and_mixed_expression_trees(self):
         rng = random.Random(539)
         native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
