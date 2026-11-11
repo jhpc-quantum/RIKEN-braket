@@ -395,6 +395,11 @@ class _RuntimeBitRegisterAssignment:
     # index sets retain original expressions until destination capture.
     # Neither selection width is an inferred length for a dynamic RHS leaf.
     selection: _StaticBitSelection | _RuntimeBitSetSelection | None = None
+    operator: str = '='
+
+    @property
+    def binary_operator(self) -> str | None:
+        return None if self.operator == '=' else self.operator[:-1]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -405,6 +410,11 @@ class _RuntimeBitRangeExpressionAssignment:
     # This bounds destination storage, not either operand's selected length.
     capacity: int
     value: _RuntimeBitRegisterExpression
+    operator: str = '='
+
+    @property
+    def binary_operator(self) -> str | None:
+        return None if self.operator == '=' else self.operator[:-1]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -4260,6 +4270,25 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         value = self.__runtime_bit_register_expression_info(expression, shapes, iterators)
         return _RuntimeBitRangeExpressionAssignment(target, selection, capacity, value)
 
+    def __runtime_register_compound_assignment_info(
+            self, statement: ast.ClassicalAssignment,
+            iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> _RuntimeBitRegisterAssignment | _RuntimeBitRangeExpressionAssignment | None:
+        operator = statement.op.name
+        if operator not in ('&=', '|=', '^='):
+            return None
+        if self.__runtime_bit_range_source(statement.rvalue, iterators) is not None:
+            return None  # Preserve the direct-range path and its check timing.
+        info = self.__runtime_register_assignment_info(statement.lvalue, statement.rvalue, iterators)
+        if info is None:
+            return None  # Fixed-width and scalar RHS expressions keep their paths.
+        # Original LHS bits need a bounded snapshot as well as the independent
+        # RHS tree. Runtime-range destinations already have a bounded capacity.
+        if (isinstance(info, _RuntimeBitRegisterAssignment)
+                and not 1 <= info.width <= self.MAX_RUNTIME_BIT_RANGE_POSITIONS):
+            raise InvalidBitOperandException('Runtime register compound snapshot exceeds storage limit')
+        return dataclasses.replace(info, operator=operator)
+
     def __runtime_register_assignment_destination_width(
             self, target: ast.Identifier,
             iterators: set[str] | dict[str, ValueType] | None) -> int:
@@ -5661,6 +5690,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             iterators: dict[str, ValueType] | None = None) -> bool:
         if self.__runtime_bit_range_copy_info(statement, iterators) is not None:
             return True
+        if self.__runtime_register_compound_assignment_info(statement, iterators) is not None:
+            return True
         if (statement.op.name == '='
                 and self.__runtime_register_assignment_info(statement.lvalue, statement.rvalue, iterators) is not None):
             return True
@@ -5727,6 +5758,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__loop_index_info(node, iterators)
         if isinstance(node, ast.ClassicalAssignment):
             if self.__runtime_bit_range_copy_info(node, iterators) is not None:
+                return
+            if self.__runtime_register_compound_assignment_info(node, iterators) is not None:
                 return
             if (node.op.name == '=' and self.__runtime_range_expression_assignment_info(
                     node.lvalue, node.rvalue, iterators) is not None):
@@ -10343,6 +10376,35 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         with self.__bit_assignment_target(target) as (target_names, target_is_register):
             self.__emit_bit_value_assignment(target_names, target_is_register, expression)
 
+    def __snapshot_register_assignment_destination(
+            self, info: _RuntimeBitRegisterAssignment | _RuntimeBitRangeExpressionAssignment,
+            positions: tuple[int | str, ...] | str, count: int | str, prefix: str) -> str:
+        capacity = info.capacity if isinstance(info, _RuntimeBitRangeExpressionAssignment) else info.width
+        original = self.__add_temporary_int_array(capacity, 'REGISTER_ASSIGNMENT_ORIGINAL')
+        target = self.__capitalize_variable_name(self.__operand_name(info.target))
+        size = self.__bit_variable_name_size_map[target]
+        if isinstance(positions, str) or info.selection is None:
+            index = self.__add_new_temporary_variable(ValueType.INT)
+            reads = []
+            position = index
+            if isinstance(positions, str):
+                position = self.__add_new_temporary_variable(ValueType.INT)
+                reads.append(f'LET {position} := {positions}:{index}')
+            reads.append(f'LET {original}:{index} := {self.__qcx_bit_name(target, size, position)}')
+            lines = [
+                f'LET {index} := 0', f'@{prefix}_ORIGINAL',
+                f'JUMPIF {prefix}_ORIGINAL_DONE {index} >= {count}', *reads,
+                f'LET {index} += 1', f'JUMP {prefix}_ORIGINAL', f'@{prefix}_ORIGINAL_DONE',
+            ]
+        else:
+            lines = [f'@{prefix}_ORIGINAL']
+            lines.extend(f'LET {original}:{offset} := {self.__qcx_bit_name(target, size, position)}'
+                         for offset, position in enumerate(positions))
+            lines.append(f'@{prefix}_ORIGINAL_DONE')
+        self.__check_runtime_register_output(len(lines))
+        self.__qcx_lines.extend(lines)
+        return original
+
     def __emit_runtime_register_assignment(
             self, info: _RuntimeBitRegisterAssignment | _RuntimeBitRangeExpressionAssignment) -> None:
         previous = (self.__expression_kind, self.__value, self.__value_type,
@@ -10372,16 +10434,30 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__check_distinct_bit_indices(positions)
             elif info.selection is not None:
                 positions = info.selection.indices
+            expected_count = destination_count if isinstance(info, _RuntimeBitRangeExpressionAssignment) else info.width
+            original = None
+            if info.binary_operator is not None:
+                original = self.__snapshot_register_assignment_destination(
+                    info, destination_positions if isinstance(info, _RuntimeBitRangeExpressionAssignment) else positions,
+                    expected_count, prefix)
             with self.__runtime_bit_register_expression_value(info.value, f'{prefix}_VALUE') as (snapshot, count):
                 # No destination bit is written until the complete RHS and
                 # all nested checks have finished and its final length agrees.
+                guard = [f'ASSERT {count} == {expected_count}']
+                if original is not None:
+                    index = self.__add_new_temporary_variable(ValueType.INT)
+                    self.__check_runtime_register_output(7)
+                    self.__qcx_lines.extend(guard)
+                    self.__combine_bit_range_snapshots(original, snapshot, info.operator, index, count, prefix)
+                    snapshot = original
+                    guard = []  # The final length was checked before combining.
                 if isinstance(info, _RuntimeBitRangeExpressionAssignment):
                     index = self.__add_new_temporary_variable(ValueType.INT)
                     position = self.__add_new_temporary_variable(ValueType.INT)
-                    self.__check_runtime_register_output(9)
+                    self.__check_runtime_register_output(8 + len(guard))
                     target = self.__qcx_bit_name(destination, info.selection.source_width, position)
                     self.__qcx_lines.extend([
-                        f'ASSERT {count} == {destination_count}', f'LET {index} := 0',
+                        *guard, f'LET {index} := 0',
                         f'@{prefix}_WRITE', f'JUMPIF {prefix}_END {index} >= {destination_count}',
                         f'LET {position} := {destination_positions}:{index}',
                         f'LET {target} := {snapshot}:{index}', f'LET {index} += 1',
@@ -10389,17 +10465,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     ])
                 elif info.selection is None:
                     index = self.__add_new_temporary_variable(ValueType.INT)
-                    self.__check_runtime_register_output(8)
+                    self.__check_runtime_register_output(7 + len(guard))
                     target = destination if info.width == 1 else f'{destination}:{index}'
                     self.__qcx_lines.extend([
-                        f'ASSERT {count} == {info.width}', f'LET {index} := 0',
+                        *guard, f'LET {index} := 0',
                         f'@{prefix}_WRITE', f'JUMPIF {prefix}_END {index} >= {info.width}',
                         f'LET {target} := {snapshot}:{index}', f'LET {index} += 1',
                         f'JUMP {prefix}_WRITE', f'@{prefix}_END',
                     ])
                 else:
-                    self.__check_runtime_register_output(info.width + 3)
-                    self.__qcx_lines.extend([f'ASSERT {count} == {info.width}', f'@{prefix}_WRITE'])
+                    self.__check_runtime_register_output(info.width + 2 + len(guard))
+                    self.__qcx_lines.extend([*guard, f'@{prefix}_WRITE'])
                     size = self.__bit_variable_name_size_map[destination]
                     for offset, position in enumerate(positions):
                         target = self.__qcx_bit_name(destination, size, position)
@@ -11274,6 +11350,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__emit_runtime_bit_range_to_range_copy(bit_range_copy)
             else:
                 self.__emit_runtime_bit_range_copy(bit_range_copy)
+            return
+        compound = self.__runtime_register_compound_assignment_info(statement)
+        if compound is not None:
+            self.__emit_runtime_register_assignment(compound)
             return
         angle_bits = self.__angle_bit_assignment_info(statement)
         if angle_bits is not None:
