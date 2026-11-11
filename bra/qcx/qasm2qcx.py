@@ -5843,6 +5843,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if (statement.op.name == '=' and self.__runtime_angle_range_range_expression_assignment_info(
                 statement.lvalue, statement.rvalue, iterators) is not None):
             return True
+        if self.__runtime_angle_range_register_compound_assignment_info(statement, iterators) is not None:
+            return True
         if self.__runtime_bit_range_copy_info(statement, iterators) is not None:
             return True
         if self.__runtime_register_compound_assignment_info(statement, iterators) is not None:
@@ -5926,6 +5928,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 return
             if (node.op.name == '=' and self.__runtime_angle_range_range_expression_assignment_info(
                     node.lvalue, node.rvalue, iterators) is not None):
+                return
+            if self.__runtime_angle_range_register_compound_assignment_info(node, iterators) is not None:
                 return
             if self.__runtime_bit_range_copy_info(node, iterators) is not None:
                 return
@@ -11856,6 +11860,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if angle_range_destination is not None:
                 self.__emit_runtime_register_assignment(angle_range_destination)
                 return
+        angle_compound = self.__runtime_angle_range_register_compound_assignment_info(statement)
+        if angle_compound is not None:
+            self.__emit_runtime_register_assignment(angle_compound)
+            return
         bit_range_copy = self.__runtime_bit_range_copy_info(statement)
         if bit_range_copy is not None:
             if isinstance(bit_range_copy, _RuntimeBitRangeToRangeCopyInfo):
