@@ -36734,6 +36734,95 @@ class RuntimeAngleRangeSetExpressionAssignmentFoundationTests(unittest.TestCase)
         self.assertEqual(self.c._QASM2QCXConverter__used_temporary_variables, {caller})
 
 
+class RuntimeAngleRangeSetExpressionAssignmentLoweringTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    statement = RuntimeAngleRangeRegisterAssignmentFoundationTests.statement
+    prefix = RuntimeAngleRangeRegisterAssignmentFoundationTests.prefix
+
+    def test_destination_capture_and_duplicate_checks_precede_rhs_and_writes(self):
+        c = self.converter(self.prefix)
+        statement = self.statement('wide[{count,-1,u,index}]=rotl(phases[index][index:count]^wide[index:count],u);')
+        info = c._QASM2QCXConverter__runtime_angle_range_set_expression_assignment_info(
+            statement.lvalue, statement.rvalue)
+        capture = c._QASM2QCXConverter__capture_array_index
+        angle_operand = c._QASM2QCXConverter__angle_arithmetic_operand
+        captures = []
+        def captured(node, size):
+            result = capture(node, size)
+            if any(node is index for index in info.selection.indices):
+                captures.append((node, result))
+            return result
+        def read_angle(*args):
+            self.assertEqual([node for node, _ in captures], list(info.selection.indices))
+            positions = [position for _, position in captures]
+            self.assertTrue(set(positions) <= c._QASM2QCXConverter__used_temporary_variables)
+            for i, position in enumerate(positions):
+                for previous in positions[:i]:
+                    self.assertIn(f'ASSERT {position} \\= {previous}', c._QASM2QCXConverter__qcx_lines)
+            return angle_operand(*args)
+        start = len(c._QASM2QCXConverter__qcx_lines)
+        with patch.object(c, '_QASM2QCXConverter__capture_array_index', side_effect=captured), \
+             patch.object(c, '_QASM2QCXConverter__angle_arithmetic_operand', side_effect=read_angle):
+            c.visit(statement)
+        self.assertEqual([node for node, _ in captures], list(info.selection.indices))
+        lines = c._QASM2QCXConverter__qcx_lines[start:]
+        write = lines.index('@QASM2QCX_REGISTER_ASSIGNMENT_0_WRITE')
+        end = lines.index('@QASM2QCX_REGISTER_ASSIGNMENT_0_END')
+        self.assertTrue(lines[write-1].startswith('ASSERT '))
+        self.assertTrue(lines[write-1].endswith(' == 4'))
+        name = c._QASM2QCXConverter__capitalize_variable_name('wide')
+        self.assertEqual([line.split(' := ')[0] for line in lines[write+1:end]],
+                         [f'LET {name}:{position}' for _, position in captures])
+        self.assertEqual([line.rsplit(':', 1)[1] for line in lines[write+1:end]], ['0', '1', '2', '3'])
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        ForLoopControlLoweringTests.assert_resolved_jumps(list(c))
+
+    def test_direct_nested_singleton_and_control_flow(self):
+        c = self.converter(self.prefix + '''
+            b[{index}]=phase[index:count];
+            if (true) { b[{index,0}]=~phase[index:count]; }
+            while (false) { b[{index,1/0}]=rotl(phases[index/0][index:0:999],count/0); }
+            for angle[8] item in phases { b[{index,0}]=item[index:count]^B; }
+            for int i in [1:0] { b[{i,0}]=~phase[index:0:999]; }
+        ''')
+        labels = [line for line in c if line.startswith('@')]
+        self.assertEqual(len(labels), len(set(labels)))
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        ForLoopControlLoweringTests.assert_resolved_jumps(list(c))
+        for statement in ('b[{i,real}]=~phase[index:count];', 'B[{i,0}]=phase[index:count];',
+                          'b[{i,0}]=~phase[true:count];', 'b[{i,0}]=phase[index:count]^scalar;'):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix+'for int i in [1:0] {'+statement+'}')
+
+    def test_failures_restore_state_and_do_not_emit_destination_writes(self):
+        for failure in ('destination', 'source'):
+            with self.subTest(failure=failure):
+                c = self.converter(self.prefix)
+                caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+                fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+                before = [getattr(c, '_QASM2QCXConverter__'+field) for field in fields]
+                method = ('_QASM2QCXConverter__capture_array_index' if failure == 'destination'
+                          else '_QASM2QCXConverter__capture_bit_range_positions')
+                original = getattr(c, method)
+                def fail(*args, **kwargs):
+                    original(*args, **kwargs)
+                    raise RuntimeError('injected failure')
+                start = len(c._QASM2QCXConverter__qcx_lines)
+                with patch.object(c, method, side_effect=fail), self.assertRaisesRegex(RuntimeError, 'injected failure'):
+                    c.visit(self.statement('b[{index,0}]=~phase[index:count];'))
+                self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__'+field) for field in fields])
+                self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+                target = c._QASM2QCXConverter__capitalize_variable_name('b')
+                self.assertFalse(any(line.startswith(f'LET {target}:') for line in c._QASM2QCXConverter__qcx_lines[start:]))
+
+    def test_runtime_ranges_and_compound_assignments_remain_unsupported(self):
+        for statement in ('b[index:count]=~phase[index:count];',
+                          'b[{index,0}]^=~phase[index:count];'):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix+statement)
+
+
 class RuntimeAngleRangeStaticSelectionAssignmentLoweringTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)
@@ -36800,7 +36889,6 @@ class RuntimeAngleRangeStaticSelectionAssignmentLoweringTests(unittest.TestCase)
 
     def test_out_of_scope_destinations_and_compounds_remain_unsupported(self):
         for statement in ('b[index:count]=~phase[index:count];',
-                          'b[{index,0}]=~phase[index:count];',
                           'b[0:3]^=~phase[index:count];'):
             with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(self.prefix + statement)
