@@ -3756,8 +3756,9 @@ most native UINT width `W`, but negative and nonnegative positions can refer to
 the same bit, so a valid range can contain up to twice the source width. Position
 and snapshot storage are bounded independently of larger destination widths;
 the generated copy loop does not grow with the destination width. Scalar `bit`
-destinations, bit-register selection destinations, nested register expressions,
-compound assignments, and unsized angle sources remain outside this subset.
+destinations, bit-register selection destinations, compound assignments, and
+unsized angle sources remain outside this subset. Nested expressions are
+supported for whole-register assignments as described below.
 
 <!-- runtime-angle-range-register-copy-example -->
 ```qasm
@@ -3782,7 +3783,9 @@ bit[8] repeated = small[first:last]; // "10111011".
 
 A top-level `bit[n]` initializer or an ordinary `=` assignment to a named mutable
 whole bit register may use a runtime-dependent register expression. The RHS
-may contain ranges on named mutable or constant bit registers, nested `&`, `|`,
+may contain ranges on named mutable or constant bit registers or explicitly
+sized angle variables, constants, array elements, and supported angle iterators;
+nested `&`, `|`,
 `^`, `~`, `<<`, `>>`, `rotl`, and `rotr` operations, and supported known-width
 register operands. Both range bounds are required; an omitted step means `1`.
 Signed and unsigned integer bounds and steps retain the existing checked range
@@ -3804,6 +3807,26 @@ truncation, or scalar broadcasting. The destination width never determines a
 dynamic leaf's selected length or skips a later bound or count expression.
 A reached failure before copying leaves every destination bit untouched,
 including when a source overlaps the destination.
+
+For an angle-range leaf, the source value and any array-element address are
+captured before its bounds, and selected bits are snapshotted before the next
+operand is evaluated. Each leaf has its own storage capacity, independent of
+the destination width. Unlike a direct angle-range copy, the final length is
+checked only after the complete expression has been evaluated. Angle ranges in
+selection destinations, compound assignments, and other expression contexts
+are not added by this support.
+
+<!-- runtime-angle-range-expression-assignment-example -->
+```qasm
+OPENQASM 3.0;
+angle[8] phase = angle[8]("10110101");
+int first = 1;
+int last = 4;
+bit[4] mask = "1101";
+bit[4] inverted = ~phase[first:last];       // "0101"
+bit[4] result = phase[first:last] ^ mask;  // "0111"
+result = rotl(phase[first:last] ^ mask, 1); // "1110"
+```
 
 Assignments work in supported branches and loops; initializers remain top-level.
 An unreached assignment performs no runtime reads, checks, or writes. Names,
@@ -3844,7 +3867,7 @@ success and failure. No new bra instruction or build option is required.
 
 Existing [direct runtime-range copies](#copies-from-runtime-bit-register-ranges)
 retain their separate capture/check timing, and fixed-width assignments retain
-their existing paths. Static selections also accept the
+their existing paths. For expressions with bit-register ranges, static selections also accept the
 [expression assignment subset](#assigning-runtime-range-expressions-to-static-selections)
 below, as do [runtime index-set destinations](#assigning-runtime-range-expressions-to-runtime-index-sets)
 and [runtime-range destinations](#assigning-runtime-range-expressions-to-runtime-ranges).
@@ -9082,6 +9105,12 @@ destination widths, including destinations beyond native UINT, repeated
 positions, arrays, iterators, skipped paths, and failure ordering. Run with
 `--bra /path/to/bra`, including a UBSan build.
 
+`bra/test/qasm2qcx_runtime_angle_range_expression_numerical.py` checks mixed
+angle and bit-register expression trees against independent bit-vector
+references. It covers source widths, repeated positions, wide results, aliases,
+iterators, skipped paths, and failure order. Run with `--bra /path/to/bra`,
+including a UBSan build.
+
 `bra/test/qasm2qcx_static_angle_bit_selection_numerical.py` checks selected bits
 and packed angle storage against independent integer references at every
 supported width. It covers constants, variables, runtime array-element indices,
@@ -10451,6 +10480,7 @@ python3 bra/test/qasm2qcx_runtime_range_angle_cast_numerical.py --bra bra/bin/br
 python3 bra/test/qasm2qcx_runtime_angle_range_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_angle_range_uint_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_angle_range_register_assignment_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_angle_range_expression_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_angle_selection_uint_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_angle_bit_selection_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_selection_compound_numerical.py --bra bra/bin/bra

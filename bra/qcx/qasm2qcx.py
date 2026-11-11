@@ -358,6 +358,18 @@ class _RuntimeBitRangePopcountComplements:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeAngleBitRangeSelection:
+    # A range has no compile-time selection width. Keep it out of the fixed-
+    # width register-expression APIs and retain all expressions unevaluated.
+    source: ast.Identifier | ast.IndexExpression
+    angle_type: _AngleType
+    bounds: ast.RangeDefinition
+    start_type: ValueType
+    step_type: ValueType
+    stop_type: ValueType
+
+
+@dataclasses.dataclass(frozen=True)
 class _RuntimeBitRegisterExpression:
     expression: ast.Expression
     capacity: int
@@ -365,11 +377,11 @@ class _RuntimeBitRegisterExpression:
     # source widths, buffer capacities, or neighbouring fixed leaves.
     width: int | None = None
     children: tuple['_RuntimeBitRegisterExpression', ...] = ()
-    selection: _RuntimeBitRangeSelection | None = None
+    selection: _RuntimeBitRangeSelection | _RuntimeAngleBitRangeSelection | None = None
     count_type: ValueType | None = None
 
     @property
-    def first_selection(self) -> _RuntimeBitRangeSelection | None:
+    def first_selection(self) -> _RuntimeBitRangeSelection | _RuntimeAngleBitRangeSelection | None:
         if self.selection is not None:
             return self.selection
         for child in self.children:
@@ -449,18 +461,6 @@ class _RuntimeBitRangePopcountInfo:
 class _BitRangeCastOperation:
     expression: ast.UnaryExpression | ast.BinaryExpression
     count_type: ValueType | None = None
-
-
-@dataclasses.dataclass(frozen=True)
-class _RuntimeAngleBitRangeSelection:
-    # A range has no compile-time selection width. Keep it out of the fixed-
-    # width register-expression APIs and retain all expressions unevaluated.
-    source: ast.Identifier | ast.IndexExpression
-    angle_type: _AngleType
-    bounds: ast.RangeDefinition
-    start_type: ValueType
-    step_type: ValueType
-    stop_type: ValueType
 
 
 @dataclasses.dataclass(frozen=True)
@@ -4236,6 +4236,20 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         capacity = min(width, 2 * selection.angle_type.width, self.MAX_RUNTIME_BIT_RANGE_POSITIONS)
         return _RuntimeAngleRangeRegisterAssignment(target, width, selection, capacity)
 
+    def __runtime_angle_range_expression_assignment_info(
+            self, target: ast.Identifier | ast.IndexedIdentifier, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRegisterAssignment | None:
+        # Direct copies retain their separate count-before-extraction path.
+        if (not isinstance(target, ast.Identifier) or isinstance(expression, ast.IndexExpression)
+                or not self.__contains_angle_bit_range(expression, iterators)):
+            return None
+        shapes = self.__runtime_bit_register_expression_shapes(expression, iterators, allow_angle_ranges=True)
+        if shapes[id(expression)] < 0:
+            return None
+        width = self.__runtime_register_assignment_destination_width(target, iterators)
+        value = self.__runtime_bit_register_expression_info(expression, shapes, iterators, allow_angle_ranges=True)
+        return _RuntimeBitRegisterAssignment(target, width, value)
+
     def __runtime_register_assignment_info(
             self, target: ast.Identifier | ast.IndexedIdentifier, expression: ast.Expression,
             iterators: set[str] | dict[str, ValueType] | None = None
@@ -5739,6 +5753,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if (statement.op.name == '=' and self.__runtime_angle_range_register_assignment_info(
                 statement.lvalue, statement.rvalue, iterators) is not None):
             return True
+        if (statement.op.name == '=' and self.__runtime_angle_range_expression_assignment_info(
+                statement.lvalue, statement.rvalue, iterators) is not None):
+            return True
         if self.__runtime_bit_range_copy_info(statement, iterators) is not None:
             return True
         if self.__runtime_register_compound_assignment_info(statement, iterators) is not None:
@@ -5809,6 +5826,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__loop_index_info(node, iterators)
         if isinstance(node, ast.ClassicalAssignment):
             if (node.op.name == '=' and self.__runtime_angle_range_register_assignment_info(
+                    node.lvalue, node.rvalue, iterators) is not None):
+                return
+            if (node.op.name == '=' and self.__runtime_angle_range_expression_assignment_info(
                     node.lvalue, node.rvalue, iterators) is not None):
                 return
             if self.__runtime_bit_range_copy_info(node, iterators) is not None:
@@ -7388,7 +7408,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         try:
             self.__check_runtime_register_output(1)
             if not tree.children:
-                if tree.selection is not None:
+                if isinstance(tree.selection, _RuntimeAngleBitRangeSelection):
+                    snapshot, count = self.__capture_angle_range_expression_snapshot(
+                        tree.selection, prefix, tree.capacity)
+                elif tree.selection is not None:
                     snapshot, count = self.__capture_popcount_range_snapshot(
                         tree.selection, prefix, capacity=tree.capacity)
                 else:
@@ -7459,6 +7482,27 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__check_runtime_register_output()
         self.__hoist_temporary_declarations(previous_declarations)
         return result
+
+    def __capture_angle_range_expression_snapshot(
+            self, selection: _RuntimeAngleBitRangeSelection, label: str, capacity: int) -> tuple[str, str]:
+        self.__expression_kind = ExpressionKind.ARITHMETIC
+        source = self.__angle_arithmetic_operand(selection.source, selection.angle_type)
+        positions, count = self.__capture_bit_range_positions(
+            selection.bounds, selection.angle_type.width, label, capacity=capacity)
+        self.__check_runtime_register_output(12)
+        snapshot = self.__add_temporary_int_array(capacity, 'ANGLE_EXPRESSION_BITS')
+        index = self.__add_new_temporary_variable(ValueType.INT)
+        position = self.__add_new_temporary_variable(ValueType.INT)
+        scratch = self.__add_new_temporary_variable(ValueType.UINT)
+        self.__qcx_lines.extend([
+            f'LET {index} := 0', f'@{label}_SNAPSHOT',
+            f'JUMPIF {label}_SNAPSHOT_DONE {index} >= {count}',
+            f'LET {position} := {positions}:{index}', f'LET {scratch} := {source}',
+            f'LET {scratch} >>= {position}', f'LET {scratch} &= 1',
+            f'LET {snapshot}:{index} := :INT:{scratch}', f'LET {index} += 1',
+            f'JUMP {label}_SNAPSHOT', f'@{label}_SNAPSHOT_DONE',
+        ])
+        return snapshot, count
 
     def __capture_popcount_range_snapshot(
             self, selection: _RuntimeBitRangeSelection, label: str,
@@ -8727,7 +8771,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __runtime_bit_register_expression_shapes(
             self, expression: ast.Expression,
-            iterators: set[str] | dict[str, ValueType] | None) -> dict[int, int]:
+            iterators: set[str] | dict[str, ValueType] | None, *,
+            allow_angle_ranges: bool = False) -> dict[int, int]:
         # A structural probe only: do not validate or evaluate bounds/counts.
         # Depth >= 2 identifies a runtime range inside a nested register binary
         # subtree. Fixed subtrees and scalar distance expressions are opaque,
@@ -8747,12 +8792,30 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                         depth += 1
             elif isinstance(node, ast.FunctionCall) and node.name.name in ('rotl', 'rotr') and node.arguments:
                 depth = scan(node.arguments[0])
-            elif (isinstance(node, ast.IndexExpression) and isinstance(node.collection, ast.Identifier)
+            elif (isinstance(node, ast.IndexExpression)
                   and isinstance(node.index, list) and len(node.index) == 1
                   and isinstance(node.index[0], ast.RangeDefinition)):
-                name = node.collection.name
+                collection = node.collection
+                array_element = (isinstance(collection, ast.IndexExpression)
+                                 and isinstance(collection.collection, ast.Identifier))
+                name = (collection.name if isinstance(collection, ast.Identifier)
+                        else collection.collection.name if array_element else None)
                 source_type = self.__constant_source_types.get(name) or self.__classical_source_types.get(name)
-                if isinstance(source_type, ast.BitType) and self.__loop_bound_names(node.index[0]) - constants:
+                is_bit_register = isinstance(collection, ast.Identifier) and isinstance(source_type, ast.BitType)
+                is_angle = False
+                if allow_angle_ranges and name is not None:
+                    if name in active:
+                        if isinstance(iterators, dict) and name in iterators:
+                            is_angle = not array_element and iterators[name] == ValueType.ANGLE
+                        else:
+                            binding = next((scope[name] for scope in reversed(self.__loop_bindings) if name in scope), None)
+                            is_angle = (not array_element and isinstance(binding, _RuntimeIteratorBinding)
+                                        and binding.value_type == ValueType.ANGLE)
+                    elif array_element:
+                        is_angle = isinstance(source_type, ast.ArrayType) and isinstance(source_type.base_type, ast.AngleType)
+                    else:
+                        is_angle = isinstance(source_type, ast.AngleType)
+                if (is_bit_register or is_angle) and self.__loop_bound_names(node.index[0]) - constants:
                     depth = 0
             shapes[id(node)] = depth
             return depth
@@ -8761,27 +8824,37 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __runtime_bit_register_expression_info(
             self, expression: ast.Expression, shapes: dict[int, int],
-            iterators: set[str] | dict[str, ValueType] | None) -> _RuntimeBitRegisterExpression:
+            iterators: set[str] | dict[str, ValueType] | None, *,
+            allow_angle_ranges: bool = False) -> _RuntimeBitRegisterExpression:
         if shapes.get(id(expression), -1) < 0:
             width = self.__bounded_bit_register_expression_width(expression, iterators)
             return _RuntimeBitRegisterExpression(expression, width, width=width)
         if isinstance(expression, ast.FunctionCall):
             self.__builtin_function_overloads(expression.name.name, len(expression.arguments))
-            child = self.__runtime_bit_register_expression_info(expression.arguments[0], shapes, iterators)
+            child = self.__runtime_bit_register_expression_info(
+                expression.arguments[0], shapes, iterators, allow_angle_ranges=allow_angle_ranges)
             count_type = self.__runtime_bit_range_popcount_rotation_distance_type(expression, iterators)
             return _RuntimeBitRegisterExpression(expression, child.capacity, children=(child,), count_type=count_type)
         if isinstance(expression, ast.UnaryExpression):
-            child = self.__runtime_bit_register_expression_info(expression.expression, shapes, iterators)
+            child = self.__runtime_bit_register_expression_info(
+                expression.expression, shapes, iterators, allow_angle_ranges=allow_angle_ranges)
             return _RuntimeBitRegisterExpression(expression, child.capacity, children=(child,))
         if isinstance(expression, ast.BinaryExpression):
-            left = self.__runtime_bit_register_expression_info(expression.lhs, shapes, iterators)
+            left = self.__runtime_bit_register_expression_info(
+                expression.lhs, shapes, iterators, allow_angle_ranges=allow_angle_ranges)
             if expression.op.name in ('<<', '>>'):
                 count_type, _ = self.__bit_index_info(expression.rhs, iterators, role='register shift count')
                 return _RuntimeBitRegisterExpression(expression, left.capacity, children=(left,), count_type=count_type)
-            right = self.__runtime_bit_register_expression_info(expression.rhs, shapes, iterators)
+            right = self.__runtime_bit_register_expression_info(
+                expression.rhs, shapes, iterators, allow_angle_ranges=allow_angle_ranges)
             # Equality is checked when this node is reached, after both children
             # have completed. min(capacities) bounds a valid result, not its length.
             return _RuntimeBitRegisterExpression(expression, min(left.capacity, right.capacity), children=(left, right))
+        if allow_angle_ranges:
+            angle_selection = self.__angle_bit_selection(expression, iterators, allow_runtime_range=True)
+            if isinstance(angle_selection, _RuntimeAngleBitRangeSelection):
+                capacity = min(2 * angle_selection.angle_type.width, self.MAX_RUNTIME_BIT_RANGE_POSITIONS, self.QCX_INT_MAX)
+                return _RuntimeBitRegisterExpression(expression, capacity, selection=angle_selection)
         selection = self.__runtime_bit_range_source(expression, iterators)
         if selection is None:
             raise InvalidBitOperandException('Runtime register expression requires a bit-register leaf')
@@ -10598,6 +10671,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if angle_range is not None:
             self.__emit_runtime_angle_range_register_assignment(angle_range)
             return
+        angle_expression = self.__runtime_angle_range_expression_assignment_info(target, expression)
+        if angle_expression is not None:
+            self.__emit_runtime_register_assignment(angle_expression)
+            return
         runtime = self.__runtime_register_assignment_info(target, expression)
         if runtime is not None:
             self.__emit_runtime_register_assignment(runtime)
@@ -11665,6 +11742,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             angle_range = self.__runtime_angle_range_register_assignment_info(statement.lvalue, statement.rvalue)
             if angle_range is not None:
                 self.__emit_runtime_angle_range_register_assignment(angle_range)
+                return
+            angle_expression = self.__runtime_angle_range_expression_assignment_info(statement.lvalue, statement.rvalue)
+            if angle_expression is not None:
+                self.__emit_runtime_register_assignment(angle_expression)
                 return
         bit_range_copy = self.__runtime_bit_range_copy_info(statement)
         if bit_range_copy is not None:
