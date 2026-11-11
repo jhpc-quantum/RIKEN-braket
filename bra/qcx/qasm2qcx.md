@@ -290,8 +290,9 @@ an `angle[4]` representing π, while `"0110"` becomes `3*pi/4`. No floating-poin
 conversion occurs, and round trips preserve every bit, including at native width.
 
 Both constant and executable expressions are supported. Register sources can
-be bit strings, named registers, supported static selections, or supported
-register bitwise, shift, and rotation expressions. Angle sources can use
+be bit strings, named registers, supported static and runtime selections, or
+supported register bitwise, shift, and rotation expressions. Runtime ranges
+follow the target-width rules below. Angle sources can use
 supported angle expressions. Register results work in register initializers,
 assignments, static selection destinations, bitwise operations, equality
 comparisons, and register functions. Register results require a separate
@@ -320,6 +321,91 @@ angle[4] a = angle[4](bits);               // Exactly 3*pi/4.
 bit[4] copied = bit[4](a);                 // "0110"; bits is unchanged.
 h q;
 p(angle[4](copied)) q;
+```
+
+#### Angle casts from runtime bit-register ranges
+
+`angle[n](flags[start:stop])` and `angle[n](flags[start:step:stop])`
+accept inclusive ranges on named mutable or constant bit registers. The target
+width `n` must be a positive compile-time integer within `[1, W]`, and each
+range must select exactly `n` entries when evaluated. Unsized `angle(...)`
+requires exactly `W` entries. The containing source register may be wider than
+`W`; only the selected count must match the target width. This is an exact
+copy of selected bits into angle storage, with the first selected bit becoming
+bit zero. No numeric conversion or floating-point rounding occurs.
+
+Bounds and steps may independently use supported INT/UINT expressions. Both
+endpoints are required; an omitted step is `+1`. Start, step, and stop are
+captured once in that order. The inclusive raw progression is generated before
+normalizing negative indices against the source width. The stop need not be
+selected: `1:2:6` selects `1, 3, 5`. Repeated source positions are preserved,
+including negative aliases such as `flags[-1:3]` on a four-bit source, which
+selects five entries.
+
+The range can also appear inside nested register `~`, `&`, `|`, `^`, `<<`,
+`>>`, `rotl`, and `rotr` expressions. Ranges may occur on either or both sides
+of binary register operations, alongside supported fixed-width operands.
+Every register operand and intermediate must have the target angle width;
+fixed-width mismatches fail during conversion, and runtime counts are checked
+when reached. Operations retain register semantics: complement flips exactly
+the selected width, shifts discard bits at every intermediate step, and
+rotations permute the selected positions. Shift counts must be INT/UINT;
+negative counts fail when reached, while counts at least the width produce
+zero. Rotation distances follow the existing
+[rotation rules](#circular-bit-rotations), including checked UINT-to-INT
+conversion before modulo normalization and negative distances reversing direction.
+
+Fixed-width operands include literals, named registers, static and runtime
+discrete-set selections, supported explicit `bit[n]` casts, and supported
+single-bit/discrete-set selections on sized angles or angle-array elements.
+Runtime-dependent **angle-bit ranges** remain outside this cast subset. Direct
+UINT casts retain their existing restrictions on runtime angle-bit selections;
+an explicit `bit[n](angle[n](...))` bridge can supply a separate UINT cast.
+Computed-source indexing, aliases, omitted range endpoints, and scalar-bit
+sources remain unsupported.
+
+Register operands are evaluated from left to right. Each range occurrence
+captures and checks its own positions and selected count before reading that
+operand's bits. A zero step, empty range, invalid generated position, or count
+different from the target width fails before those reads. A later operand's
+failure may follow earlier operand reads, but all checks and reads finish
+before any destination write. Bitwise operators do not short-circuit, even
+with a zero mask or repeated source text. Shift counts follow their left
+operand, and rotation distances follow their complete register argument.
+Position and result storage are bounded by the target width.
+
+The scalar result retains ANGLE semantics, including modular angle arithmetic
+and angle-width conversions. It works in scalar and angle-array initializers
+and assignments, supported comparisons, explicit Boolean conversion, supported
+angle functions, and phase-gate parameters. An enclosing `bit[n]` cast provides
+an exact round trip, including overlapping selection assignments; direct
+numeric casts from the resulting angle remain unsupported. Runtime bounds or
+mutable sources cannot initialize a constant angle. Skipped branches,
+short-circuit operands, and empty loops suppress runtime domain checks while
+still validating names, types, and widths. Each loop iteration reads fresh
+operands and bounds.
+
+<!-- runtime-range-angle-cast-example -->
+```qasm
+OPENQASM 3.0;
+const bit[8] PATTERN = "10110010";
+bit[8] flags = "11001001";
+int start = 7;
+int step = -2;
+int stop = 1;
+angle[4] saved = angle[4](flags[start:step:stop]); // Stored bits: 5, angle: 5*pi/8.
+angle[4] from_constant = angle[4](PATTERN[start:step:stop]); // Stored bits: 11.
+angle[4] combined = angle[4](rotl(flags[start:step:stop] ^ PATTERN[start:step:stop], 1)); // 13.
+bit[4] copied = bit[4](saved);                 // "0101", exact round trip.
+array[angle[4], 2] phases = {saved, combined};
+int slot = 1;
+phases[slot] = angle[4](~flags[start:step:stop]);
+angle[4] element = phases[slot];              // Stored bits: 10.
+flags[0:3] = bit[4](combined);                 // "11001101".
+start = 0;
+step = 1;
+stop = 3;
+angle[4] fresh = angle[4](flags[start:step:stop]); // Stored bits: 13; saved is still 5.
 ```
 
 #### Static bit selections on sized angles
@@ -3054,7 +3140,9 @@ expansion is bounded by `W` before width inference materializes its positions.
 Runtime ranges are supported directly and in bitwise, complement, shift, and
 rotation expressions inside UINT casts, as described below. Runtime ranges in other
 register-expression contexts, runtime angle-bit selections, indexing or
-iterating over computed register values, and aliases remain outside this subset.
+iterating over computed register values, and aliases remain outside this UINT
+subset. [ANGLE casts](#angle-casts-from-runtime-bit-register-ranges) have
+their separate supported operand forms.
 
 For `uint[n](flags[{i, j, ...}])`, the set's entry count must equal `n` and
 fit within `W`; unsized `uint` requires exactly `W` entries. Each index must
@@ -3178,8 +3266,8 @@ Other register functions applied directly to raw runtime ranges,
 runtime angle-bit selections, aliases, and further indexing of range results
 remain outside this subset. The resulting scalar UINT may supply supported
 arithmetic, indices, loop bounds, or an enclosing `bit[n]` cast. General
-variable-width register expressions outside the UINT-cast context remain
-unsupported.
+variable-width register expressions remain limited to the explicitly documented
+contexts, including [ANGLE casts](#angle-casts-from-runtime-bit-register-ranges).
 
 UINT operands may use supported scalar expressions, including indexed UINT
 array elements and matching-width UINT array iterators. The source width is
@@ -4214,6 +4302,7 @@ Outside the supported [whole-register assignment](#whole-register-assignments-fr
 [static-selection assignment](#assigning-runtime-range-expressions-to-static-selections),
 [runtime index-set assignment](#assigning-runtime-range-expressions-to-runtime-index-sets),
 [runtime-range destination assignment](#assigning-runtime-range-expressions-to-runtime-ranges), UINT-cast,
+[ANGLE-cast](#angle-casts-from-runtime-bit-register-ranges),
 [population-count](#population-counts-of-runtime-bit-register-ranges), and
 [equality-comparison contexts](#equality-with-runtime-bit-register-ranges),
 runtime ranges remain unsupported in general bitwise/shift expressions,
@@ -8650,7 +8739,7 @@ The current prototype does not reliably support:
   declarations;
 - scalar-bit shifts, runtime bit-register range expressions outside the supported
   iteration, copy, whole-register assignment/initializer, static-selection assignment,
-  runtime index-set assignment, runtime-range destination assignment, UINT cast, population-count,
+  runtime index-set assignment, runtime-range destination assignment, UINT/ANGLE cast, population-count,
   equality-comparison, and bitwise compound-assignment RHS expression subsets,
   runtime bit-register range arithmetic compound assignments,
   ordered bit-register comparisons, whole-array bitwise operations, direct
@@ -8804,6 +8893,18 @@ including the documented example above. Unit tests additionally check constant
 evaluation, width/type rejection, empty-body validation, once-only capture,
 temporary ownership and cleanup, and CLI errors without partial output.
 Run with `--bra /path/to/bra`, including a UBSan build.
+
+`bra/test/qasm2qcx_runtime_range_angle_cast_numerical.py` checks exact ANGLE
+storage against independent little-endian bit vectors at every supported width.
+It covers mutable and constant sources wider than native UINT, sized and unsized
+targets, negative aliases, reverse and strided ranges, nested register operations,
+fixed-width angle-bit leaves, indexed array destinations, overlapping round trips,
+fresh loop evaluations, and scalar consumers. Reached failures check operand
+order, absence of partial destination writes, and preservation of earlier scalar
+and array assignments. Skipped domains, measurement feedback, phase-gate
+modifiers, trigonometric arguments, and fused execution are also checked, along
+with the runtime-range ANGLE example above. Run with `--bra /path/to/bra`,
+including a UBSan build.
 
 `bra/test/qasm2qcx_static_angle_bit_selection_numerical.py` checks selected bits
 and packed angle storage against independent integer references at every
@@ -10170,6 +10271,7 @@ python3 bra/test/qasm2qcx_angle_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_array_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_bit_cast_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_range_angle_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_angle_bit_selection_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_selection_compound_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_angle_bit_numerical.py --bra bra/bin/bra
