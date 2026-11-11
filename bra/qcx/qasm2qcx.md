@@ -359,9 +359,8 @@ Fixed-width operands include literals, named registers, static and runtime
 discrete-set selections, supported explicit `bit[n]` casts, and supported
 single-bit/discrete-set selections on sized angles or angle-array elements.
 Runtime-dependent ranges on explicitly sized angles are also supported in
-ANGLE and UINT casts, including mixed trees with bit-register ranges. Standalone
-UINT casts of runtime single-index or discrete-set angle selections remain unsupported;
-an explicit `bit[n](angle[n](...))` bridge can supply a separate UINT cast.
+ANGLE and UINT casts, including mixed trees with bit-register ranges. UINT casts
+also support runtime single-index and discrete-set angle selections directly.
 Computed-source indexing, aliases, omitted range endpoints, and scalar-bit
 sources remain unsupported.
 
@@ -3173,8 +3172,7 @@ repeated source positions are retained. A selection from a register wider than
 expansion is bounded by `W` before width inference materializes its positions.
 Runtime ranges are supported directly and in bitwise, complement, shift, and
 rotation expressions inside UINT casts, as described below. Runtime ranges in other
-register-expression contexts, standalone runtime angle-bit single indices and
-sets, indexing or
+register-expression contexts, indexing or
 iterating over computed register values, and aliases remain outside this UINT
 subset. [ANGLE casts](#angle-casts-from-runtime-bit-register-ranges) have
 their separate supported operand forms.
@@ -3298,7 +3296,7 @@ update the destination. Temporary storage and caller snapshot bindings are
 restored after lowering failures.
 
 Other register functions applied directly to raw runtime ranges,
-standalone runtime angle-bit single indices and sets, aliases, and further indexing of range results
+aliases, and further indexing of range results
 remain outside this subset. The resulting scalar UINT may supply supported
 arithmetic, indices, loop bounds, or an enclosing `bit[n]` cast. General
 variable-width register expressions remain limited to the explicitly documented
@@ -3321,9 +3319,8 @@ extracting bits, and the complete result is ready before any destination write.
 Skipped paths defer runtime domain checks while still validating names, types,
 and widths. The result retains UINT width and arithmetic semantics.
 
-Standalone runtime angle-bit single-index and discrete-set UINT casts remain
-unsupported; supported fixed-width selections can appear as operands within a
-tree containing a runtime angle-bit range. Unsized angle sources, computed-source
+Runtime angle-bit single-index and discrete-set UINT casts are also supported,
+as described below. Unsized angle sources, computed-source
 indexing, omitted range endpoints, and direct numeric casts from angles remain
 outside this subset.
 
@@ -3342,6 +3339,41 @@ int slot = 1;
 uint[4] element = uint[4](phases[slot][first:last]); // 10.
 phase = angle[8]("00000000");
 uint[4] fresh = uint[4](phase[first:last]); // 0; saved is still 10.
+```
+
+#### UINT casts from runtime angle-bit indices and sets
+
+`uint[1](phase[index])` copies a selected angle bit to a one-bit UINT.
+`uint[n](phase[{i,j,...}])` requires exactly `n` entries; an unsized target
+uses native UINT width. Sources may be explicitly sized mutable or constant
+angles, angle-array elements, or supported angle iterators. The first selected
+bit becomes the least significant UINT bit. Negative indices are normalized
+against the source width, and repeated source positions are retained.
+
+The selections can appear in supported complement, bitwise, shift, and
+rotation expressions. Matching-width `bit[n](angle[n](...))` round trips can
+also supply register operands to a UINT cast. The source value and each index
+occurrence are captured once in source order, including repeated indices. All
+indices are validated before extracting any selected bits, and the complete result is computed before
+destination writes. This preserves overlapping assignments. Skipped paths defer
+runtime domain checks while still validating names, types, and widths. The
+result retains UINT width and arithmetic semantics. Bit selections on unsized
+angle sources and direct numeric casts from angles remain unsupported.
+
+<!-- runtime-angle-selection-uint-cast-example -->
+```qasm
+OPENQASM 3.0;
+angle[8] phase = angle[8]("10110101");
+int index = -1;
+uint[1] one = uint[1](phase[index]); // 1.
+uint[4] saved = uint[4](phase[{index,0,0,1}]); // 7: "0111".
+bit[4] mask = "0101";
+uint[4] combined = uint[4](rotl(phase[{index,0,0,1}] ^ mask, 1)); // 4.
+array[angle[8], 2] phases = {phase, phase};
+int slot = 1;
+uint[4] element = uint[4](phases[slot][{index,0,0,1}]); // 7.
+phase = angle[8]("00000000");
+uint[4] fresh = uint[4](phase[{index,0,0,1}]); // 0; saved is still 7.
 ```
 
 UINT operands may use supported scalar expressions, including indexed UINT
@@ -8993,6 +9025,12 @@ It covers all supported widths, source forms, nested trees, array destinations,
 overlap, loops, skipped paths, and failure order. Run with `--bra /path/to/bra`,
 including a UBSan build.
 
+`bra/test/qasm2qcx_runtime_angle_selection_uint_cast_numerical.py` checks UINT
+casts from runtime angle-bit indices and sets against independent bit-vector
+references. It covers all supported widths, duplicate and negative indices,
+arrays, iterators, nested expressions, overlap, skipped paths, and failure
+ordering. Run with `--bra /path/to/bra`, including a UBSan build.
+
 `bra/test/qasm2qcx_static_angle_bit_selection_numerical.py` checks selected bits
 and packed angle storage against independent integer references at every
 supported width. It covers constants, variables, runtime array-element indices,
@@ -10361,6 +10399,7 @@ python3 bra/test/qasm2qcx_angle_bit_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_range_angle_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_angle_range_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_angle_range_uint_cast_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_angle_selection_uint_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_angle_bit_selection_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_selection_compound_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_angle_bit_numerical.py --bra bra/bin/bra

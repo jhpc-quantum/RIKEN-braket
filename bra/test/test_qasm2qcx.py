@@ -33797,11 +33797,11 @@ class RuntimeBitSetUIntCastFoundationTests(unittest.TestCase):
                     self.info(f'uint[4](wide[{{{entries}}}])')
 
     def test_runtime_angle_bit_selections_require_matching_width(self):
-        for operand in ('a[index]', 'a[{index}]',
-                        'bit[4](angle[4](a[{index,0,1,2}]))'):
+        for operand in ('a[index]', 'a[{index}]'):
             with self.subTest(operand=operand), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.info(f'uint[4]({operand})')
         self.assertEqual(self.info('uint[1](a[0])').width, 1)
+        self.assertEqual(self.info('uint[4](bit[4](angle[4](a[{index,0,1,2}])))').width, 4)
         for operand in ('a[index]', 'a[{index}]'):
             self.assertEqual(self.info(f'uint[1]({operand})').width, 1)
 

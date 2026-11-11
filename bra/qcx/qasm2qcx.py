@@ -9673,6 +9673,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         elif isinstance(expression, ast.Cast) and isinstance(expression.type, (ast.BitType, ast.AngleType)):
             if self.__runtime_range_angle_cast_info(expression, iterators) is not None:
                 return  # This scalar angle cast owns its range validation.
+            if isinstance(expression.type, ast.AngleType):
+                # Bound static selections before generic width inference, while
+                # allowing the angle cast's own runtime selection operands.
+                self.__validate_uint_bit_register_source(
+                    expression.argument, iterators, allow_runtime_angle_selections=True)
+                info = self.__angle_bit_cast_info(expression, iterators)
+                if info is not None and info[0] == ValueType.ANGLE:
+                    return  # This scalar angle cast validates its register operand.
             self.__validate_uint_bit_register_source(
                 expression.argument, iterators, allow_runtime_angle_selections=allow_runtime_angle_selections)
 

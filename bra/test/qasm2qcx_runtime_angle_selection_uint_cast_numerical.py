@@ -25,6 +25,15 @@ class BackendTests(unittest.TestCase):
     program = backend.BackendTests.program
     check_exact = backend.BackendTests.check_exact
 
+    def test_documented_runtime_angle_selection_uint_cast_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-angle-selection-uint-cast-example -->'
+        self.assertEqual(document.count(marker), 1)
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        source = source.replace('OPENQASM 3.0;', '', 1)
+        self.check_exact(source, (('one', None), ('saved', None), ('combined', None),
+                                  ('element', None), ('fresh', None)), (1, 7, 4, 7, 0))
+
     def test_all_widths_constants_arrays_and_exact_roundtrips(self):
         native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
         mask = (1 << native)-1
@@ -65,6 +74,13 @@ class BackendTests(unittest.TestCase):
             self.check_exact(f'angle[1] phase=angle[1]("{bit}"); int index=0; '
                 f'uint value=uint(phase[{{{indices}}}]); bit[{native}] back=bit[{native}](value);',
                 (('value', None), ('back', native)), (((1<<native)-1)*bit,)*2)
+
+    def test_nested_bit_angle_cast_boundaries(self):
+        for pattern in range(16):
+            self.check_exact(f'angle[4] phase=angle[4]("{pattern:04b}"); int first=0; '
+                'uint[4] value=uint[4](bit[4](angle[4](phase[{first,1,2,3}]))); '
+                'uint[4] mixed=uint[4](phase[{first,1,2,3}]^bit[4](angle[4](phase[{first,1,2,3}])));',
+                (('value', None), ('mixed', None)), (pattern, 0))
 
     def test_nested_register_operations_and_unsigned_consumers(self):
         native = self.module.QASM2QCXConverter
