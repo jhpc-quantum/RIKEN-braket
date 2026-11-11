@@ -5753,6 +5753,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if (statement.op.name == '=' and self.__runtime_angle_range_register_assignment_info(
                 statement.lvalue, statement.rvalue, iterators) is not None):
             return True
+        if (statement.op.name == '=' and self.__runtime_angle_range_expression_assignment_info(
+                statement.lvalue, statement.rvalue, iterators) is not None):
+            return True
         if self.__runtime_bit_range_copy_info(statement, iterators) is not None:
             return True
         if self.__runtime_register_compound_assignment_info(statement, iterators) is not None:
@@ -5823,6 +5826,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__loop_index_info(node, iterators)
         if isinstance(node, ast.ClassicalAssignment):
             if (node.op.name == '=' and self.__runtime_angle_range_register_assignment_info(
+                    node.lvalue, node.rvalue, iterators) is not None):
+                return
+            if (node.op.name == '=' and self.__runtime_angle_range_expression_assignment_info(
                     node.lvalue, node.rvalue, iterators) is not None):
                 return
             if self.__runtime_bit_range_copy_info(node, iterators) is not None:
@@ -7402,7 +7408,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         try:
             self.__check_runtime_register_output(1)
             if not tree.children:
-                if tree.selection is not None:
+                if isinstance(tree.selection, _RuntimeAngleBitRangeSelection):
+                    snapshot, count = self.__capture_angle_range_expression_snapshot(
+                        tree.selection, prefix, tree.capacity)
+                elif tree.selection is not None:
                     snapshot, count = self.__capture_popcount_range_snapshot(
                         tree.selection, prefix, capacity=tree.capacity)
                 else:
@@ -7473,6 +7482,27 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__check_runtime_register_output()
         self.__hoist_temporary_declarations(previous_declarations)
         return result
+
+    def __capture_angle_range_expression_snapshot(
+            self, selection: _RuntimeAngleBitRangeSelection, label: str, capacity: int) -> tuple[str, str]:
+        self.__expression_kind = ExpressionKind.ARITHMETIC
+        source = self.__angle_arithmetic_operand(selection.source, selection.angle_type)
+        positions, count = self.__capture_bit_range_positions(
+            selection.bounds, selection.angle_type.width, label, capacity=capacity)
+        self.__check_runtime_register_output(12)
+        snapshot = self.__add_temporary_int_array(capacity, 'ANGLE_EXPRESSION_BITS')
+        index = self.__add_new_temporary_variable(ValueType.INT)
+        position = self.__add_new_temporary_variable(ValueType.INT)
+        scratch = self.__add_new_temporary_variable(ValueType.UINT)
+        self.__qcx_lines.extend([
+            f'LET {index} := 0', f'@{label}_SNAPSHOT',
+            f'JUMPIF {label}_SNAPSHOT_DONE {index} >= {count}',
+            f'LET {position} := {positions}:{index}', f'LET {scratch} := {source}',
+            f'LET {scratch} >>= {position}', f'LET {scratch} &= 1',
+            f'LET {snapshot}:{index} := :INT:{scratch}', f'LET {index} += 1',
+            f'JUMP {label}_SNAPSHOT', f'@{label}_SNAPSHOT_DONE',
+        ])
+        return snapshot, count
 
     def __capture_popcount_range_snapshot(
             self, selection: _RuntimeBitRangeSelection, label: str,
@@ -10641,6 +10671,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if angle_range is not None:
             self.__emit_runtime_angle_range_register_assignment(angle_range)
             return
+        angle_expression = self.__runtime_angle_range_expression_assignment_info(target, expression)
+        if angle_expression is not None:
+            self.__emit_runtime_register_assignment(angle_expression)
+            return
         runtime = self.__runtime_register_assignment_info(target, expression)
         if runtime is not None:
             self.__emit_runtime_register_assignment(runtime)
@@ -11708,6 +11742,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             angle_range = self.__runtime_angle_range_register_assignment_info(statement.lvalue, statement.rvalue)
             if angle_range is not None:
                 self.__emit_runtime_angle_range_register_assignment(angle_range)
+                return
+            angle_expression = self.__runtime_angle_range_expression_assignment_info(statement.lvalue, statement.rvalue)
+            if angle_expression is not None:
+                self.__emit_runtime_register_assignment(angle_expression)
                 return
         bit_range_copy = self.__runtime_bit_range_copy_info(statement)
         if bit_range_copy is not None:
