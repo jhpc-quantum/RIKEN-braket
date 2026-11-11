@@ -36148,6 +36148,186 @@ class RuntimeRangeRotationUIntCastIntegrationTests(unittest.TestCase):
         self.assert_clean(c)
 
 
+class RuntimeRangeAngleCastFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    expression = ScalarAngleArithmeticFoundationTests.expression
+    prefix = RuntimeBitSetUIntCastFoundationTests.prefix
+
+    def setUp(self):
+        self.c = self.converter(self.prefix)
+
+    def info(self, source, iterators=None):
+        return self.c._QASM2QCXConverter__runtime_range_angle_cast_info(self.expression(source),iterators)
+
+    def test_frozen_metadata_retains_angle_result_original_cast_and_range_bounds(self):
+        for source,types in (('wide[index:count]',(qasm2qcx.ValueType.INT,)*3),
+                             ('C[index:u:count]',(qasm2qcx.ValueType.INT,qasm2qcx.ValueType.UINT,qasm2qcx.ValueType.INT))):
+            with self.subTest(source=source):
+                expression = self.expression(f'angle[4]({source})')
+                info = self.c._QASM2QCXConverter__runtime_range_angle_cast_info(expression)
+                self.assertIsInstance(info,qasm2qcx._RuntimeRangeAngleCastInfo)
+                self.assertIs(info.expression,expression)
+                self.assertEqual((info.result_type,info.angle_type,info.width,info.runtime),
+                                 (qasm2qcx.ValueType.ANGLE,qasm2qcx._AngleType(4,True),4,True))
+                self.assertEqual((info.packing.result_type,info.packing.uint_type),
+                                 (qasm2qcx.ValueType.UINT,qasm2qcx._UnsignedIntegerType(4,True)))
+                selection = info.packing.range_selection
+                self.assertIs(selection.bounds,expression.argument.index[0])
+                self.assertEqual(selection.source_width,8)
+                self.assertEqual((selection.start_type,selection.step_type,selection.stop_type),types)
+                with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                    info.angle_type = qasm2qcx._AngleType(1,True)
+
+    def test_all_native_widths_unsized_angles_and_independent_source_widths(self):
+        with patch.object(self.c,'_QASM2QCXConverter__bit_register_expression_width',
+                          side_effect=AssertionError('no runtime range width inference')):
+            for width in range(1,self.c.QCX_UINT_WIDTH+1):
+                info = self.info(f'angle[{width}](large[index:count])')
+                self.assertEqual(info.width,width)
+                self.assertEqual(info.packing.range_selection.source_width,129)
+            info = self.info('angle(large[index:count])')
+            self.assertEqual(info.angle_type,qasm2qcx._AngleType(self.c.QCX_UINT_WIDTH,False))
+            self.assertEqual(info.packing.uint_type,qasm2qcx._UnsignedIntegerType(self.c.QCX_UINT_WIDTH,False))
+            info = self.info(f'angle[{self.c.QCX_UINT_WIDTH}](one[index:count])')
+            self.assertEqual(info.packing.range_selection.source_width,1)
+            self.assertEqual(info.width,self.c.QCX_UINT_WIDTH)
+
+    def test_complement_shift_chains_retain_original_nodes_in_evaluation_order(self):
+        expression = self.expression('angle[4](~(wide[index:count] >> u) << (count+1))')
+        info = self.c._QASM2QCXConverter__runtime_range_angle_cast_info(expression)
+        outer = expression.argument
+        inner = outer.lhs.expression
+        self.assertIs(info.packing.range_selection.bounds,inner.lhs.index[0])
+        self.assertEqual([operation.expression for operation in info.packing.range_operations],
+                         [inner,outer.lhs,outer])
+        self.assertEqual([operation.count_type for operation in info.packing.range_operations],
+                         [qasm2qcx.ValueType.UINT,None,qasm2qcx.ValueType.INT])
+        self.assertIsNone(info.packing.range_tree)
+
+    def test_nested_bitwise_and_rotation_tree_retains_required_width_and_original_operands(self):
+        expression = self.expression('angle[4](rotl((wide[index:count]&B)^(C[index:count]>>u),count))')
+        info = self.c._QASM2QCXConverter__runtime_range_angle_cast_info(expression)
+        tree = info.packing.range_tree
+        self.assertIs(tree.expression,expression.argument)
+        self.assertEqual(tree.count_type,qasm2qcx.ValueType.INT)
+        binary = tree.children[0]
+        self.assertIs(binary.expression,expression.argument.arguments[0])
+        left,right = binary.children
+        self.assertIs(left.children[0].selection.bounds,binary.expression.lhs.lhs.index[0])
+        self.assertIs(left.children[1].expression,binary.expression.lhs.rhs)
+        self.assertIs(right.children[0].selection.bounds,binary.expression.rhs.lhs.index[0])
+        self.assertEqual(right.count_type,qasm2qcx.ValueType.UINT)
+        self.assertTrue(all(node.width==4 for node in RuntimeRangeBitwiseUIntCastFoundationTests.nodes(tree)))
+        self.assertIsNone(info.packing.range_selection)
+
+    def test_fixed_width_numeric_and_scalar_count_paths_are_not_claimed(self):
+        for source in ('angle[4](B)','angle[4](b)','angle[4](wide[0:3])',
+                       'angle[2](wide[{index,count}])','angle[4](pi)','angle[4](real)',
+                       'angle[4](u)','uint[4](wide[index:count])','bit[4](a)',
+                       'angle[8](C << int(wide[index:count]==C[index:count]))',
+                       'angle[1](popcount(wide[index:count]))'):
+            with self.subTest(source=source):
+                self.assertIsNone(self.info(source))
+        # Stage 1 provides metadata only; conversion is enabled in Stage 2.
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.converter(self.prefix+'angle[4] phase=angle[4](wide[index:count]);')
+
+    def test_fixed_runtime_angle_bit_operands_keep_angle_cast_support_and_uint_restrictions(self):
+        for width,source in ((4,'wide[index:count]&a[{index,1,2,3}]'),
+                             (1,'wide[index:index]^a[index]')):
+            with self.subTest(source=source):
+                info = self.info(f'angle[{width}]({source})')
+                self.assertEqual(info.packing.range_tree.children[1].width,width)
+                self.assertIsNone(info.packing.range_tree.children[1].selection)
+                with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                    self.c._QASM2QCXConverter__uint_bit_cast_info(self.expression(f'uint[{width}]({source})'))
+
+    def test_angle_target_widths_are_positive_native_bounded_constants(self):
+        for width in ('1-1','0-1',str(self.c.QCX_UINT_WIDTH+1),'index','true','1.0','missing','1/0'):
+            with self.subTest(width=width), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(f'angle[{width}](wide[index:count])')
+        self.assertEqual(self.info('angle[N](wide[index:count])').angle_type,qasm2qcx._AngleType(4,True))
+        with self.assertRaises(qasm2qcx.InvalidDeclarationException):
+            self.info('angle[N](wide[index:count])',{'N':qasm2qcx.ValueType.INT})
+
+    def test_invalid_bounds_operands_counts_and_fixed_width_mismatches_are_rejected(self):
+        for source in ('wide[index:real:count]','wide[condition:count]',
+                       'wide[index:one:count]','wide[index:missing:count]',
+                       'wide[:count]','wide[index:]','wide[index:count]^missing',
+                       'wide[index:count]&"1"','wide[index:count]&(B&"1")',
+                       'wide[index:count] << condition','rotl(wide[index:count],real)',
+                       'wide[index:count] & scalar','a[index:count] & wide[index:count]'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(f'angle[4]({source})')
+
+    def test_runtime_domains_counts_and_negative_aliases_are_deferred(self):
+        for source in ('wide[index:0:999]','C[index/0:count]',
+                       'wide[-999:index:999]','wide[-1:index:7]',
+                       'rotl((C[index:count]&B)^wide[index:count],count/0)',
+                       '~(C[index:positions[index/0]:count] << -1)',
+                       'wide[count:index]','wide[index:uint(-1):count]'):
+            with self.subTest(source=source):
+                info = self.info(f'angle[4]({source})')
+                self.assertTrue(info.runtime)
+                self.assertEqual(info.width,4)
+
+    def test_visibility_read_only_iterators_and_constant_shadowing_are_preserved(self):
+        for name,source in (('C','C[index:count]'),('wide','wide[index:count]'),
+                            ('index','wide[index:count]'),('LOW','C[LOW:index]')):
+            c = self.converter(self.prefix)
+            if name in c._QASM2QCXConverter__constant_source_types:
+                c._QASM2QCXConverter__declared_constant_variables.remove(name)
+            else:
+                variable = c._QASM2QCXConverter__capitalize_variable_name(name)
+                if name == 'wide':
+                    c._QASM2QCXConverter__sized_bit_variables.remove(variable)
+                else:
+                    c._QASM2QCXConverter__int_variable_name_size_map.pop(variable)
+            with self.subTest(name=name), self.assertRaises(qasm2qcx.QASM2QCXError):
+                c._QASM2QCXConverter__runtime_range_angle_cast_info(self.expression(f'angle[4]({source})'))
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.info('angle[4](wide[index:count])',{'wide':qasm2qcx.ValueType.INT})
+        self.assertIsNone(self.info('angle[4](C[LOW:HIGH])'))
+        info = self.info('angle[4](C[LOW:HIGH])',{'LOW':qasm2qcx.ValueType.INT})
+        self.assertIsNotNone(info.packing.range_selection)
+        self.assertEqual(self.info('angle[4](b[N:count])',{'N':qasm2qcx.ValueType.INT}).packing.range_selection.source_width,4)
+
+    def test_metadata_preserves_source_ast_state_caches_output_and_caller_storage(self):
+        c = self.c
+        expression = self.expression('angle[N](rotl((C[index/0:0:999]&B)^(wide[index:count]<<-1),count/0))')
+        original_ast = qasm2qcx.dataclasses.asdict(expression)
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        fields = ('expression_kind','value','value_type','value_kind','evaluate_constant')
+        before = [getattr(c,'_QASM2QCXConverter__'+field) for field in fields]
+        lines = c._QASM2QCXConverter__qcx_lines.copy()
+        caches = (c._QASM2QCXConverter__uint_expression_types.copy(),c._QASM2QCXConverter__angle_expression_types.copy())
+        def nodes(node):
+            if isinstance(node,qasm2qcx.ast.QASMNode):
+                yield id(node)
+                for field in qasm2qcx.dataclasses.fields(node):
+                    yield from nodes(getattr(node,field.name))
+            elif isinstance(node,list):
+                for child in node:
+                    yield from nodes(child)
+        source_nodes = set(nodes(expression.argument))
+        visit = c.visit
+        def types_only(node,*args,**kwargs):
+            if id(node) in source_nodes:
+                raise AssertionError('metadata must not evaluate source operands')
+            return visit(node,*args,**kwargs)
+        with patch.object(c,'visit',side_effect=types_only), \
+             patch.object(c,'_QASM2QCXConverter__add_new_temporary_variable',side_effect=AssertionError('no allocation')):
+            info = c._QASM2QCXConverter__runtime_range_angle_cast_info(expression)
+        self.assertIs(info.expression,expression)
+        self.assertEqual(info.angle_type,qasm2qcx._AngleType(4,True))
+        self.assertEqual(qasm2qcx.dataclasses.asdict(expression),original_ast)
+        self.assertEqual(before,[getattr(c,'_QASM2QCXConverter__'+field) for field in fields])
+        self.assertEqual(lines,c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(caches,(c._QASM2QCXConverter__uint_expression_types,c._QASM2QCXConverter__angle_expression_types))
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables,{caller})
+
+
 class AngleBitCastFoundationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)
