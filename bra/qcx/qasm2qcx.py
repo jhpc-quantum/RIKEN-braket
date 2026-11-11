@@ -9526,6 +9526,33 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return isinstance(self.__angle_bit_selection(expression, iterators, allow_runtime_range=True),
                           _RuntimeAngleBitRangeSelection)
 
+    def __contains_runtime_angle_bit_selection(
+            self, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> bool:
+        # Scalar counts and nested casts have their own expression contexts.
+        if isinstance(expression, ast.UnaryExpression) and expression.op.name == '~':
+            return self.__contains_runtime_angle_bit_selection(expression.expression, iterators)
+        if (isinstance(expression, ast.FunctionCall) and expression.name.name in ('rotl', 'rotr')
+                and expression.arguments):
+            return self.__contains_runtime_angle_bit_selection(expression.arguments[0], iterators)
+        if isinstance(expression, ast.BinaryExpression):
+            if expression.op.name in ('<<', '>>'):
+                return self.__contains_runtime_angle_bit_selection(expression.lhs, iterators)
+            if expression.op.name in ('&', '|', '^'):
+                return (self.__contains_runtime_angle_bit_selection(expression.lhs, iterators)
+                        or self.__contains_runtime_angle_bit_selection(expression.rhs, iterators))
+        selection = self.__angle_bit_selection(expression, iterators, allow_runtime_range=True)
+        return isinstance(selection, (_RuntimeAngleBitSelection, _RuntimeAngleBitSetSelection))
+
+    def __runtime_angle_selection_uint_cast_info(
+            self, expression: ast.Cast,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _UIntBitCastInfo | None:
+        if (not isinstance(expression.type, ast.UintType)
+                or not self.__contains_runtime_angle_bit_selection(expression.argument, iterators)):
+            return None
+        return self.__uint_bit_cast_info(expression, iterators, allow_runtime_angle_selections=True,
+                                         allow_runtime_angle_ranges=True)
+
     def __runtime_angle_range_uint_cast_info(
             self, expression: ast.Cast,
             iterators: set[str] | dict[str, ValueType] | None = None) -> _UIntBitCastInfo | None:
