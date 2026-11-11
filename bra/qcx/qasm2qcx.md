@@ -424,8 +424,8 @@ positions and the selected count, and then extracts bits in selection order.
 Negative aliases and repeated source positions are preserved. The complete
 expression is evaluated before a destination is written, including overlapping
 assignments. Skipped paths defer runtime errors, while names, types, and widths
-are still validated. Runtime angle ranges also work in UINT casts, as described
-under [UINT casts from runtime angle-bit ranges](#uint-casts-from-runtime-angle-bit-ranges).
+are still validated. Runtime angle ranges also work in UINT casts and direct
+[whole-register copies](#whole-register-copies-from-runtime-angle-bit-ranges).
 
 <!-- runtime-angle-range-cast-example -->
 ```qasm
@@ -3733,6 +3733,50 @@ register expressions as numeric loop bounds remain unsupported. Static selection
 operations are described below.
 Concatenation and aliases remain outside this subset. Existing direct
 bit-register copies and indexed scalar-bit operations retain their behavior.
+
+### Whole-register copies from runtime angle-bit ranges
+
+A named mutable bit register can be initialized or assigned directly from a
+runtime range on an explicitly sized angle variable, constant, angle-array
+element, or supported angle iterator. Both endpoints are required; an omitted
+step is `+1`. The first selected bit becomes bit zero of the destination.
+Negative indices are normalized after generating the inclusive progression,
+and repeated source positions, including negative aliases, are preserved.
+
+The source angle and array-element address are captured before the range
+operands. Start, step, and stop are each captured once. A reached zero step,
+empty range, invalid generated position, or count different from the declared
+destination width fails before extracting selected bits or writing the
+destination. The complete result is snapshotted before the write loop. Each
+loop iteration captures fresh operands; skipped paths defer runtime checks while
+still validating names, types, and known widths.
+
+Destination widths are not limited to native UINT width. A source angle has at
+most native UINT width `W`, but negative and nonnegative positions can refer to
+the same bit, so a valid range can contain up to twice the source width. Position
+and snapshot storage are bounded independently of larger destination widths;
+the generated copy loop does not grow with the destination width. Scalar `bit`
+destinations, bit-register selection destinations, nested register expressions,
+compound assignments, and unsized angle sources remain outside this subset.
+
+<!-- runtime-angle-range-register-copy-example -->
+```qasm
+OPENQASM 3.0;
+angle[8] phase = angle[8]("10110101");
+int first = 1;
+int last = 4;
+bit[4] saved = phase[first:last]; // "1010".
+array[angle[8], 2] phases = {phase, phase};
+int slot = 1;
+bit[4] element;
+element = phases[slot][first:last]; // "1010".
+phase = angle[8]("00000000");
+bit[4] fresh = phase[first:last]; // "0000"; saved is still "1010".
+angle[4] small = angle[4]("1011");
+first = -4;
+last = 3;
+bit[8] repeated = small[first:last]; // "10111011".
+```
 
 ### Whole-register assignments from runtime-range expressions
 
@@ -8856,7 +8900,8 @@ The current prototype does not reliably support:
 - angle-by-angle multiplication, scaling by types other than same-width UINT,
   `uint / angle`, `angle /= angle`, mixed angle/non-angle comparisons and bitwise
   operations, compound operators other than `+=`/`-=`/`*=`/`/=`/`&=`/`|=`/`^=`/`<<=`/`>>=`,
-  runtime-dependent angle bit ranges outside scalar-bit iteration and ANGLE/UINT casts,
+  runtime-dependent angle bit ranges outside scalar-bit iteration, ANGLE/UINT casts,
+  and direct whole-register copies,
   bit selections on unsized angles, arithmetic compound
   assignments to angle bit selections, INT/UINT bit slicing, multidimensional angle arrays,
   iteration over angle-valued ranges/sets,
@@ -9030,6 +9075,12 @@ casts from runtime angle-bit indices and sets against independent bit-vector
 references. It covers all supported widths, duplicate and negative indices,
 arrays, iterators, nested expressions, overlap, skipped paths, and failure
 ordering. Run with `--bra /path/to/bra`, including a UBSan build.
+
+`bra/test/qasm2qcx_runtime_angle_range_register_assignment_numerical.py` checks
+direct copies against independent bit-vector references. It covers source and
+destination widths, including destinations beyond native UINT, repeated
+positions, arrays, iterators, skipped paths, and failure ordering. Run with
+`--bra /path/to/bra`, including a UBSan build.
 
 `bra/test/qasm2qcx_static_angle_bit_selection_numerical.py` checks selected bits
 and packed angle storage against independent integer references at every
@@ -10399,6 +10450,7 @@ python3 bra/test/qasm2qcx_angle_bit_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_range_angle_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_angle_range_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_angle_range_uint_cast_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_angle_range_register_assignment_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_angle_selection_uint_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_angle_bit_selection_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_selection_compound_numerical.py --bra bra/bin/bra
