@@ -36533,6 +36533,60 @@ class RuntimeAngleRangePopcountFoundationTests(unittest.TestCase):
         self.assertEqual(self.c._QASM2QCXConverter__used_temporary_variables, {caller})
 
 
+class RuntimeAngleRangeEqualityFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    prefix = RuntimeAngleRangeRegisterAssignmentFoundationTests.prefix
+
+    def setUp(self):
+        self.c = self.converter(self.prefix)
+
+    def info(self, source, iterators=None):
+        return self.c._QASM2QCXConverter__runtime_register_comparison_info(
+            self.expression(source), iterators, allow_angle_ranges=True)
+
+    def test_angle_sources_and_mixed_nested_operands(self):
+        for source in ('phase[index:count] == B', 'B != PHASE[index:count]',
+                       'phases[index][index:count] == wide[index:count]',
+                       'rotl(phase[index:count]^wide[index:count],u) != ~B'):
+            with self.subTest(source=source):
+                info = self.info(source)
+                self.assertIsInstance(info, qasm2qcx._RuntimeBitRegisterComparison)
+                self.assertIs(info.left.expression, info.expression.lhs)
+                self.assertIs(info.right.expression, info.expression.rhs)
+                self.assertTrue(info.left.first_selection or info.right.first_selection)
+        info = self.info('large[index:count] == phase[index:count]')
+        self.assertEqual((info.left.capacity, info.right.capacity), (258, 16))
+        self.assertIsNone(info.left.width)
+        self.assertIsNone(info.right.width)
+        self.assertIsInstance(info.right.selection, qasm2qcx._RuntimeAngleBitRangeSelection)
+
+    def test_scalar_paths_and_invalid_operands(self):
+        for source in ('index == count', 'B == "1010"', 'phase == PHASE'):
+            with self.subTest(source=source):
+                self.assertIsNone(self.info(source))
+        for source in ('phase[index:count] == scalar', 'phase[index:real:count] == B',
+                       'unsized_phase[index:count] == B', 'phase[index:count] < B'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(source)
+
+    def test_analysis_is_opt_in_and_does_not_evaluate(self):
+        expression = self.expression('phases[index/0][index:0:999] == wide[index:count]')
+        lines = self.c._QASM2QCXConverter__qcx_lines.copy()
+        used = self.c._QASM2QCXConverter__used_temporary_variables.copy()
+        with patch.object(self.c, 'visit', side_effect=AssertionError('no evaluation')), \
+             patch.object(self.c, '_QASM2QCXConverter__add_new_temporary_variable',
+                          side_effect=AssertionError('no allocation')):
+            info = self.c._QASM2QCXConverter__runtime_register_comparison_info(
+                expression, allow_angle_ranges=True)
+        self.assertIsInstance(info.left.selection, qasm2qcx._RuntimeAngleBitRangeSelection)
+        self.assertEqual(lines, self.c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(used, self.c._QASM2QCXConverter__used_temporary_variables)
+        simple = self.expression('phase[index:count] == B')
+        self.assertIsNone(self.c._QASM2QCXConverter__runtime_register_comparison_info(simple))
+
+
 class RuntimeAngleRangePopcountLoweringTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)

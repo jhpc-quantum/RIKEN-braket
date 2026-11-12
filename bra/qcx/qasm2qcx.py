@@ -4481,15 +4481,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __runtime_register_comparison_info(
             self, expression: ast.BinaryExpression,
-            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRegisterComparison | None:
+            iterators: set[str] | dict[str, ValueType] | None = None, *,
+            allow_angle_ranges: bool = False) -> _RuntimeBitRegisterComparison | None:
         # Probe only register-valued branches. Scalar distance arguments are
         # opaque, even when they contain popcount calls on runtime ranges.
-        left_shapes = self.__runtime_bit_register_expression_shapes(expression.lhs, iterators)
-        right_shapes = self.__runtime_bit_register_expression_shapes(expression.rhs, iterators)
+        left_shapes = self.__runtime_bit_register_expression_shapes(expression.lhs, iterators, allow_angle_ranges=allow_angle_ranges)
+        right_shapes = self.__runtime_bit_register_expression_shapes(expression.rhs, iterators, allow_angle_ranges=allow_angle_ranges)
         if left_shapes[id(expression.lhs)] < 0 and right_shapes[id(expression.rhs)] < 0:
             return None  # Preserve the existing scalar and fixed-width paths.
-        left = self.__runtime_bit_register_expression_info(expression.lhs, left_shapes, iterators)
-        right = self.__runtime_bit_register_expression_info(expression.rhs, right_shapes, iterators)
+        left = self.__runtime_bit_register_expression_info(expression.lhs, left_shapes, iterators, allow_angle_ranges=allow_angle_ranges)
+        right = self.__runtime_bit_register_expression_info(expression.rhs, right_shapes, iterators, allow_angle_ranges=allow_angle_ranges)
         if expression.op.name not in ('==', '!='):
             raise UnsupportedOpenQASMError('ordered comparisons of bit-register values')
         # Only fixed leaves have known widths. Capacities bound storage, never
