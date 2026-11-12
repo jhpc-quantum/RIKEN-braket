@@ -22,6 +22,11 @@ def main() -> None:
     native = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
     native_mask = qasm2qcx.QASM2QCXConverter.QCX_UINT_MAX
 
+    # The copied value retains its number, while operations use iterator width.
+    check_program(bra, '''array[uint[4],2] values={15,1}; uint total=0; uint complement=0;
+        for uint[8] value in values { total+=value+uint[8](1); complement+=~value; }''',
+        ('TOTAL31','COMPLEMENT1023'), ['18','494'])
+
     for width in (1, 4, 8, native):
         mask = (1 << width) - 1
         for size in (1, 3):

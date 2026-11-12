@@ -24191,7 +24191,7 @@ class UnsignedArrayLoopTests(unittest.TestCase):
                 self.assertEqual(info, qasm2qcx._UnsignedIntegerType(4 if base == 'uint[4]' else native, sized))
 
     def test_mismatched_widths_and_base_types_rejected_even_in_empty_outer_loop(self) -> None:
-        for iterator in ('uint', 'uint[1]', 'uint[8]', 'int', 'float', 'bit'):
+        for iterator in ('uint[1]', 'int', 'float', 'bit'):
             for wrapper in ('{}', 'for int outer in [1:0] {{ {} }}'):
                 with self.subTest(iterator=iterator, wrapper=wrapper), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                     convert('OPENQASM 3; array[uint[4], 2] values; '
@@ -24199,6 +24199,27 @@ class UnsignedArrayLoopTests(unittest.TestCase):
         for source in ('array[int, 2] values;', 'array[float, 2] values;', 'bit[2] values;'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                 convert('OPENQASM 3; ' + source + 'for uint value in values {}')
+
+    def test_wider_iterators_copy_without_shift_and_keep_target_metadata(self) -> None:
+        native = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        for iterator, width, sized in (('uint[8]', 8, True), ('uint', native, False)):
+            with self.subTest(iterator=iterator):
+                converter = self.assert_clean_conversion(
+                    f'array[uint[4], 2] values; for {iterator} value in values {{ '
+                    'if (value == value) { continue; } }')
+                lines = converter._QASM2QCXConverter__qcx_lines
+                body = lines.index('@QASM2QCX_LOOP_0_BODY')
+                self.assertEqual(lines[body + 1], 'LET QASM2QCX_UINT_0 := VALUES63:QASM2QCX_INT_0')
+                self.assertFalse(lines[body + 2].startswith('LET QASM2QCX_UINT_0 <<='))
+                self.assertEqual(converter._QASM2QCXConverter__temporary_uint_types['QASM2QCX_UINT_0'],
+                                 qasm2qcx._UnsignedIntegerType(width, sized))
+
+    def test_wider_iterators_in_empty_and_shadowed_loops(self) -> None:
+        self.assert_clean_conversion('array[uint[4], 2] values; uint total; '
+            'for int outer in [1:0] { for uint[8] value in values { '
+            'total += value + uint[8](1); for int i in [0:int(value)] { break; } } }')
+        self.assert_clean_conversion('array[uint[4], 2] values; uint total; '
+            'for uint[8] values in values { total += values; } total += values[0];')
 
     def test_runtime_and_unrepresentable_iterator_widths_are_rejected(self) -> None:
         native = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH

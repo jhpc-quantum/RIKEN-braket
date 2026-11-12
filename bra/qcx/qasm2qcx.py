@@ -5651,7 +5651,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         bounds = statement.set_declaration
         iterator_names = set(iterators)
         if isinstance(bounds, ast.Identifier):
-            return self.__collection_loop_info(bounds, statement.type, iterators, allow_angle_widening=True)[3]
+            return self.__collection_loop_info(
+                bounds, statement.type, iterators, allow_angle_widening=True, allow_uint_widening=True)[3]
         if (self.__angle_selection_loop_info(bounds, statement.type, iterators) is not None
                 or self.__bit_selection_loop_info(bounds, statement.type, iterators) is not None):
             return None  # BIT iterators do not carry UINT width metadata.
@@ -6636,7 +6637,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __visit_collection_for(self, statement: ast.ForInLoop) -> None:
         source, size, value_type, uint_type = self.__collection_loop_info(
-            statement.set_declaration, statement.type, allow_angle_widening=True)
+            statement.set_declaration, statement.type, allow_angle_widening=True, allow_uint_widening=True)
         angle_type = self.__angle_type(statement.type) if value_type == ValueType.ANGLE else None
         binding = _RuntimeIteratorBinding(f'QASM2QCX_LOOP_{self.__loop_index}_ITERATOR', value_type, uint_type, angle_type)
         with self.__iterator_binding(statement.identifier.name, binding):
