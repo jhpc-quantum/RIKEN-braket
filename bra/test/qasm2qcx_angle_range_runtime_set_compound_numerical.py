@@ -28,6 +28,14 @@ class BackendTests(unittest.TestCase):
     program = registers.BackendTests.program
     check_exact = registers.BackendTests.check_exact
 
+    def test_documented_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- angle-range-runtime-set-compound-example -->'
+        self.assertEqual(document.count(marker), 1)
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        self.check_exact(source.replace('OPENQASM 3.0;', '', 1),
+                         (('bits', 8), ('direct', 8)), (112, 211))
+
     # The reference RHS bit vectors are independent of destination handling.
     test_all_angle_widths_and_mixed_expression_trees = (
         static_compounds.BackendTests.test_all_angle_widths_and_mixed_expression_trees)
