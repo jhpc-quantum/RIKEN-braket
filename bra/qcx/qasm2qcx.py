@@ -5159,7 +5159,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # Runtime ranges and their supported operations have no inferred
             # register width. Validate metadata without evaluating positions;
             # capture and counting happen when reached.
-            if self.__runtime_bit_range_popcount_info(argument, iterators) is not None:
+            if (self.__runtime_angle_range_popcount_tree(argument, iterators) is not None
+                    or self.__runtime_bit_range_popcount_info(argument, iterators) is not None):
                 return overloads[0], True
             width = self.__bit_register_expression_width(argument, iterators)
             if width is None:
@@ -7489,8 +7490,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 kind = ValueKind.TEMPORARY
             else:
                 self.__expression_kind = ExpressionKind.ARITHMETIC
-                range_info = self.__runtime_bit_range_popcount_info(argument)
-                if range_info is not None:
+                angle_tree = self.__runtime_angle_range_popcount_tree(argument)
+                range_info = self.__runtime_bit_range_popcount_info(argument) if angle_tree is None else None
+                if angle_tree is not None:
+                    result = self.__emit_popcount_tree_population_count(angle_tree)
+                elif range_info is not None:
                     if range_info.tree is not None:
                         result = self.__emit_popcount_tree_population_count(range_info.tree)
                     elif range_info.pair is not None:
@@ -8677,6 +8681,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __expression_mentions_angle(
             self, expression: ast.Expression,
             iterators: set[str] | dict[str, ValueType] | None = None) -> bool:
+        if (isinstance(expression, ast.FunctionCall) and expression.name.name == 'popcount'
+                and len(expression.arguments) == 1
+                and self.__runtime_angle_range_popcount_tree(expression.arguments[0], iterators) is not None):
+            return False  # The validated register argument is consumed as UINT.
         if self.__angle_bit_selection(expression, iterators) is not None:
             return False  # Operations outside the selection use register semantics.
         if (isinstance(expression, ast.Cast) and isinstance(expression.type, ast.UintType)
