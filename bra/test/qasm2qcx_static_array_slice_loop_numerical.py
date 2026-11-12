@@ -13,6 +13,12 @@ def main():
     parser.add_argument('--bra', required=True, type=pathlib.Path)
     bra = parser.parse_args().bra
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+    marker = '<!-- static-array-slice-loop-example -->'
+    if document.count(marker) != 1:
+        raise RuntimeError('Expected exactly one static array slice loop example')
+    example = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+    check_program(bra, example.replace('OPENQASM 3.0;', '', 1), ('TOTAL31',), ['9'])
     check_program(bra, '''array[int,5] values={1,2,3,4,5}; int total=0;
         for int value in values[1:3] { total+=value; }
         for int value in values[4:-2:0] { total+=value; }

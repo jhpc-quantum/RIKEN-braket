@@ -5937,7 +5937,7 @@ when used as a scalar. Qubit indices remain static; bit-register elements also
 support runtime indices as described below.
 
 Unsigned, floating-point, Boolean, complex, and angle arrays are supported as described below.
-Multidimensional arrays, arrays of other element types, slices,
+Multidimensional arrays, arrays of other element types, slices outside supported loop sources,
 whole-array arithmetic or assignments, array-copy initializers, aliases, and
 block-local array declarations remain unsupported.
 
@@ -6039,7 +6039,7 @@ arrays, and direct `for float` iteration is supported as described under
 Floating-point `%`, `**`, bitwise operators, and shifts are not supported,
 including their compound assignments. These type restrictions also apply to
 integer-only operators in empty loops; validation does not execute the skipped
-arithmetic. Unsupported array element types, multidimensional arrays, slices,
+arithmetic. Unsupported array element types, multidimensional arrays, slices outside supported loop sources,
 whole-array expressions or assignments, array-copy initializers, aliases, and
 block-local declarations remain separate work.
 
@@ -6083,7 +6083,7 @@ Integer indices, range bounds, steps, set elements, and gate parameters also
 require an explicit numeric cast of a Boolean value. Direct iteration is described
 under [Boolean-array for loops](#boolean-array-for-loops).
 
-Multidimensional arrays, slices, whole-array expressions or assignments,
+Multidimensional arrays, slices outside supported loop sources, whole-array expressions or assignments,
 array-copy initializers, aliases, and block-local declarations remain unsupported.
 
 ### One-dimensional complex arrays
@@ -6133,7 +6133,7 @@ integer index, range bound, step, or set element.
 
 Position-based loops can update complex elements; direct iteration is described
 under [Complex-array for loops](#complex-array-for-loops). Multidimensional arrays,
-slices, whole-array expressions or assignments, array-copy initializers, aliases,
+slices outside supported loop sources, whole-array expressions or assignments, array-copy initializers, aliases,
 and block-local declarations remain unsupported.
 
 ### One-dimensional angle arrays
@@ -6202,7 +6202,7 @@ using `phases[index][selector]`, including writes that preserve unselected bits.
 [Runtime single-bit indexing](#runtime-single-bit-indexing-on-sized-angles) and
 [runtime-valued discrete sets](#runtime-valued-discrete-set-bit-selections) also
 support reads and writes, including `phases[element][{i, j}]`.
-Array slices, whole-array operations and copying, aliases, multidimensional
+Array slices outside supported loop sources, whole-array operations and copying, aliases, multidimensional
 arrays, and local array declarations remain unsupported.
 The positive-length restriction is an implementation limitation:
 [OpenQASM permits zero-length arrays](https://openqasm.com/language/types.html#arrays),
@@ -7964,8 +7964,45 @@ constant or set-loop body copies still consume their usual budgets, and an
 array loop inside an expanded loop contributes its generated statements and
 instructions. Unsigned-integer-array, floating-point-array, Boolean-array,
 complex-array, angle-array, and bit-register iteration are described below.
-Iteration over slices, other unsupported array types, aliases, or arbitrary
-array expressions remains unsupported.
+Iteration over unsupported array types, aliases, or arbitrary array expressions
+remains unsupported. Static slice iteration is described below.
+
+## Static array-slice for loops
+
+Previously declared one-dimensional `int`, `uint`, `float`, `bool`, `complex`,
+and `angle` arrays support `for` loops over static ranges, such as
+`values[1:3]` or `values[4:-2:0]`. Bounds and steps must be compile-time
+integers, both bounds are required, and an omitted step is one. Steps must be
+nonzero, and each selected index must be within the source array. Negative
+indices are normalized individually, so a range crossing zero can visit a
+source element more than once. Selection order is preserved. Existing
+array-iterator type and width rules, including UINT and angle widening, apply.
+
+Each visit reads the current source element and copies it into the scoped,
+read-only iterator. Changes to future or repeated source positions affect later
+visits. This is the converter's chosen interpretation: the OpenQASM slice and
+loop sections do not explicitly settle whether a slice iterable is snapshotted.
+An empty static range performs no iterations, while the body is still checked;
+the specification's empty-array-slice treatment is not explicit here. Static
+out-of-range positions, invalid steps, types, names, and iterator writes are
+rejected even inside skipped or empty enclosing loops.
+
+<!-- static-array-slice-loop-example -->
+```qasm
+OPENQASM 3.0;
+array[int, 5] values = {1, 2, 3, 4, 5};
+int total = 0;
+for int value in values[4:-2:0] {
+    total += value;
+}
+// total is 9: the loop visits 5, 3, and 1.
+```
+
+The body is generated once and uses a private position and copied iterator;
+negative positions are normalized at each visit. `break`, `continue`, nested
+loops, and source shadowing follow the ordinary array-loop rules. Runtime
+slice bounds, discrete index sets, slice assignment and initialization,
+concatenation, multidimensional arrays, and aliases remain unsupported.
 
 ## Unsigned-integer-array for loops
 
@@ -8031,7 +8068,7 @@ Runtime iteration counts do not consume constant-loop expansion budgets;
 nested or enclosing expansions retain their existing accounting. Computations
 stay on their original paths, while temporary declarations may be hoisted.
 UINT range/set iteration, implicit cross-base-type iteration, narrowing
-UINT iterators, slices, multidimensional arrays, aliases, and arbitrary array
+UINT iterators, slices outside supported loop sources, multidimensional arrays, aliases, and arbitrary array
 expressions remain unsupported.
 
 ## Floating-point-array for loops
@@ -8073,7 +8110,7 @@ steps, and set elements require an explicit integer cast of a float iterator.
 Nested integer-range/set loops, supported array and bit-register loops, and
 `while` loops are supported. `break` exits the nearest loop; `continue` proceeds
 to that loop's next iteration. A float iterator does not enable floating-point
-ranges or discrete sets. Slices, multidimensional arrays, aliases, arbitrary
+ranges or discrete sets. Slices outside supported loop sources, multidimensional arrays, aliases, arbitrary
 array expressions, and arrays of other unsupported element types remain outside
 this subset; general block-local declarations remain unsupported.
 
@@ -8129,7 +8166,7 @@ numeric casts as described for Boolean array elements.
 
 Nested supported range, set, array, bit-register, and `while` loops are supported.
 `break` exits the nearest loop; `continue` proceeds to its next iteration. Boolean
-iterators do not enable Boolean ranges or sets. Slices, multidimensional arrays,
+iterators do not enable Boolean ranges or sets. Slices outside supported loop sources, multidimensional arrays,
 aliases, arbitrary array expressions, and block-local declarations remain unsupported.
 
 The body is generated once using existing QCX loop instructions, with a private
@@ -8188,7 +8225,7 @@ Runtime arithmetic and access checks stay on their execution paths, including
 skipped bodies and short-circuit operands. Iterator types, read-only bindings,
 conditions, and unsupported operators are validated even inside empty enclosing
 loops, without executing skipped arithmetic. Failed lowering releases loop-owned
-temporaries while preserving caller-owned storage. Slices, multidimensional
+temporaries while preserving caller-owned storage. Slices outside supported loop sources, multidimensional
 arrays, aliases, arbitrary array expressions, and block-local declarations remain
 outside this subset.
 
@@ -8280,7 +8317,7 @@ index advancement. Loop-owned temporaries are released on success and failure
 while caller-owned storage is preserved. Runtime iteration counts do not consume
 expansion budgets; nested and enclosing expanded loops retain their accounting.
 No new bra instruction or build option is required. Angle ranges/sets, narrowing
-iterator widths, array slices, aliases, arbitrary array expressions, multidimensional
+iterator widths, array slices outside supported loop sources, aliases, arbitrary array expressions, multidimensional
 or zero-length arrays, and block-local declarations remain unsupported.
 Iteration over an element's bits uses scalar `bit` iterators, as described under
 [angle bit-selection loops](#angle-bit-selection-for-loops).
@@ -10324,6 +10361,13 @@ operations. It covers mixed signed/unsigned promotions, negative/static/runtime
 indices, nested self-references, captured destinations, shifts, exponentiation,
 skipped checks, bounds failures, zero divisors, and checked conversions.
 
+`bra/test/qasm2qcx_static_array_slice_loop_numerical.py` compares static slice
+iteration with an independent index model. It covers forward, reverse, strided,
+negative, repeated, singleton and empty selections, all supported array element
+types, iterator widening, mutations, nested loops, transfers, and gate
+parameters. It also executes the documented example. Run with
+`--bra /path/to/bra`, including a UBSan build.
+
 `bra/test/qasm2qcx_uint_array_loop_numerical.py` checks live reads, copied iterator
 values, mutation, singleton arrays, loop transfers against Python reference
 loops, repeated entry, mixed nesting, width shadowing, every supported widening
@@ -10819,6 +10863,7 @@ python3 bra/test/qasm2qcx_runtime_for_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_step_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_set_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_array_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_static_array_slice_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_uint_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_uint_array_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_float_array_numerical.py --bra bra/bin/bra
