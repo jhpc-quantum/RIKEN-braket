@@ -1,5 +1,6 @@
 import sys
 import itertools
+import operator
 import math
 import cmath
 import enum
@@ -4491,8 +4492,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return None  # Preserve the existing scalar and fixed-width paths.
         left = self.__runtime_bit_register_expression_info(expression.lhs, left_shapes, iterators, allow_angle_ranges=allow_angle_ranges)
         right = self.__runtime_bit_register_expression_info(expression.rhs, right_shapes, iterators, allow_angle_ranges=allow_angle_ranges)
-        if expression.op.name not in ('==', '!='):
-            raise UnsupportedOpenQASMError('ordered comparisons of bit-register values')
         # Only fixed leaves have known widths. Capacities bound storage, never
         # lengths; dynamic length equality must be asserted by the consumer.
         return _RuntimeBitRegisterComparison(expression, left, right)
@@ -4514,8 +4513,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return None
         if lhs is None or rhs is None:
             raise InvalidBitOperandException('Comparison operands must both be scalars or both be registers')
-        if expression.op.name not in ('==', '!='):
-            raise UnsupportedOpenQASMError('ordered comparisons of bit-register values')
         if lhs != rhs:
             raise InvalidBitOperandException(f'Comparison register widths {lhs} and {rhs} do not match')
         return lhs
@@ -4566,6 +4563,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if register_info is not None:
             if isinstance(register_info, _RuntimeBitRegisterComparison):
                 self.__emit_runtime_register_equality_condition(register_info, true_label, false_label)
+            elif condition.op.name not in ('==', '!='):
+                self.__emit_register_ordered_condition(condition, true_label, false_label)
             else:
                 self.__emit_register_equality_condition(condition, true_label, false_label)
             return
@@ -4660,17 +4659,56 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 # Complete both operands, including all runtime checks, before
                 # checking their lengths or exiting on a mismatching bit.
                 index = self.__add_new_temporary_variable(ValueType.INT)
-                self.__qcx_lines.extend([
-                    f'ASSERT {left_count} == {right_count}', f'LET {index} := 0',
-                    f'@{prefix}_COMPARE', f'JUMPIF {match} {index} >= {left_count}',
-                    f'JUMPIF {mismatch} {left}:{index} \\= {right}:{index}',
-                    f'LET {index} += 1', f'JUMP {prefix}_COMPARE',
-                ])
+                if info.expression.op.name in ('==', '!='):
+                    self.__qcx_lines.extend([
+                        f'ASSERT {left_count} == {right_count}', f'LET {index} := 0',
+                        f'@{prefix}_COMPARE', f'JUMPIF {match} {index} >= {left_count}',
+                        f'JUMPIF {mismatch} {left}:{index} \\= {right}:{index}',
+                        f'LET {index} += 1', f'JUMP {prefix}_COMPARE',
+                    ])
+                else:
+                    operation = info.expression.op.name
+                    less, greater = ((true_label, false_label) if operation in ('<', '<=')
+                                     else (false_label, true_label))
+                    equal = true_label if operation in ('<=', '>=') else false_label
+                    self.__qcx_lines.extend([
+                        f'ASSERT {left_count} == {right_count}', f'LET {index} := {left_count}',
+                        f'@{prefix}_COMPARE', f'JUMPIF {equal} {index} <= 0',
+                        f'LET {index} -= 1',
+                        f'JUMPIF {less} {left}:{index} < {right}:{index}',
+                        f'JUMPIF {greater} {left}:{index} > {right}:{index}',
+                        f'JUMP {prefix}_COMPARE',
+                    ])
                 self.__check_runtime_register_output()
             self.__hoist_temporary_declarations(previous_declarations)
         finally:
             for temporary in self.__used_temporary_variables - previous_used:
                 self.__release_temporary_variable(temporary)
+
+    def __emit_register_ordered_condition(
+            self, expression: ast.BinaryExpression, true_label: str, false_label: str) -> None:
+        less_label, greater_label = ((true_label, false_label) if expression.op.name in ('<', '<=')
+                                     else (false_label, true_label))
+        equal_label = true_label if expression.op.name in ('<=', '>=') else false_label
+        with contextlib.ExitStack() as operands:
+            lhs = operands.enter_context(self.__bit_register_expression_value(expression.lhs))
+            rhs = operands.enter_context(self.__bit_register_expression_value(expression.rhs))
+            # Evaluate both operands before branching. Selection position zero is
+            # the least significant bit, so inspect the snapshots in reverse.
+            for left, right in reversed(tuple(zip(lhs, rhs))):
+                if isinstance(left, int) and isinstance(right, int):
+                    if left != right:
+                        self.__qcx_lines.append(f'JUMP {less_label if left < right else greater_label}')
+                        return
+                    continue
+                if isinstance(left, int):
+                    left, right = right, left
+                    self.__qcx_lines.append(f'JUMPIF {greater_label} {left} < {right}')
+                    self.__qcx_lines.append(f'JUMPIF {less_label} {left} > {right}')
+                else:
+                    self.__qcx_lines.append(f'JUMPIF {less_label} {left} < {right}')
+                    self.__qcx_lines.append(f'JUMPIF {greater_label} {left} > {right}')
+            self.__qcx_lines.append(f'JUMP {equal_label}')
 
     def __emit_register_equality_condition(
             self, expression: ast.BinaryExpression, true_label: str, false_label: str) -> None:
@@ -4888,8 +4926,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if width is not None:
                     lhs = self.__constant_bit_register_value(expression.lhs, width)
                     rhs = self.__constant_bit_register_value(expression.rhs, width)
-                    equal = lhs == rhs
-                    self.__value = int(equal if expression.op.name == '==' else not equal) if self.__evaluate_constant else 0
+                    compare = {'==': operator.eq, '!=': operator.ne, '<': operator.lt,
+                               '<=': operator.le, '>': operator.gt, '>=': operator.ge}[expression.op.name]
+                    self.__value = int(compare(lhs, rhs)) if self.__evaluate_constant else 0
                     self.__value_type, self.__value_kind = ValueType.BOOL, ValueKind.LITERAL
                     return
                 if self.__expression_mentions_angle(expression):
