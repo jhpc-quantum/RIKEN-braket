@@ -36438,6 +36438,103 @@ class RuntimeAngleRangeRegisterAssignmentFoundationTests(unittest.TestCase):
         self.assertEqual(self.c._QASM2QCXConverter__used_temporary_variables, {caller})
 
 
+class RuntimeAngleRangePopcountFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    prefix = RuntimeAngleRangeRegisterAssignmentFoundationTests.prefix
+
+    def setUp(self):
+        self.c = self.converter(self.prefix)
+
+    def info(self, source, iterators=None):
+        return self.c._QASM2QCXConverter__runtime_angle_range_popcount_tree(self.expression(source), iterators)
+
+    def test_direct_sources_and_mixed_tree_keep_nodes_and_independent_capacities(self):
+        for source in ('phase[index:u:count]', 'PHASE[index:u:count]', 'phases[index][index:u:count]'):
+            with self.subTest(source=source):
+                expression = self.expression(source)
+                tree = self.c._QASM2QCXConverter__runtime_angle_range_popcount_tree(expression)
+                self.assertIs(tree.expression, expression)
+                self.assertIsInstance(tree.selection, qasm2qcx._RuntimeAngleBitRangeSelection)
+                self.assertIs(tree.selection.source, expression.collection)
+                self.assertIs(tree.selection.bounds, expression.index[0])
+                self.assertEqual(tree.capacity, 16)
+                self.assertIsNone(tree.width)
+                with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                    tree.capacity = 1
+        expression = self.expression('rotl((phases[index][index:count]^large[index:count])&B,u)')
+        tree = self.c._QASM2QCXConverter__runtime_angle_range_popcount_tree(expression)
+        pair, fixed = tree.children[0].children
+        angle, bit = pair.children
+        self.assertIs(tree.expression, expression)
+        self.assertIs(angle.expression, pair.expression.lhs)
+        self.assertIs(bit.expression, pair.expression.rhs)
+        self.assertIsInstance(angle.selection, qasm2qcx._RuntimeAngleBitRangeSelection)
+        self.assertIsInstance(bit.selection, qasm2qcx._RuntimeBitRangeSelection)
+        self.assertEqual((angle.capacity, bit.capacity, pair.capacity, fixed.capacity, tree.capacity),
+                         (16, 258, 16, 4, 4))
+        self.assertEqual(tree.count_type, qasm2qcx.ValueType.UINT)
+
+    def test_nested_operators_and_independent_leaf_capacities(self):
+        for source in ('~phase[index:count]', 'phase[index:count]^PHASE[count:-1:index]',
+                       'B|phase[index:count]', 'phase[index:count]<<u',
+                       'rotr(~phase[index:count],count)',
+                       '(wide[index:count]^phase[index:count])>>u',
+                       'rotl((phase[index:count]&B)^(wide[index:count]|B),u)'):
+            with self.subTest(source=source):
+                self.assertIsNotNone(self.info(source).first_selection)
+        tree = self.info('large[index:count]^phase[index:count]')
+        self.assertEqual((tree.children[0].capacity, tree.children[1].capacity, tree.capacity), (258, 16, 16))
+
+    def test_scope_static_sources_and_iterator_shadowing(self):
+        for source in ('wide[index:count]^B', '~phase[0:3]', 'phase', 'B',
+                       'wide << int(uint[4](phase[index:count]))'):
+            with self.subTest(source=source):
+                self.assertIsNone(self.info(source))
+        self.assertIsNone(self.info('~phase[index:count]', {'phase': qasm2qcx.ValueType.INT}))
+        binding = qasm2qcx._RuntimeIteratorBinding('HELD', value_type=qasm2qcx.ValueType.ANGLE,
+                                                  angle_type=qasm2qcx._AngleType(8, True))
+        with self.c._QASM2QCXConverter__iterator_binding('phase', binding):
+            self.assertEqual(self.info('~phase[index:count]').capacity, 16)
+        self.c._QASM2QCXConverter__declared_constant_variables.remove('PHASE')
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            self.info('~PHASE[index:count]')
+
+    def test_invalid_types_and_known_widths_but_deferred_runtime_domains(self):
+        for source in ('phase[true:count]', 'phase[index:real:count]', 'phases[true][index:count]',
+                       'unsized_phase[index:count]', 'phase[index:missing]', 'phase[index:count]^scalar',
+                       'phase[index:count]^(B&"1")', 'phase[index:count]<<true',
+                       'rotl(phase[index:count],real)'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(source)
+        for source in ('phase[index:0:999]^B', 'phases[index/0][index:count]<<-1',
+                       'rotl(phase[index:count]^wide[index:0:999],count/0)'):
+            with self.subTest(source=source):
+                self.assertIsNotNone(self.info(source))
+
+    def test_metadata_does_not_read_allocate_emit_or_mutate_ast(self):
+        expression = self.expression('rotl(phases[index/0][index:0:999]^wide[index:count],count/0)')
+        before_ast = qasm2qcx.dataclasses.asdict(expression)
+        caller = self.c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(self.c, '_QASM2QCXConverter__'+field) for field in fields]
+        lines = self.c._QASM2QCXConverter__qcx_lines.copy()
+        caches = (self.c._QASM2QCXConverter__uint_expression_types.copy(),
+                  self.c._QASM2QCXConverter__angle_expression_types.copy())
+        with patch.object(self.c, 'visit', side_effect=AssertionError('no evaluation')), \
+             patch.object(self.c, '_QASM2QCXConverter__capture_bit_range_positions', side_effect=AssertionError('no capture')), \
+             patch.object(self.c, '_QASM2QCXConverter__add_new_temporary_variable', side_effect=AssertionError('no allocation')):
+            tree = self.c._QASM2QCXConverter__runtime_angle_range_popcount_tree(expression)
+        self.assertIs(tree.expression, expression)
+        self.assertEqual(qasm2qcx.dataclasses.asdict(expression), before_ast)
+        self.assertEqual(before, [getattr(self.c, '_QASM2QCXConverter__'+field) for field in fields])
+        self.assertEqual(lines, self.c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(caches, (self.c._QASM2QCXConverter__uint_expression_types,
+                                  self.c._QASM2QCXConverter__angle_expression_types))
+        self.assertEqual(self.c._QASM2QCXConverter__used_temporary_variables, {caller})
+
+
 class RuntimeAngleRangeExpressionAssignmentFoundationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)

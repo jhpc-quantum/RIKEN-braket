@@ -8843,6 +8843,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise InvalidBitOperandException('Runtime selection source width must fit QCX INT indexing')
         return _RuntimeBitRangeSelection(name, size, bounds, start_type, step_type, stop_type)
 
+    def __runtime_angle_range_popcount_tree(
+            self, argument: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRegisterExpression | None:
+        # Probe only register operands; distances and nested casts retain their
+        # own contexts. Direct leaves and nested trees use the same snapshots.
+        if not self.__contains_angle_bit_range(argument, iterators):
+            return None
+        shapes = self.__runtime_bit_register_expression_shapes(argument, iterators, allow_angle_ranges=True)
+        if shapes[id(argument)] < 0:
+            return None
+        return self.__runtime_bit_register_expression_info(argument, shapes, iterators, allow_angle_ranges=True)
+
     def __runtime_bit_range_popcount_info(
             self, argument: ast.Expression,
             iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangePopcountInfo | None:
