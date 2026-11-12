@@ -4426,6 +4426,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         value = self.__runtime_bit_register_expression_info(statement.rvalue, shapes, iterators, allow_angle_ranges=True)
         return _RuntimeBitRegisterAssignment(statement.lvalue, width, value, operator=statement.op.name)
 
+    def __runtime_angle_range_static_compound_assignment_info(
+            self, statement: ast.ClassicalAssignment,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRegisterAssignment | None:
+        if statement.op.name not in ('&=', '|=', '^='):
+            return None
+        info = self.__runtime_angle_range_static_selection_assignment_info(statement.lvalue, statement.rvalue, iterators)
+        if info is None:
+            return None
+        return dataclasses.replace(info, operator=statement.op.name)
+
     def __runtime_register_assignment_destination_width(
             self, target: ast.Identifier,
             iterators: set[str] | dict[str, ValueType] | None) -> int:
