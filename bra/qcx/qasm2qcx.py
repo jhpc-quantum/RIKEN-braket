@@ -5651,7 +5651,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         bounds = statement.set_declaration
         iterator_names = set(iterators)
         if isinstance(bounds, ast.Identifier):
-            return self.__collection_loop_info(bounds, statement.type, iterators)[3]
+            return self.__collection_loop_info(bounds, statement.type, iterators, allow_angle_widening=True)[3]
         if (self.__angle_selection_loop_info(bounds, statement.type, iterators) is not None
                 or self.__bit_selection_loop_info(bounds, statement.type, iterators) is not None):
             return None  # BIT iterators do not carry UINT width metadata.
@@ -6630,7 +6630,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __visit_collection_for(self, statement: ast.ForInLoop) -> None:
         source, size, value_type, uint_type = self.__collection_loop_info(
-            statement.set_declaration, statement.type)
+            statement.set_declaration, statement.type, allow_angle_widening=True)
         angle_type = self.__angle_type(statement.type) if value_type == ValueType.ANGLE else None
         binding = _RuntimeIteratorBinding(f'QASM2QCX_LOOP_{self.__loop_index}_ITERATOR', value_type, uint_type, angle_type)
         with self.__iterator_binding(statement.identifier.name, binding):
@@ -6665,6 +6665,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             operand = source if value_type == ValueType.BIT and size == 1 else f'{source}:{index}'
             self.__qcx_lines.extend([f'LET {index} := 0', f'@{body_label}',
                                     f'LET {iterator} := {operand}'])
+            if angle_type is not None:
+                source_width = self.__angle_array_types[source].width
+                if angle_type.width > source_width:
+                    self.__qcx_lines.append(f'LET {iterator} <<= {angle_type.width - source_width}')
             # Read the current element on each iteration, not a loop-entry
             # snapshot. Keep its copied value and index reserved across the body.
             with self.__iterator_binding(statement.identifier.name, dataclasses.replace(binding, storage=iterator)), \

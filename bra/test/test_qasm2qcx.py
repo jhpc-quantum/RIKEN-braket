@@ -23539,7 +23539,7 @@ class AngleArrayLoopValidationTests(unittest.TestCase):
                 info(statement.set_declaration, statement.type, allow_angle_widening=True)
 
     def test_rejects_width_and_element_type_mismatches_even_in_empty_loops(self):
-        for iterator in ('angle[3]', 'angle[5]', 'angle', 'int', 'uint[4]', 'float', 'bool', 'complex'):
+        for iterator in ('angle[3]', 'int', 'uint[4]', 'float', 'bool', 'complex'):
             with self.subTest(iterator=iterator), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                 self.converter('array[angle[4], 2] phases; for int outer in [1:0] {'
                                f'for {iterator} phase in phases {{}}' + '}')
@@ -23659,6 +23659,31 @@ class AngleArrayLoopLoweringTests(unittest.TestCase):
         self.assertEqual(converter._QASM2QCXConverter__temporary_uint_types['QASM2QCX_UINT_0'],
                          qasm2qcx._UnsignedIntegerType(4, True))
         self.assertFalse(any(line.startswith('VAR ') and ' ANGLE' in line for line in lines))
+
+    def test_widening_occurs_after_live_read_and_before_body(self):
+        native = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        for source_width, iterator in ((1, f'angle[{native}]'), (4, 'angle[8]'), (4, 'angle')):
+            with self.subTest(source_width=source_width, iterator=iterator):
+                converter = self.converter(f'array[angle[{source_width}], 2] phases; '
+                    f'for {iterator} phase in phases {{ if (phase == phase) {{ continue; }} }}')
+                lines = converter._QASM2QCXConverter__qcx_lines
+                body = lines.index('@QASM2QCX_LOOP_0_BODY')
+                target_width = native if iterator == 'angle' else int(iterator[6:-1])
+                self.assertEqual(lines[body + 1], 'LET QASM2QCX_UINT_0 := PHASES63:QASM2QCX_INT_0')
+                self.assertEqual(lines[body + 2], f'LET QASM2QCX_UINT_0 <<= {target_width - source_width}')
+                self.assertEqual(converter._QASM2QCXConverter__temporary_uint_types['QASM2QCX_UINT_0'],
+                                 qasm2qcx._UnsignedIntegerType(target_width, iterator != 'angle'))
+
+    def test_widening_nested_empty_loops_and_narrowing_validation(self):
+        self.converter('array[angle[4], 2] phases; '
+                       'for int outer in [1:0] { for angle[8] phase in phases { '
+                       'if (phase == phase) { continue; } } }')
+        self.converter('array[angle[4], 2] phases; '
+                       'for angle[8] phases in phases { if (phases == phases) { break; } }')
+        for source in ('array[angle[8], 2] phases; for angle[4] phase in phases {}',
+                       'array[angle[8], 2] phases; for int i in [1:0] { for angle[4] phase in phases {} }'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                self.converter(source)
 
     def test_sizedness_of_iterator_controls_storage_metadata(self):
         native = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
