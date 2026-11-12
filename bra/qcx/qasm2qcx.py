@@ -4446,6 +4446,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return None
         return dataclasses.replace(info, operator=statement.op.name)
 
+    def __runtime_angle_range_range_compound_assignment_info(
+            self, statement: ast.ClassicalAssignment,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRangeExpressionAssignment | None:
+        if statement.op.name not in ('&=', '|=', '^='):
+            return None
+        info = self.__runtime_angle_range_range_expression_assignment_info(statement.lvalue, statement.rvalue, iterators)
+        if info is None:
+            return None
+        return dataclasses.replace(info, operator=statement.op.name)
+
     def __runtime_register_assignment_destination_width(
             self, target: ast.Identifier,
             iterators: set[str] | dict[str, ValueType] | None) -> int:
