@@ -100,6 +100,14 @@ class BackendTests(unittest.TestCase):
                             [value << (target_width-source_width) for value in values] + values,
                             ('i',), (size,))
 
+    def test_documented_widening_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- angle-array-widening-example -->'
+        self.assertEqual(document.count(marker), 1)
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        self.check_initializers(source.replace('OPENQASM 3.0;', '', 1),
+                                (('phases', 2), ('copies', 2)), (3,6,48,96), ('index',), (2,))
+
     def test_widening_live_reads_shadowing_and_transfers(self):
         self.check_initializers('''array[angle[4], 3] phases={angle[4]("0001"),
                 angle[4]("0010"),angle[4]("0011")};

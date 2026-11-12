@@ -8181,11 +8181,13 @@ outside this subset.
 The converter supports `for angle name in phases` and
 `for angle[n] name in phases` over previously declared one-dimensional angle
 arrays. Elements are visited in increasing index order, including repeated
-values. The iterator and array elements must have matching effective widths.
-Unsized `angle` and explicit `angle[W]` forms can be mixed at native QCX UINT
-width `W`; the iterator keeps the sizedness of its own declaration. Other
-width conversions and implicit iteration with a different element type remain
-unsupported, even where an explicit scalar conversion would be accepted.
+values. The iterator's effective width must be at least the element width.
+Widening appends low-order zero bits to the copied element, preserving the
+represented angle. Unsized `angle` has the native QCX UINT width `W`; sized
+and unsized forms can be combined when their effective widths permit widening.
+The iterator keeps the sizedness of its own declaration. Narrowing and
+implicit iteration with a different element type remain unsupported, even
+where an explicit scalar conversion would be accepted.
 
 The source array and iterator width are resolved before introducing the
 iterator binding. A width must be a supported compile-time integer expression,
@@ -8235,6 +8237,18 @@ for angle[4] phase in phases {
 // total has stored bits 1010 (5*pi/4); phases contains three zero angles.
 ```
 
+<!-- angle-array-widening-example -->
+```qasm
+OPENQASM 3.0;
+array[angle[4], 2] phases = {angle[4]("0011"), angle[4]("0110")};
+array[angle[8], 2] copies;
+int index = 0;
+for angle[8] phase in phases {
+    copies[index] = phase; // The stored patterns are "00110000" and "01100000".
+    index += 1;
+}
+```
+
 Nested supported range, set, array, bit-register, and `while` loops are accepted.
 `break` exits the nearest loop; `continue` advances to its next iteration. As with
 other converter loops, assignments and measurements into active iterators are
@@ -8249,7 +8263,7 @@ index and UINT iterator reserved throughout the body. An endpoint guard precedes
 index advancement. Loop-owned temporaries are released on success and failure
 while caller-owned storage is preserved. Runtime iteration counts do not consume
 expansion budgets; nested and enclosing expanded loops retain their accounting.
-No new bra instruction or build option is required. Angle ranges/sets, differing
+No new bra instruction or build option is required. Angle ranges/sets, narrowing
 iterator widths, array slices, aliases, arbitrary array expressions, multidimensional
 or zero-length arrays, and block-local declarations remain unsupported.
 Iteration over an element's bits uses scalar `bit` iterators, as described under
@@ -9099,7 +9113,7 @@ The current prototype does not reliably support:
   bit selections on unsized angles, arithmetic compound
   assignments to angle bit selections, INT/UINT bit slicing, multidimensional angle arrays,
   iteration over angle-valued ranges/sets,
-  different-width angle-array iterators,
+  narrowing angle-array iterators,
   numeric casts from angles, angle-valued gates outside
   `p`/`phase`/`u1`/`cp`/`cphase`/`gphase`; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
@@ -9145,7 +9159,8 @@ cleanup. Run with `--bra /path/to/bra`, including a UBSan build.
 
 `bra/test/qasm2qcx_angle_array_loop_numerical.py` checks live reads, copied
 iterator values, future/current source mutation, reentry, nested shadowing, and
-nearest-loop transfers. Exact raw-storage references cover all supported widths,
+nearest-loop transfers. Exact raw-storage references cover every supported
+element-to-iterator widening pair, all supported widths,
 arithmetic, comparisons, shifts, bit functions, casts, and cross-width promotion.
 Integration cases include trigonometric functions, dependent integer loops,
 mixed iterator types, reached/skipped errors, phase gates, modifiers, and fusion.

@@ -6621,7 +6621,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 source_width = self.__angle_array_types[variable_name].width
                 if (angle_type.width != source_width
                         and (not allow_angle_widening or angle_type.width < source_width)):
-                    raise UnsupportedOpenQASMError('angle array iteration requires matching effective widths')
+                    restriction = ('an iterator at least as wide as its elements' if allow_angle_widening
+                                   else 'matching effective widths')
+                    raise UnsupportedOpenQASMError(f'angle array iteration requires {restriction}')
             if (not self.__is_initialization_process
                     and variable_name not in self.__array_element_types):
                 raise NoVariableNameException(name)
