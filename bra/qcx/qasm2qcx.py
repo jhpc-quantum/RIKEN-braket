@@ -5583,6 +5583,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __validate_loop_header(
             self, statement: ast.ForInLoop,
             iterators: set[str] | dict[str, ValueType] | None = None) -> None:
+        if self.__static_array_slice_loop_info(statement.set_declaration, statement.type, iterators) is not None:
+            return
         if self.__angle_selection_loop_info(statement.set_declaration, statement.type, iterators) is not None:
             return
         if self.__bit_selection_loop_info(statement.set_declaration, statement.type, iterators) is not None:
@@ -5662,6 +5664,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if isinstance(bounds, ast.Identifier):
             return self.__collection_loop_info(
                 bounds, statement.type, iterators, allow_angle_widening=True, allow_uint_widening=True)[3]
+        array_slice = self.__static_array_slice_loop_info(bounds, statement.type, iterators)
+        if array_slice is not None:
+            return array_slice.uint_type
         if (self.__angle_selection_loop_info(bounds, statement.type, iterators) is not None
                 or self.__bit_selection_loop_info(bounds, statement.type, iterators) is not None):
             return None  # BIT iterators do not carry UINT width metadata.
@@ -5730,6 +5735,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise UnsupportedOpenQASMError('block-local declaration')
             if not isinstance(child, supported):
                 raise UnsupportedOpenQASMError(f'loop body {type(child).__name__}')
+            if (not self.__is_initialization_process and isinstance(child, ast.ClassicalAssignment)
+                    and isinstance(child.rvalue, ast.Identifier)):
+                name = child.rvalue.name
+                if (name not in iterators and name not in self.__classical_source_types
+                        and name not in self.__constant_source_types and name not in ('pi', 'tau', 'euler')):
+                    raise NoVariableNameException(name)
             self.__validate_bitwise_types(child, iterators)
             target = (child.lvalue if isinstance(child, ast.ClassicalAssignment)
                       else child.target if isinstance(child, ast.QuantumMeasurementStatement)
@@ -6152,7 +6163,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__validate_loop_header(statement)
         source = statement.set_declaration
         if isinstance(source, ast.IndexExpression):
-            if self.__angle_selection_loop_info(source, statement.type) is not None:
+            array_slice = self.__static_array_slice_loop_info(source, statement.type)
+            if array_slice is not None:
+                self.__visit_collection_for(statement, array_slice)
+            elif self.__angle_selection_loop_info(source, statement.type) is not None:
                 self.__visit_angle_selection_for(statement)
             else:
                 self.__visit_bit_selection_for(statement)
@@ -6680,9 +6694,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return variable_name, self.__array_source_sizes[name], value_type, uint_type
         raise UnsupportedOpenQASMError('for-loop identifier other than an int/uint/float/bool/complex/angle array or bit register')
 
-    def __visit_collection_for(self, statement: ast.ForInLoop) -> None:
-        source, size, value_type, uint_type = self.__collection_loop_info(
-            statement.set_declaration, statement.type, allow_angle_widening=True, allow_uint_widening=True)
+    def __visit_collection_for(self, statement: ast.ForInLoop,
+                               array_slice: _StaticArraySliceLoop | None = None) -> None:
+        if array_slice is None:
+            source, size, value_type, uint_type = self.__collection_loop_info(
+                statement.set_declaration, statement.type, allow_angle_widening=True, allow_uint_widening=True)
+        else:
+            source, size, value_type, uint_type = (array_slice.source, array_slice.source_size,
+                                                   array_slice.value_type, array_slice.uint_type)
         angle_type = self.__angle_type(statement.type) if value_type == ValueType.ANGLE else None
         binding = _RuntimeIteratorBinding(f'QASM2QCX_LOOP_{self.__loop_index}_ITERATOR', value_type, uint_type, angle_type)
         with self.__iterator_binding(statement.identifier.name, binding):
@@ -6701,6 +6720,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 for child in statement.block:
                     self.visit(child)
             return
+        if array_slice is not None and not self.__loop_value_count(array_slice.indices):
+            return
 
         previous_temporaries = self.__declared_temporary_variables.copy()
         previous_used = self.__used_temporary_variables.copy()
@@ -6714,9 +6735,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         try:
             # QCX stores a singleton bit register as a scalar INT, unlike
             # classical arrays, whose scalar accesses retain explicit indexing.
-            operand = source if value_type == ValueType.BIT and size == 1 else f'{source}:{index}'
-            self.__qcx_lines.extend([f'LET {index} := 0', f'@{body_label}',
-                                    f'LET {iterator} := {operand}'])
+            if array_slice is None:
+                operand = source if value_type == ValueType.BIT and size == 1 else f'{source}:{index}'
+                self.__qcx_lines.extend([f'LET {index} := 0', f'@{body_label}', f'LET {iterator} := {operand}'])
+            else:
+                physical = self.__add_new_temporary_variable(ValueType.INT)
+                nonnegative = f'QASM2QCX_LOOP_{loop_index}_SLICE_NONNEGATIVE'
+                self.__qcx_lines.extend([
+                    f'LET {index} := {array_slice.indices.start}', f'@{body_label}',
+                    f'LET {physical} := {index}', f'JUMPIF {nonnegative} {physical} >= 0',
+                    f'LET {physical} += {size}', f'@{nonnegative}', f'LET {iterator} := {source}:{physical}'])
             if angle_type is not None:
                 source_width = self.__angle_array_types[source].width
                 if angle_type.width > source_width:
@@ -6727,8 +6755,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     self.__loop_context(end_label, next_label):
                 for child in statement.block:
                     self.visit(child)
-            self.__qcx_lines.extend([f'@{next_label}', f'JUMPIF {end_label} {index} == {size - 1}',
-                                    f'LET {index} += 1', f'JUMP {body_label}', f'@{end_label}'])
+            if array_slice is None:
+                self.__qcx_lines.extend([f'@{next_label}', f'JUMPIF {end_label} {index} == {size - 1}',
+                                        f'LET {index} += 1', f'JUMP {body_label}', f'@{end_label}'])
+            else:
+                count = self.__loop_value_count(array_slice.indices)
+                last = array_slice.indices.start + (count - 1) * array_slice.indices.step
+                self.__qcx_lines.extend([f'@{next_label}', f'JUMPIF {end_label} {index} == {last}'])
+                if count > 1:
+                    self.__qcx_lines.extend([f'LET {index} += {array_slice.indices.step}', f'JUMP {body_label}'])
+                self.__qcx_lines.append(f'@{end_label}')
             self.__hoist_temporary_declarations(previous_temporaries)
             if self.__inside_expanded_loop():
                 self.__check_loop_output_limit()
