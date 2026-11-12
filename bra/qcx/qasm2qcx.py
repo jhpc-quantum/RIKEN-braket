@@ -260,6 +260,15 @@ class _ConstantBitRegister:
 
 
 @dataclasses.dataclass(frozen=True)
+class _StaticArraySliceLoop:
+    source: str
+    source_size: int
+    indices: range  # Raw indices retain negative aliases until each visit.
+    value_type: ValueType
+    uint_type: _UnsignedIntegerType | None
+
+
+@dataclasses.dataclass(frozen=True)
 class _StaticBitSelection:
     source_name: str
     indices: tuple[int, ...]
@@ -6575,6 +6584,42 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # The runtime count is positive and at most twice the angle width.
             self.__qcx_lines.extend([f'LET {index} += 1', f'JUMPIF {body_label} {index} < {count}'])
         self.__qcx_lines.append(f'@{end_label}')
+
+    def __static_array_slice_loop_info(
+            self, source: ast.QASMNode, iteration_type: ast.QASMNode,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _StaticArraySliceLoop | None:
+        if not (isinstance(source, ast.IndexExpression) and isinstance(source.collection, ast.Identifier)):
+            return None
+        name = source.collection.name
+        if not isinstance(self.__classical_source_types.get(name), ast.ArrayType):
+            return None
+        if not (isinstance(source.index, list) and len(source.index) == 1
+                and isinstance(source.index[0], ast.RangeDefinition)):
+            raise UnsupportedOpenQASMError('array loop source requires a one-dimensional range slice')
+        bounds = source.index[0]
+        if bounds.start is None or bounds.end is None:
+            raise UnsupportedOpenQASMError('array slice range with omitted bound')
+        active = set(iterators or ()) | {key for scope in self.__loop_bindings for key in scope}
+        names = self.__loop_bound_names(bounds)
+        if names & active or any(name in self.__classical_source_types for name in names):
+            raise UnsupportedOpenQASMError('runtime-dependent array loop slice')
+        array, size, value_type, uint_type = self.__collection_loop_info(
+            source.collection, iteration_type, iterators, allow_angle_widening=True, allow_uint_widening=True)
+        start = self.__constant_loop_integer(bounds.start, 'start', kind='array slice', signed_capture=True)
+        end = self.__constant_loop_integer(bounds.end, 'stop', kind='array slice', signed_capture=True)
+        step = (1 if bounds.step is None else
+                self.__constant_loop_integer(bounds.step, 'step', kind='array slice', signed_capture=True))
+        if step == 0:
+            raise InvalidLoopRangeException('Array slice step cannot be zero')
+        indices = range(start, end + (1 if step > 0 else -1), step)
+        count = self.__loop_value_count(indices)
+        if count > self.QCX_INT_MAX:
+            raise InvalidLoopRangeException('Array slice loop size exceeds QCX INT range')
+        if count:
+            last = start + (count - 1) * step
+            if min(start, last) < -size or max(start, last) >= size:
+                raise InvalidArrayOperandException(f'Array slice index is outside {name}[{size}]')
+        return _StaticArraySliceLoop(array, size, indices, value_type, uint_type)
 
     def __collection_loop_info(
             self, source: ast.Identifier, iteration_type: ast.QASMNode,
