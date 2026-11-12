@@ -1468,7 +1468,7 @@ class ConstantBitRegisterExpressionTests(unittest.TestCase):
             with self.subTest(source=source):
                 self.converter(self.declarations + 'const bool READY = ' + source + ';')
         for source in ('false && (popcount(MISSING) > 0)',
-                       'false && (FLAGS == "1")', 'false && (FLAGS > FLAGS)',
+                       'false && (FLAGS == "1")', 'false && (FLAGS > "1")',
                        'false && (popcount(FLAGS[99:99]) > 0)'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(self.declarations + 'const bool READY = ' + source + ';')
@@ -15579,7 +15579,7 @@ class BitRegisterBitwiseFoundationTests(unittest.TestCase):
 
     def test_unsupported_operations_and_selections_rejected(self) -> None:
         converter = self.converter('bit[4] a; bit[4] b; float f; array[int, 2] values;')
-        for expression in ('a << true', 'a + b', '!a', 'a < b', 'int(a)', 'a[0:1] & b',
+        for expression in ('a << true', 'a + b', '!a', 'a < "1"', 'int(a)', 'a[0:1] & b',
                            'a[{0, 1}] | b', 'a[f] & a[0]', 'values & a', 'unsupported_math(1.0)'):
             with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.width(converter, expression)
@@ -15651,11 +15651,12 @@ class BitRegisterEqualityFoundationTests(unittest.TestCase):
         lines = convert('OPENQASM 3.0; int n = 1; bool same = n == 1; bit flag = 1; if (flag != false) {}')
         self.assertTrue(any(line.startswith('JUMPIF ') for line in lines))
 
-    def test_ordered_register_comparisons_remain_unsupported(self) -> None:
+    def test_ordered_register_comparisons_require_equal_widths(self) -> None:
         for operator in ('<', '<=', '>', '>='):
-            with self.subTest(operator=operator), self.assertRaisesRegex(
-                    qasm2qcx.UnsupportedOpenQASMError, 'ordered comparisons'):
-                self.width('a ' + operator + ' b')
+            with self.subTest(operator=operator):
+                self.assertEqual(self.width('a ' + operator + ' b'), 4)
+                with self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException, 'register widths'):
+                    self.width('a ' + operator + ' one')
 
     def test_validation_does_not_emit_or_evaluate_runtime_arithmetic(self) -> None:
         before = (list(self.converter._QASM2QCXConverter__qcx_lines),
@@ -15820,7 +15821,7 @@ class BitRegisterEqualityControlFlowTests(unittest.TestCase):
             with self.subTest(condition=condition):
                 convert('OPENQASM 3.0; bit[4] a; bit[4] b; array[int, 2] counts; '
                         'for int i in [1:0] { while (' + condition + ') { break; } }')
-        for condition in ('a == "01"', 'a == missing', 'a < b', 'a[n:true:3] == b',
+        for condition in ('a == "01"', 'a == missing', 'a < "1"', 'a[n:true:3] == b',
                           '(a << 1.5) == b', 'a[0:4] == b'):
             with self.subTest(condition=condition), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert('OPENQASM 3.0; bit[4] a; bit[4] b; int n; '
@@ -16341,7 +16342,7 @@ class RuntimeBitSetExpressionFoundationTests(unittest.TestCase):
                 self.assertEqual(self.c._QASM2QCXConverter__loop_expression_info(self.expression(source)), (kind, True))
         for source in ('flags[{index}] ^ "11"', 'flags[{index}] & scalar',
                        'flags[{index}] << true', 'flags[{index}] == scalar',
-                       'flags[{index}] > "1"', 'angle[4](flags[{index, 0}])'):
+                       'flags[{index}] > "11"', 'angle[4](flags[{index, 0}])'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 expression = self.expression(source)
                 if source.startswith('angle'):
@@ -21374,7 +21375,7 @@ class RuntimeAngleBitSetSelectionReadTests(unittest.TestCase):
     def test_scalar_constant_and_width_mismatch_contexts_still_reject_sets(self):
         for body in ('copy = a[{index}];', 'if (a[{index}]) {}',
                      'const bit[1] BAD = C[{index}];', 'bit[2] wrong = a[{index}];',
-                     'bool wrong = a[{index}] < "1";'):
+                     'bool wrong = a[{index}] < "11";'):
             with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(self.prefix + body)
 
@@ -21560,10 +21561,12 @@ class RuntimeAngleBitSelectionReadTests(unittest.TestCase):
                     + loop + ' { total += popcount(value[index]); out = ~value[index]; }')
                 self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
 
-    def test_scalar_and_ordered_comparison_contexts_remain_invalid(self):
-        for expression in ('a[index] < "1"', 'a[index] > a[index]', 'a[index]'):
-            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+    def test_ordered_comparisons_and_invalid_scalar_context(self):
+        for expression in ('a[index] < "1"', 'a[index] > a[index]'):
+            with self.subTest(expression=expression):
                 self.converter('angle[4] a; int index; bool result = ' + expression + ';')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.converter('angle[4] a; int index; bool result = a[index];')
 
 
 class RuntimeAngleBitSelectionWriteTests(unittest.TestCase):
@@ -22511,7 +22514,7 @@ class BitRegisterBitwiseExpressionTests(unittest.TestCase):
         prefix = 'OPENQASM 3.0; bit[4] a; bit[4] b; '
         for statement in ('a[0:2] = ~b;', 'a[{0, 1, 2}] = b & a;',
                           'a = a[0:4] ^ b;', 'a = a << true;', 'a = bit[4](1);',
-                          'int n = int(a & b);', 'if (a | b) {}', 'bool ok = a < b;',
+                          'int n = int(a & b);', 'if (a | b) {}', 'bool ok = a < "1";',
                           'if (false) { a = a ^ "01"; }'):
             with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert(prefix + statement)
