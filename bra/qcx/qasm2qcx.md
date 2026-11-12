@@ -3152,7 +3152,7 @@ range checks before index assertions or loop execution. Constant UINT loop
 operands must also fit QCX `INT`; expansion never silently retypes an
 unrepresentable unsigned value as an INT iterator. Negative indices and negative
 steps require signed values: unsigned negation wraps, rather than producing a
-negative value. `for uint` is supported for matching-width UINT arrays, not
+negative value. `for uint` is supported for UINT arrays with matching or wider iterators, not
 for integer ranges or discrete sets.
 
 ### Casts between UINT values and bit registers
@@ -3396,7 +3396,7 @@ uint[4] fresh = uint[4](phase[{index,0,0,1}]); // 0; saved is still 7.
 ```
 
 UINT operands may use supported scalar expressions, including indexed UINT
-array elements and matching-width UINT array iterators. The source width is
+array elements and supported UINT array iterators. The source width is
 inferred from the complete expression before any conversion: shifts preserve
 the left operand's width, while binary UINT arithmetic promotes widths according
 to the existing UINT rules. For example, `bit[4](u4 + u8)` is invalid because the
@@ -7970,11 +7970,12 @@ array expressions remains unsupported.
 ## Unsigned-integer-array for loops
 
 The converter supports `for uint name in values` and `for uint[n] name in values`
-over previously declared one-dimensional UINT arrays. The iterator and element
-must have equal effective widths. Therefore an unsized `uint` iterator requires
-a native-width array; `uint` and `uint[W]` are compatible when `W` is native width.
-Different specified widths, including widening, are rejected rather than
-implicitly converted. The iterator retains its own specified/unsized metadata.
+over previously declared one-dimensional UINT arrays. The iterator's effective
+width must be at least the element width. Widening preserves the element's
+numeric value; it does not shift the copied bits. An unsized `uint` iterator
+has native width and can iterate over any supported UINT-array width. The
+iterator retains its own specified/unsized metadata, and its expressions use
+that width, including for modular arithmetic. Narrower iterators are rejected.
 Its width must be a supported compile-time integer, resolved before introducing
 its binding; enclosing loop iterators cannot supply a width.
 
@@ -7987,6 +7988,21 @@ for uint[8] value in values {
     total += value;
 }
 // total is 3; values contains 1, 2, 0.
+```
+
+<!-- uint-array-widening-example -->
+```qasm
+OPENQASM 3.0;
+array[uint[4], 2] values = {3, 15};
+array[uint[8], 2] copied;
+uint total = 0;
+int index = 0;
+for uint[8] value in values {
+    copied[index] = value;
+    total += value + uint[8](1);
+    index += 1;
+}
+// copied contains 3 and 15; total is 20.
 ```
 
 Elements are visited in increasing index order with the same live-read policy
@@ -8014,8 +8030,8 @@ inside empty enclosing loops without fabricating iterator values.
 Runtime iteration counts do not consume constant-loop expansion budgets;
 nested or enclosing expansions retain their existing accounting. Computations
 stay on their original paths, while temporary declarations may be hoisted.
-UINT range/set iteration, implicit cross-base-type iteration, different-width
-UINT iteration, slices, multidimensional arrays, aliases, and arbitrary array
+UINT range/set iteration, implicit cross-base-type iteration, narrowing
+UINT iterators, slices, multidimensional arrays, aliases, and arbitrary array
 expressions remain unsupported.
 
 ## Floating-point-array for loops
@@ -8026,7 +8042,7 @@ index order, including repeated values. Sized float base and iterator types such
 as `float[32]` and `float[64]` follow the existing native-`REAL` policy: their widths
 are not enforced, and differing declared float widths do not introduce rounding
 or precision conversion. Signed-integer arrays require `int` iterators,
-unsigned-integer arrays require matching-width `uint` iterators, and float arrays
+unsigned-integer arrays require matching or wider `uint` iterators, and float arrays
 require `float` iterators; implicit cross-base-type conversion is not supported.
 
 ```qasm
@@ -9119,7 +9135,7 @@ The current prototype does not reliably support:
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
 
 Integer limitations additionally include `uint[n]` widths above native `UINT`,
-UINT range/set iterators, different-width UINT array iterators,
+UINT range/set iterators, narrowing UINT array iterators,
 fixed-width signed reinterpretation casts from UINT,
 mixed signed/unsigned expressions with non-native signed widths, and general
 signed-width emulation or signed-arithmetic overflow checks.
@@ -10310,8 +10326,8 @@ skipped checks, bounds failures, zero divisors, and checked conversions.
 
 `bra/test/qasm2qcx_uint_array_loop_numerical.py` checks live reads, copied iterator
 values, mutation, singleton arrays, loop transfers against Python reference
-loops, repeated entry, mixed nesting, width shadowing, compatible native-width
-forms, casts, comparisons, gate parameters, skipped accesses, and executed
+loops, repeated entry, mixed nesting, width shadowing, every supported widening
+pair and compatible native-width forms, casts, comparisons, gate parameters, skipped accesses, and executed
 conversion/count/bounds errors. Unit tests additionally verify unsupported
 widths/types, scoped read-only bindings, empty-loop validation, and cleanup
 without releasing caller-owned storage.

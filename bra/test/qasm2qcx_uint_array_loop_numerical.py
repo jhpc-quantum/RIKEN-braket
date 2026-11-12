@@ -22,6 +22,14 @@ def main() -> None:
     native = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
     native_mask = qasm2qcx.QASM2QCXConverter.QCX_UINT_MAX
 
+    document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+    marker = '<!-- uint-array-widening-example -->'
+    if document.count(marker) != 1:
+        raise RuntimeError('Expected exactly one UINT array widening example')
+    example = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+    check_program(bra, example.replace('OPENQASM 3.0;', '', 1),
+                  ('COPIED63:0', 'COPIED63:1', 'TOTAL31', 'INDEX31'), ['3', '15', '20', '2'])
+
     # The copied value retains its number, while operations use iterator width.
     check_program(bra, '''array[uint[4],2] values={15,1}; uint total=0; uint complement=0;
         for uint[8] value in values { total+=value+uint[8](1); complement+=~value; }''',
