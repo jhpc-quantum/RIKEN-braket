@@ -24188,6 +24188,71 @@ class StaticArraySliceLoopFoundationTests(unittest.TestCase):
             self.info(c, 'values[0:1]')
 
 
+class RuntimeArraySliceLoopFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def setUp(self):
+        self.c = self.converter('const int N=2; array[int,5] values; int first; int last; uint stride; float real;')
+
+    def info(self, source, iterator='int', iterators=None):
+        loop = self.program(f'for {iterator} item in {source} {{}}').statements[0]
+        return self.c._QASM2QCXConverter__runtime_array_slice_loop_info(
+            loop.set_declaration, loop.type, iterators)
+
+    def test_runtime_shapes_keep_original_bounds_and_integer_types(self):
+        loop = self.program('for int item in values[first:stride:last] {}').statements[0]
+        info = self.c._QASM2QCXConverter__runtime_array_slice_loop_info(loop.set_declaration, loop.type)
+        self.assertIsInstance(info, qasm2qcx._RuntimeArraySliceLoop)
+        self.assertIs(info.bounds, loop.set_declaration.index[0])
+        self.assertEqual((info.source, info.source_size, info.value_type), ('VALUES63', 5, qasm2qcx.ValueType.INT))
+        self.assertEqual((info.start_type, info.step_type, info.stop_type),
+                         (qasm2qcx.ValueType.INT, qasm2qcx.ValueType.UINT, qasm2qcx.ValueType.INT))
+        with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+            info.source_size = 1
+        self.assertEqual(self.info('values[first:last]').step_type, qasm2qcx.ValueType.INT)
+        self.assertIsNone(self.info('values[0:N]'))
+        self.assertIsNone(self.info('first[0:1]'))
+
+    def test_types_and_widened_iterator_metadata(self):
+        for element, iterator, value_type in (('int','int',qasm2qcx.ValueType.INT),
+                ('uint[4]','uint[8]',qasm2qcx.ValueType.UINT), ('angle[4]','angle[8]',qasm2qcx.ValueType.ANGLE),
+                ('float','float',qasm2qcx.ValueType.FLOAT), ('bool','bool',qasm2qcx.ValueType.BOOL),
+                ('complex','complex',qasm2qcx.ValueType.COMPLEX)):
+            with self.subTest(element=element):
+                c = self.converter(f'array[{element},3] values; int first;')
+                loop = self.program(f'for {iterator} item in values[first:2] {{}}').statements[0]
+                info = c._QASM2QCXConverter__runtime_array_slice_loop_info(loop.set_declaration, loop.type)
+                self.assertEqual(info.value_type, value_type)
+                self.assertEqual(info.uint_type, qasm2qcx._UnsignedIntegerType(8, True)
+                                 if value_type == qasm2qcx.ValueType.UINT else None)
+
+    def test_scope_invalid_types_and_unsupported_selectors(self):
+        for source in ('values[first:real:last]', 'values[true:last]', 'values[first:missing]',
+                       'values[first:]', 'values[{first,0}]', 'values[first]'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(source)
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            self.info('values[first:last]', 'float')
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            self.info('values[first:last]', iterators={'values': qasm2qcx.ValueType.INT})
+        self.assertIsNotNone(self.info('values[N:2]', iterators={'N': qasm2qcx.ValueType.INT}))
+
+    def test_metadata_does_not_evaluate_allocate_or_emit(self):
+        c = self.c
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__'+field) for field in fields]
+        lines = c._QASM2QCXConverter__qcx_lines.copy()
+        loop = self.program('for int item in values[first/0:0:999] {}').statements[0]
+        with patch.object(c, 'visit', side_effect=AssertionError('no evaluation')), \
+             patch.object(c, '_QASM2QCXConverter__add_new_temporary_variable', side_effect=AssertionError('no allocation')):
+            info = c._QASM2QCXConverter__runtime_array_slice_loop_info(loop.set_declaration, loop.type)
+        self.assertIsNotNone(info)
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__'+field) for field in fields])
+        self.assertEqual(lines, c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+
 class StaticArraySliceLoopLoweringTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)

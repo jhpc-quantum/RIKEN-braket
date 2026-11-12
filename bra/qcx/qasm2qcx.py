@@ -269,6 +269,18 @@ class _StaticArraySliceLoop:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeArraySliceLoop:
+    source: str
+    source_size: int
+    bounds: ast.RangeDefinition
+    value_type: ValueType
+    uint_type: _UnsignedIntegerType | None
+    start_type: ValueType
+    step_type: ValueType
+    stop_type: ValueType
+
+
+@dataclasses.dataclass(frozen=True)
 class _StaticBitSelection:
     source_name: str
     indices: tuple[int, ...]
@@ -6598,6 +6610,31 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # The runtime count is positive and at most twice the angle width.
             self.__qcx_lines.extend([f'LET {index} += 1', f'JUMPIF {body_label} {index} < {count}'])
         self.__qcx_lines.append(f'@{end_label}')
+
+    def __runtime_array_slice_loop_info(
+            self, source: ast.QASMNode, iteration_type: ast.QASMNode,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeArraySliceLoop | None:
+        if not (isinstance(source, ast.IndexExpression) and isinstance(source.collection, ast.Identifier)):
+            return None
+        name = source.collection.name
+        if not isinstance(self.__classical_source_types.get(name), ast.ArrayType):
+            return None
+        if not (isinstance(source.index, list) and len(source.index) == 1
+                and isinstance(source.index[0], ast.RangeDefinition)):
+            raise UnsupportedOpenQASMError('array loop source requires a one-dimensional range slice')
+        bounds = source.index[0]
+        if bounds.start is None or bounds.end is None:
+            raise UnsupportedOpenQASMError('array slice range with omitted bound')
+        array, size, value_type, uint_type = self.__collection_loop_info(
+            source.collection, iteration_type, iterators, allow_angle_widening=True, allow_uint_widening=True)
+        start_type, start_runtime = self.__bit_index_info(bounds.start, iterators, role='array slice start')
+        step_type, step_runtime = ((ValueType.INT, False) if bounds.step is None else
+                                   self.__bit_index_info(bounds.step, iterators, role='array slice step'))
+        stop_type, stop_runtime = self.__bit_index_info(bounds.end, iterators, role='array slice stop')
+        if not (start_runtime or step_runtime or stop_runtime):
+            return None  # Keep wholly static ranges on the existing path.
+        return _RuntimeArraySliceLoop(array, size, bounds, value_type, uint_type,
+                                      start_type, step_type, stop_type)
 
     def __static_array_slice_loop_info(
             self, source: ast.QASMNode, iteration_type: ast.QASMNode,
