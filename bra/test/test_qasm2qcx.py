@@ -23030,9 +23030,9 @@ class IntegerArrayDeclarationTests(unittest.TestCase):
                 with self.subTest(size=size, statement=statement), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                     convert(prefix + statement)
 
-    def test_sliced_writes_and_iteration_remain_unsupported(self) -> None:
+    def test_sliced_writes_and_discrete_set_iteration_remain_unsupported(self) -> None:
         prefix = 'OPENQASM 3.0; array[int, 2] a = {1, 2}; '
-        for statement in ('a[0:1] = 3;', 'for int value in a[0:1] {}'):
+        for statement in ('a[0:1] = 3;', 'for int value in a[{0,1}] {}'):
             with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert(prefix + statement)
 
@@ -23345,7 +23345,7 @@ class BooleanArrayLoopTests(unittest.TestCase):
                        'array[float, 2] values;', 'bit[2] values;', 'bool values;'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                 convert('OPENQASM 3; ' + source + 'for bool flag in values {}')
-        for source in ('[0:1]', '{true, false}', 'flags[0:1]', 'flags[0]'):
+        for source in ('[0:1]', '{true, false}', 'flags[{0,1}]', 'flags[0]'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                 convert('OPENQASM 3; array[bool, 2] flags; '
                         f'for int outer in [1:0] {{ for bool flag in {source} {{}} }}')
@@ -24123,6 +24123,110 @@ class UnsignedArrayAccessTests(unittest.TestCase):
         self.assertIn('LET A1:QASM2QCX_INT_0 &= 15', lines)
 
 
+class StaticArraySliceLoopFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def info(self, c, source, iterator='int', iterators=None):
+        loop = self.program(f'for {iterator} item in {source} {{}}').statements[0]
+        return c._QASM2QCXConverter__static_array_slice_loop_info(loop.set_declaration, loop.type, iterators)
+
+    def test_static_ranges_preserve_raw_order_and_empty_range(self):
+        c = self.converter('const int N=2; array[int,5] values;')
+        for source, indices in (('values[1:3]', [1,2,3]), ('values[4:-2:0]', [4,2,0]),
+                                ('values[-5:2:3]', [-5,-3,-1,1,3]),
+                                ('values[N:N]', [2]), ('values[3:1]', [])):
+            with self.subTest(source=source):
+                before = c._QASM2QCXConverter__qcx_lines.copy()
+                result = self.info(c, source)
+                self.assertIsInstance(result, qasm2qcx._StaticArraySliceLoop)
+                self.assertEqual((result.source, result.source_size), ('VALUES63', 5))
+                self.assertEqual(list(result.indices), indices)
+                self.assertEqual(result.value_type, qasm2qcx.ValueType.INT)
+                self.assertEqual(c._QASM2QCXConverter__qcx_lines, before)
+                self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+                with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                    result.source_size = 1
+
+    def test_element_types_and_iterator_widening(self):
+        for element, iterator, value_type in (('int','int',qasm2qcx.ValueType.INT),
+                ('uint[4]','uint[8]',qasm2qcx.ValueType.UINT),
+                ('angle[4]','angle[8]',qasm2qcx.ValueType.ANGLE),
+                ('float','float',qasm2qcx.ValueType.FLOAT),
+                ('bool','bool',qasm2qcx.ValueType.BOOL),
+                ('complex','complex',qasm2qcx.ValueType.COMPLEX)):
+            with self.subTest(element=element):
+                c = self.converter(f'array[{element},3] values;')
+                result = self.info(c, 'values[0:2]', iterator)
+                self.assertEqual(result.value_type, value_type)
+                if value_type == qasm2qcx.ValueType.UINT:
+                    self.assertEqual(result.uint_type, qasm2qcx._UnsignedIntegerType(8, True))
+                else:
+                    self.assertIsNone(result.uint_type)
+
+    def test_rejects_bad_bounds_scope_and_iterator_types(self):
+        c = self.converter('array[int,5] values; int i; const int N=2;')
+        for source in ('values[0:0:3]', 'values[0:5]', 'values[-6:0]', 'values[i:2]',
+                       'values[true:2]', 'values[{0,1}]', 'values[0]', 'values[0:missing]',
+                       'values[1:]', 'values[:2]'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(c, source)
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            self.info(c, 'values[N:3]', iterators={'N': qasm2qcx.ValueType.INT})
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            self.info(c, 'values[0:3]', 'float')
+        self.assertIsNone(self.info(c, 'i[0:1]'))
+
+    def test_size_limit_and_declaration_visibility(self):
+        c = self.converter('array[int,5] values;')
+        with patch.object(c, 'QCX_INT_MAX', 2), self.assertRaisesRegex(
+                qasm2qcx.InvalidLoopRangeException, 'slice loop size'):
+            self.info(c, 'values[0:3]')
+        program = self.program('array[int,5] values;')
+        c = qasm2qcx.QASM2QCXConverter(program)
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            self.info(c, 'values[0:1]')
+
+
+class StaticArraySliceLoopLoweringTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def test_supported_types_and_widening(self):
+        for element, iterator in (('int','int'), ('uint[4]','uint[8]'),
+                                  ('angle[4]','angle[8]'), ('float','float'),
+                                  ('complex','complex'), ('bool','bool')):
+            with self.subTest(element=element):
+                c = self.converter(f'array[{element},5] values; '
+                                   f'for {iterator} value in values[4:-2:0] {{ continue; }}')
+                lines = list(c)
+                self.assertIn('@QASM2QCX_LOOP_0_BODY', lines)
+                self.assertTrue(any(line.startswith('LET QASM2QCX_INT_') and line.endswith(' += -2')
+                                    for line in lines))
+                ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+                self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+                self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+
+    def test_empty_slice_and_empty_outer_loop_validate_body(self):
+        c = self.converter('array[int,5] values; int total; '
+                           'for int value in values[3:1] { total+=value; }')
+        self.assertFalse(any(line.startswith('@QASM2QCX_LOOP_') for line in c))
+        self.converter('array[uint[4],5] values; uint total; '
+                       'for int outer in [1:0] { for uint[8] value in values[0:2] { total+=value; } }')
+        for body in ('value=1;', 'total=missing;', 'for int value in values[0:0:2] {}'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('array[int,5] values; int total; '
+                               f'for int value in values[3:1] {{ {body} }}')
+
+    def test_source_shadowing_and_unsupported_ranges(self):
+        self.converter('array[int,5] values; int total; '
+                       'for int values in values[1:3] { total+=values; } total+=values[0];')
+        for source in ('values[0:0:2]', 'values[0:5]', 'values[0:stop]', 'values[{0,1}]'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('array[int,5] values; int stop; '
+                               f'for int value in {source} {{}}')
+
+
 class UnsignedArrayLoopTests(unittest.TestCase):
     def assert_clean_conversion(self, source: str):
         converter = UnsignedArrayDeclarationTests.converter(source)
@@ -24562,7 +24666,7 @@ class ComplexArrayLoopTests(unittest.TestCase):
                             'array[bool, 2] a;', 'bit[2] a;', 'complex a;'):
             with self.subTest(declaration=declaration), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                 convert('OPENQASM 3; ' + declaration + 'for int outer in [1:0] { for complex z in a {} }')
-        for source in ('[0:1]', '{1.0im, 2.0im}', 'a[0:1]', 'a[0]'):
+        for source in ('[0:1]', '{1.0im, 2.0im}', 'a[{0,1}]', 'a[0]'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                 convert(f'OPENQASM 3; array[complex, 2] a; for complex z in {source} {{}}')
 
@@ -24930,8 +25034,8 @@ class FloatArrayLoopValidationTests(unittest.TestCase):
                     convert('OPENQASM 3; ' + declarations
                             + wrapper.format(f'for {iterator} value in {source} {{}}'))
 
-    def test_float_ranges_sets_slices_scalars_and_unknown_sources_are_rejected(self) -> None:
-        for source in ('[0:2]', '{0.5, 1.5}', 'values[0:1]', 'values[0]', 'scalar', 'missing'):
+    def test_float_ranges_sets_discrete_selections_scalars_and_unknown_sources_are_rejected(self) -> None:
+        for source in ('[0:2]', '{0.5, 1.5}', 'values[{0,1}]', 'values[0]', 'scalar', 'missing'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert('OPENQASM 3; array[float, 2] values; float scalar; '
                     f'for int outer in [1:0] {{ for float value in {source} {{}} }}')
