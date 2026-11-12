@@ -83,6 +83,57 @@ class BackendTests(unittest.TestCase):
                 f'angle total = 0.0; for {iterator} phase in phases {{ total += phase; }}',
                 (('phases', 2),), (0, 1 << (native - 1)), ('total',), (1 << (native - 1),))
 
+    def test_widening_every_supported_width_pair(self):
+        native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
+        for source_width in range(1, native):
+            values = sorted({0, 1, 1 << (source_width - 1), (1 << source_width) - 1})
+            initial = ', '.join(self.angle(source_width, value) for value in values)
+            for target_width in range(source_width + 1, native + 1):
+                for iterator in ((f'angle[{target_width}]', 'angle') if target_width == native
+                                 else (f'angle[{target_width}]',)):
+                    with self.subTest(source=source_width, iterator=iterator):
+                        size = len(values)
+                        source = (f'array[angle[{source_width}], {size}] phases={{{initial}}}; '
+                                  f'array[angle[{target_width}], {size}] result; int i=0; '
+                                  f'for {iterator} phase in phases {{ result[i]=phase; i+=1; }}')
+                        self.check_initializers(source, (('result', size), ('phases', size)),
+                            [value << (target_width-source_width) for value in values] + values,
+                            ('i',), (size,))
+
+    def test_widening_live_reads_shadowing_and_transfers(self):
+        self.check_initializers('''array[angle[4], 3] phases={angle[4]("0001"),
+                angle[4]("0010"),angle[4]("0011")};
+            array[angle[8], 3] copied; int i=0;
+            for angle[8] phase in phases {
+                copied[i]=phase; phases[i]=0.0; i+=1;
+                if (i==1) { phases[1]=angle[4]("0111"); continue; }
+                if (i==2) { break; }
+            }
+            angle[8] total=0.0;
+            for angle[8] phases in phases { total+=phases; }
+        ''', (('phases', 3), ('copied', 3)), (0,0,3,16,112,0), ('total','i'), (48,2))
+
+    def test_widened_gate_parameters_with_and_without_fusion(self):
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        source = ('include "stdgates.inc"; qubit q; h q; '
+                  'array[angle[4],2] phases={angle[4]("0011"),angle[4]("0110")}; '
+                  'for angle[8] phase in phases { p(phase) q; }')
+        expected = (1/math.sqrt(2), cmath.exp(1j*9*math.pi/8)/math.sqrt(2))
+        for fused in (False, True):
+            with self.subTest(fused=fused):
+                BackendAuditTests.check(self, self.program(source, fused=fused), expected)
+
+    def test_widening_nested_scopes_and_skipped_reads(self):
+        self.check_initializers('''array[angle[4],2] phases={angle[4]("0001"),angle[4]("0010")};
+            array[angle[2],1] other={angle[2]("01")}; angle[8] total=0.0;
+            int bad=99; angle[8] phase=angle[8]("00000011");
+            if (false) { for angle[8] value in phases { total+=phases[bad]; } }
+            for int skipped in [1:0] { for angle[8] value in phases { total+=phases[bad]; } }
+            for angle[8] phase in phases { total+=phase;
+                for angle[8] phase in other { total+=phase; } total+=phase; }
+            total+=phase;
+        ''', (('phases',2), ('other',1)), (1,2,1), ('total','phase'), (227,3))
+
     def test_nested_break_and_continue_apply_to_innermost_loop(self):
         self.check_initializers('array[angle[4], 3] phases = {0.0, pi / 2, pi}; '
             'int visits = 0; angle[4] total = 0.0; '
