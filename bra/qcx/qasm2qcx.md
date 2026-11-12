@@ -5597,7 +5597,7 @@ widths, scalar/register mixing, ordered register comparisons (`<`, `<=`, `>`,
 `>=`), bare register conditions, aliases, and indexing of computed register
 results remain unsupported.
 
-#### Equality with runtime bit-register ranges
+#### Equality with runtime bit-register and angle-bit ranges
 
 A range on a mutable or constant bit register may have runtime-dependent
 start, step, or stop values in either or both equality operands. Both bounds
@@ -5611,6 +5611,12 @@ Each operand may contain nested `&`, `|`, `^`, `~`, `<<`, `>>`, `rotl`, and
 `rotr` expressions, mixing runtime ranges with supported known-width register
 expressions. Shift and rotation distances retain their existing type and
 domain rules. A scalar `bit` remains distinct from a one-bit register.
+
+Runtime bit ranges of sized angles also work in either operand, including
+constant angles, angle array elements, and angle loop iterators. They can be
+combined with bit-register ranges and fixed-width register expressions. An
+unsized angle does not provide a selectable bit width. Angle selections follow
+the same ordering and runtime checks as elsewhere in the converter.
 
 The converter supports equal-width register comparisons. Statically known
 width mismatches are rejected during conversion. When lengths depend on
@@ -5649,13 +5655,26 @@ while (a[first:last] != B) {
 bool fresh = a[first:last] == B;                         // true; visits == 1
 ```
 
+<!-- runtime-angle-range-equality-example -->
+```qasm
+OPENQASM 3.0;
+angle[4] phase = angle[4]("1011");
+bit[4] bits = "1011";
+int first = 0;
+int last = 3;
+bool same = phase[first:last] == bits;              // true
+bool different = ~phase[first:last] != bits;         // true
+bool reversed = phase[last:-1:first] == "1101";      // true
+bool skipped = false && (phase[first:0:last] == bits); // false
+```
+
 Comparisons use bit snapshots and an INT-indexed QCX loop, so register widths
 may exceed native UINT width. Snapshots remain live through both operands,
 including nested comparisons in bounds or distances, and are released after
 use. Repeated execution reads the current source bits and bounds. Existing
 runtime selection storage and QCX output limits still apply. This support
 does not add general runtime-range register expressions in other contexts,
-runtime angle-bit ranges, ordered comparisons, aliases, or indexing of
+ordered comparisons, aliases, or indexing of
 computed register results.
 
 ### Checked native INT negation
@@ -9994,6 +10013,12 @@ writes. Unit tests cover declaration visibility, iterator shadowing, output
 limits, and temporary cleanup after nested failures. The audit passes on native
 and UBSan builds and executes the runtime-range equality example above.
 
+`bra/test/qasm2qcx_angle_range_equality_numerical.py` checks equality and
+inequality of runtime angle-bit ranges against independent bit vectors. It
+covers sized angle widths, constant and array sources, bit-register operands,
+nested expressions, repeated positions, angle iterators, skipped errors, and
+failure ordering before result writes. It runs with native and UBSan builds.
+
 `bra/test/qasm2qcx_runtime_range_expression_assignment_numerical.py` checks whole-register
 assignments and initializers against independent little-endian bit vectors.
 It covers exhaustive small patterns, every native width, wide sources through
@@ -10754,6 +10779,7 @@ python3 bra/test/qasm2qcx_bit_register_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bit_register_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bit_register_equality_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_range_equality_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_angle_range_equality_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_range_expression_assignment_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_selection_expression_assignment_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_set_expression_assignment_numerical.py --bra bra/bin/bra

@@ -20,6 +20,15 @@ class BackendTests(unittest.TestCase):
     check_exact = registers.BackendTests.check_exact
     check_pairs = registers.BackendTests.check_pairs
 
+    def test_documented_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- runtime-angle-range-equality-example -->'
+        self.assertEqual(document.count(marker), 1)
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        self.check_exact(source.replace('OPENQASM 3.0;', '', 1),
+                         tuple((name, None) for name in ('same', 'different', 'reversed', 'skipped')),
+                         (1, 1, 1, 0))
+
     def test_widths_sources_and_nested_expressions(self):
         rng = random.Random(553)
         native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH
