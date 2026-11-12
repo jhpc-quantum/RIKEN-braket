@@ -27,6 +27,44 @@ def main() -> None:
         for uint[8] value in values { total+=value+uint[8](1); complement+=~value; }''',
         ('TOTAL31','COMPLEMENT1023'), ['18','494'])
 
+    # Check every supported source/iterator width pair against Python integers.
+    for source_width in range(1, native):
+        maximum = (1 << source_width) - 1
+        for target_width in range(source_width + 1, native + 1):
+            mask = (1 << target_width) - 1
+            iterators = (f'uint[{target_width}]', 'uint') if target_width == native else (f'uint[{target_width}]',)
+            for iterator in iterators:
+                check_program(bra, f'''array[uint[{source_width}],2] values={{0,{maximum}}};
+                    array[uint[{target_width}],2] copied; array[uint[{target_width}],2] comp;
+                    array[uint[{target_width}],2] wrapped; int i=0;
+                    for {iterator} value in values {{ copied[i]=value; comp[i]=~value;
+                        wrapped[i]=value+uint[{target_width}](-1); i+=1; }}''',
+                    ('COPIED63:0','COPIED63:1','COMP15:0','COMP15:1',
+                     'WRAPPED127:0','WRAPPED127:1','VALUES63:0','VALUES63:1','I1'),
+                    list(map(str, (0, maximum, mask, mask ^ maximum, mask,
+                                   (maximum - 1) & mask, 0, maximum, 2))))
+
+    # Source changes affect future visits but do not change the copied value.
+    check_program(bra, '''array[uint[4],3] values={1,2,3}; array[uint[8],3] copied;
+        int i=0; for uint[8] value in values { copied[i]=value; values[i]=0; i+=1;
+            if (i==1) { values[1]=7; continue; } if (i==2) { break; } }
+        uint total=0; for uint[8] values in values { total+=values; }''',
+        ('COPIED63:0','COPIED63:1','COPIED63:2','VALUES63:0','VALUES63:1',
+         'VALUES63:2','TOTAL31','I1'), ['1','7','0','0','0','3','3','2'])
+
+    check_program(bra, '''array[uint[4],2] values={1,2}; array[uint[2],1] other={3};
+        uint total=0; uint[8] value=7; int bad=9;
+        if (false) { for uint[8] v in values { total+=values[bad]; } }
+        for int skip in [1:0] { for uint[8] v in values { total+=values[bad]; } }
+        for uint[8] value in values { total+=value;
+            for uint[8] value in other { total+=value; } total+=value; } total+=value;''',
+        ('TOTAL31','VALUE31'), ['19','7'])
+
+    for gate in ('rx(theta * pi)', 'ry(-float(theta) * pi)', 'U(theta * pi, 0, 0)'):
+        check_program(bra, 'include "stdgates.inc"; qubit q; array[uint[4],2] values={0,1}; '
+                      f'for uint[8] theta in values {{ {gate} q; }} '
+                      'bit result=measure q; int n=int(result);', ('N1',), ['1'])
+
     for width in (1, 4, 8, native):
         mask = (1 << width) - 1
         for size in (1, 3):
