@@ -36587,6 +36587,43 @@ class RuntimeAngleRangeEqualityFoundationTests(unittest.TestCase):
         self.assertIsNone(self.c._QASM2QCXConverter__runtime_register_comparison_info(simple))
 
 
+class RuntimeAngleRangeEqualityLoweringTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+    prefix = RuntimeAngleRangeRegisterAssignmentFoundationTests.prefix
+
+    def test_comparison_snapshots_both_operands_before_checking_length(self):
+        for operator in ('==', '!='):
+            with self.subTest(operator=operator):
+                c = self.converter(self.prefix +
+                    f'bool same = (phase[index:count] ^ B) {operator} wide[index:count];')
+                lines = list(c)
+                left = lines.index('@QASM2QCX_REGISTER_EQUALITY_0_LEFT_DONE')
+                right = lines.index('@QASM2QCX_REGISTER_EQUALITY_0_RIGHT_SNAPSHOT_DONE')
+                compare = lines.index('@QASM2QCX_REGISTER_EQUALITY_0_COMPARE')
+                self.assertLess(left, right)
+                self.assertLess(right, compare)
+                self.assertTrue(lines[right + 1].startswith('ASSERT '))
+                self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+                ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_conditions_and_skipped_loop_validation(self):
+        c = self.converter(self.prefix + '''
+            bool same = phase[index:count] == B;
+            same = B != phases[index][index:count];
+            if (same && phase[index:count] == wide[index:count]) { same = false; }
+            while (false && phase[index:0:999] == B) { same = true; }
+            for angle[8] item in phases { same = item[index:count] == B; }
+            for int i in [1:0] { same = phase[i:0:999] != B; }
+        ''')
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        ForLoopControlLoweringTests.assert_resolved_jumps(list(c))
+        for source in ('phase[true:count] == B', 'phase[index:count] == scalar',
+                       'phase[index:count] < B'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(self.prefix + f'for int i in [1:0] {{ bool same = {source}; }}')
+
+
 class RuntimeAngleRangePopcountLoweringTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)
