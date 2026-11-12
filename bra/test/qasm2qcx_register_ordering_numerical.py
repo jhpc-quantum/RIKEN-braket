@@ -46,6 +46,69 @@ class BackendTests(unittest.TestCase):
             bool chosen=x[{3,1,0}]>"010";
         ''', tuple((name, None) for name in ('high','low','equal','reverse','chosen')), (1,1,1,1,1))
 
+    def test_runtime_ranges_against_independent_bit_vectors(self):
+        for width in (1, 2, 4, 16, self.module.QASM2QCXConverter.QCX_UINT_WIDTH):
+            mask = (1 << width) - 1
+            for a, b in ((0, 0), (mask, 0), (0, mask), (mask, mask), (mask // 3, mask // 2)):
+                for bounds in ((0, 1, width-1), (width-1, -1, 0), (-width, 1, width-1)):
+                    bits_a = registers.selected(a, width, bounds)
+                    bits_b = registers.selected(b, width, bounds)
+                    value_a = sum(bit << i for i, bit in enumerate(bits_a))
+                    value_b = sum(bit << i for i, bit in enumerate(bits_b))
+                    source = [f'angle[{width}] angle_a=angle[{width}]("{a:0{width}b}");',
+                              f'bit[{width}] bits_b="{b:0{width}b}";',
+                              f'int first={bounds[0]}; int step={bounds[1]}; int last={bounds[2]};']
+                    outputs, expected = [], []
+                    for i, (op, value) in enumerate((('<', value_a < value_b), ('<=', value_a <= value_b),
+                                                     ('>', value_a > value_b), ('>=', value_a >= value_b))):
+                        source.append(f'bool result{i}=angle_a[first:step:last] {op} bits_b[first:step:last];')
+                        outputs.append((f'result{i}', None)); expected.append(int(value))
+                    self.check_exact(' '.join(source), outputs, expected)
+
+    def test_runtime_range_checks_and_short_circuit(self):
+        self.check_exact('''angle[4] a=angle[4]("1011"); bit[4] b="1101";
+            int first=0; int last=3; int zero=0;
+            bool nested=(~a[first:last] ^ b[first:last]) > "0000";
+            bool skipped=false && (a[first:zero:last] < b);
+            bool preserved=true || (a[first:last] >= b[first:first]);
+        ''', (('nested', None), ('skipped', None), ('preserved', None)), (1,0,1))
+        for expression in ('a[first:first] < b[first:last]', 'a[first:zero:last] >= b'):
+            with self.subTest(expression=expression):
+                lines = self.program('angle[4] a=angle[4]("1011"); bit[4] b="1101"; '
+                                     'int first=0; int last=3; int zero=0; '
+                                     'bool result='+expression+';')
+                result = self.execute(lines)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('assertion failed', result.stderr)
+                self.assertNotIn('runtime error:', result.stderr)
+
+    def test_both_operands_complete_before_comparison_or_result_write(self):
+        cases = (('a[first:first] < b[first:last]', ('LEFT_SNAPSHOT_DONE', 'RIGHT_SNAPSHOT_DONE'),
+                  'assertion failed'),
+                 ('a[first:last] > (b[first:last] << (1/zero))',
+                  ('LEFT_SNAPSHOT_DONE', 'RIGHT_CHILD_0_SNAPSHOT_DONE'), 'division by zero'))
+        labels = ('LEFT_SNAPSHOT_DONE', 'RIGHT_SNAPSHOT_DONE', 'RIGHT_CHILD_0_SNAPSHOT_DONE')
+        for expression, expected, error in cases:
+            with self.subTest(expression=expression):
+                source = ('angle[4] a=angle[4]("1011"); bit[4] b="1101"; '
+                          'int first=0; int last=3; int zero=0; bool result=true; result='+expression+';')
+                program = self.module.openqasm3.parser.parse('OPENQASM 3; '+source)
+                converter = self.module.QASM2QCXConverter(program); converter.visit(program)
+                destination = converter._QASM2QCXConverter__capitalize_variable_name('result')
+                lines = []
+                for line in converter:
+                    if line.startswith(f'LET {destination} := QASM2QCX_'):
+                        lines.append('PRINTLN 999')
+                    lines.append(line)
+                    for i, label in enumerate(labels):
+                        if line == '@QASM2QCX_REGISTER_EQUALITY_0_'+label:
+                            lines.append(f'PRINTLN {i+1}')
+                result = self.execute(lines)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(error, result.stderr)
+                self.assertNotIn('runtime error:', result.stderr)
+                self.assertEqual(result.stdout.split(), [str(labels.index(label)+1) for label in expected])
+
 
 if __name__ == '__main__':
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))

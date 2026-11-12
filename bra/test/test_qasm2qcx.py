@@ -6190,9 +6190,9 @@ class RuntimeRangeEqualityFoundationTests(unittest.TestCase):
         with self.assertRaises(qasm2qcx.QASM2QCXError):
             self.converter(self.prefix + f'bool result = {source};')
         for operator in ('<', '<=', '>', '>='):
-            with self.subTest(operator=operator), self.assertRaisesRegex(
-                    qasm2qcx.UnsupportedOpenQASMError, 'ordered comparisons'):
-                self.info(f'flags[start:stop] {operator} C')
+            with self.subTest(operator=operator):
+                self.assertIsInstance(self.info(f'flags[start:stop] {operator} C'),
+                                      qasm2qcx._RuntimeBitRegisterComparison)
 
     def test_metadata_does_not_evaluate_emit_or_allocate(self):
         c = self.c
@@ -6303,7 +6303,7 @@ class RuntimeRangeEqualityLoweringTests(unittest.TestCase):
         ForLoopControlLoweringTests.assert_resolved_jumps(list(c))
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
         for value in ('flags[start:stop] == missing', 'flags[start:stop] == (C & "1")',
-                      'flags[start:stop] < C', 'flags[start:stop] == scalar',
+                      'flags[start:stop] < scalar', 'flags[start:stop] == scalar',
                       'flags[start:real:stop] == C'):
             for template in ('bool out = false && ({value});',
                              'for int outer in [1:0] {{ bool out = {value}; }}'):
@@ -26215,7 +26215,7 @@ class RuntimeBitRangeLoopFoundationTests(unittest.TestCase):
     def test_runtime_range_reads_and_arithmetic_destinations_remain_unsupported(self):
         for statement in ('bit result = flags[start:stop];', 'flags[start:stop] += "0000";',
                           'flags[start:stop] /= "0000";', 'uint n = popcount(rotl(((((FLAGS ^ FLAGS)[start:stop] ^ FLAGS) << 1) ^ "1111") << 1, 1) >> 1);',
-                          'bool ordered = flags[start:stop] < "0000";'):
+                          'bool ordered = flags[start:stop] < true;'):
             with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(self.prefix + statement)
 
@@ -36570,7 +36570,7 @@ class RuntimeAngleRangeEqualityFoundationTests(unittest.TestCase):
             with self.subTest(source=source):
                 self.assertIsNone(self.info(source))
         for source in ('phase[index:count] == scalar', 'phase[index:real:count] == B',
-                       'unsized_phase[index:count] == B', 'phase[index:count] < B'):
+                       'unsized_phase[index:count] == B', 'phase[index:count] < scalar'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.info(source)
 
@@ -36594,6 +36594,25 @@ class RuntimeAngleRangeEqualityLoweringTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)
     prefix = RuntimeAngleRangeRegisterAssignmentFoundationTests.prefix
+
+    def test_ordered_ranges_snapshot_then_compare_most_significant_first(self):
+        for operation in ('<', '<=', '>', '>='):
+            with self.subTest(operation=operation):
+                c = self.converter(self.prefix +
+                    f'bool result = phase[index:count] {operation} wide[index:count];')
+                lines = list(c)
+                left = lines.index('@QASM2QCX_REGISTER_EQUALITY_0_LEFT_SNAPSHOT_DONE')
+                right = lines.index('@QASM2QCX_REGISTER_EQUALITY_0_RIGHT_SNAPSHOT_DONE')
+                compare = lines.index('@QASM2QCX_REGISTER_EQUALITY_0_COMPARE')
+                self.assertLess(left, right)
+                self.assertLess(right, compare)
+                self.assertTrue(lines[right + 1].startswith('ASSERT '))
+                self.assertTrue(lines[compare + 2].startswith('LET '))
+                self.assertTrue(lines[compare + 2].endswith(' -= 1'))
+                self.assertIn(' < ', lines[compare + 3])
+                self.assertIn(' > ', lines[compare + 4])
+                self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+                ForLoopControlLoweringTests.assert_resolved_jumps(lines)
 
     def test_comparison_snapshots_both_operands_before_checking_length(self):
         for operator in ('==', '!='):
@@ -36622,7 +36641,7 @@ class RuntimeAngleRangeEqualityLoweringTests(unittest.TestCase):
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
         ForLoopControlLoweringTests.assert_resolved_jumps(list(c))
         for source in ('phase[true:count] == B', 'phase[index:count] == scalar',
-                       'phase[index:count] < B'):
+                       'phase[index:count] < scalar'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(self.prefix + f'for int i in [1:0] {{ bool same = {source}; }}')
 

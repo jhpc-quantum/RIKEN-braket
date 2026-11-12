@@ -4492,8 +4492,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return None  # Preserve the existing scalar and fixed-width paths.
         left = self.__runtime_bit_register_expression_info(expression.lhs, left_shapes, iterators, allow_angle_ranges=allow_angle_ranges)
         right = self.__runtime_bit_register_expression_info(expression.rhs, right_shapes, iterators, allow_angle_ranges=allow_angle_ranges)
-        if expression.op.name not in ('==', '!='):
-            raise UnsupportedOpenQASMError('ordered comparisons of bit-register values')
         # Only fixed leaves have known widths. Capacities bound storage, never
         # lengths; dynamic length equality must be asserted by the consumer.
         return _RuntimeBitRegisterComparison(expression, left, right)
@@ -4661,12 +4659,26 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 # Complete both operands, including all runtime checks, before
                 # checking their lengths or exiting on a mismatching bit.
                 index = self.__add_new_temporary_variable(ValueType.INT)
-                self.__qcx_lines.extend([
-                    f'ASSERT {left_count} == {right_count}', f'LET {index} := 0',
-                    f'@{prefix}_COMPARE', f'JUMPIF {match} {index} >= {left_count}',
-                    f'JUMPIF {mismatch} {left}:{index} \\= {right}:{index}',
-                    f'LET {index} += 1', f'JUMP {prefix}_COMPARE',
-                ])
+                if info.expression.op.name in ('==', '!='):
+                    self.__qcx_lines.extend([
+                        f'ASSERT {left_count} == {right_count}', f'LET {index} := 0',
+                        f'@{prefix}_COMPARE', f'JUMPIF {match} {index} >= {left_count}',
+                        f'JUMPIF {mismatch} {left}:{index} \\= {right}:{index}',
+                        f'LET {index} += 1', f'JUMP {prefix}_COMPARE',
+                    ])
+                else:
+                    operation = info.expression.op.name
+                    less, greater = ((true_label, false_label) if operation in ('<', '<=')
+                                     else (false_label, true_label))
+                    equal = true_label if operation in ('<=', '>=') else false_label
+                    self.__qcx_lines.extend([
+                        f'ASSERT {left_count} == {right_count}', f'LET {index} := {left_count}',
+                        f'@{prefix}_COMPARE', f'JUMPIF {equal} {index} <= 0',
+                        f'LET {index} -= 1',
+                        f'JUMPIF {less} {left}:{index} < {right}:{index}',
+                        f'JUMPIF {greater} {left}:{index} > {right}:{index}',
+                        f'JUMP {prefix}_COMPARE',
+                    ])
                 self.__check_runtime_register_output()
             self.__hoist_temporary_declarations(previous_declarations)
         finally:
