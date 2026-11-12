@@ -25,6 +25,15 @@ class BackendTests(unittest.TestCase):
     check_exact = registers.BackendTests.check_exact
     check_nodes = trees.BackendTests.check_nodes
 
+    def test_documented_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- angle-range-popcount-example -->'
+        self.assertEqual(document.count(marker), 1)
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        self.check_exact(source.replace('OPENQASM 3.0;', '', 1),
+                         tuple((name, None) for name in ('direct', 'inverted', 'mixed', 'repeated')),
+                         (2, 2, 3, 6))
+
     def test_all_angle_widths_sources_and_nested_trees(self):
         rng = random.Random(551)
         native = self.module.QASM2QCXConverter.QCX_UINT_WIDTH

@@ -2644,7 +2644,9 @@ uint fresh = popcount(rotl(a[first:last], 1) & mask); // 0, using fresh bits.
 `popcount((a[first:last] & mask) ^ b[start:stop])` and
 `popcount(rotl((a[first:last] | b[start:stop]) & mask, distance))` need no
 explicit cast or globally known selected width. Leaves may be direct runtime
-bit-register ranges or existing supported fixed-width register expressions.
+bit-register ranges, runtime ranges on explicitly sized angle variables,
+constants, array elements, and supported angle iterators, or existing supported
+fixed-width register expressions. Direct runtime angle ranges are also accepted.
 Both operands of every binary bitwise node must have equal lengths; unary
 register operations preserve their child's length. There is no padding,
 truncation, or scalar broadcasting. Scalar distance expressions may contain
@@ -2652,7 +2654,8 @@ supported nested calls, including other population counts.
 
 For these new tree forms, the converter completes the left subtree before the
 right subtree. A runtime-range leaf captures and validates all bounds/positions
-before reading its selected bits. A fixed-width leaf captures its existing
+before reading its selected bits; for an angle range, the angle value and any
+array-element address are captured before the bounds. A fixed-width leaf captures its existing
 expression, including borrowed register reads. Each binary node checks equal
 lengths **after both children complete**, then combines their private snapshots.
 A parent shift or rotation evaluates its distance only after its register child
@@ -2682,6 +2685,22 @@ including for selections wider than native UINT. Existing checked distance
 conversions, later errors after oversized shifts, skipped-path validation,
 declaration placement, caller-state preservation, temporary cleanup, and fresh
 captures on loop reentry apply. No new bra instruction or build option is required.
+
+<!-- angle-range-popcount-example -->
+```qasm
+OPENQASM 3.0;
+angle[8] phase = angle[8]("10110101");
+int first = 1;
+int last = 4;
+bit[4] mask = "1101";
+uint direct = popcount(phase[first:last]);          // 2
+uint inverted = popcount(~phase[first:last]);       // 2
+uint mixed = popcount(phase[first:last] ^ mask);    // 3
+angle[4] small = angle[4]("1011");
+first = -4;
+last = 3;
+uint repeated = popcount(small[first:last]);        // 6
+```
 
 <!-- runtime-popcount-tree-example -->
 ```qasm
@@ -3816,7 +3835,8 @@ checked only after the complete expression has been evaluated. Expressions
 containing angle ranges also support static selections, runtime index sets, and
 runtime-range destinations as described below. Bitwise compounds on whole
 registers, static selections, runtime index sets, and runtime ranges also accept
-these expressions. Other expression contexts remain outside this angle-range subset.
+these expressions. `popcount` accepts them as described above; other expression
+contexts remain outside this angle-range subset.
 
 <!-- runtime-angle-range-expression-assignment-example -->
 ```qasm
@@ -9747,6 +9767,12 @@ output limits, and computed-result indexing rejection. Independent cases are
 batched below per-program output limits. Run with `--bra /path/to/bra`, including
 a UBSan build.
 
+`bra/test/qasm2qcx_angle_range_popcount_numerical.py` checks direct and nested
+runtime angle-range operands against independent bit-vector references. It
+covers mixed trees, source widths, repeated positions, wide counts, nested
+calls, loops, skipped paths, and failure ordering. Run with `--bra /path/to/bra`,
+including a UBSan build.
+
 `bra/test/qasm2qcx_constant_scalar_bit_numerical.py` checks scalar constant
 bit truth tables, runtime copies, indexed destinations, casts, array and nested
 function integration, short-circuiting, loops and transfers, iterator shadowing,
@@ -10677,6 +10703,7 @@ python3 bra/test/qasm2qcx_runtime_popcount_bitwise_result_shift_numerical.py --b
 python3 bra/test/qasm2qcx_runtime_popcount_bitwise_result_rotation_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_popcount_operand_chain_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_popcount_tree_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_angle_range_popcount_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_bit_register_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_bit_register_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_bit_selection_loop_numerical.py --bra bra/bin/bra
