@@ -23510,6 +23510,34 @@ class AngleArrayLoopValidationTests(unittest.TestCase):
                 self.assertEqual(converter._QASM2QCXConverter__qcx_lines, before)
                 self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
 
+    def test_widening_metadata_is_opt_in_and_preserves_iterator_type(self):
+        native = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        for source_width in range(1, native):
+            converter = self.converter(f'array[angle[{source_width}], 2] phases;')
+            info = converter._QASM2QCXConverter__collection_loop_info
+            for iterator in (f'angle[{source_width + 1}]', f'angle[{native}]', 'angle'):
+                with self.subTest(source_width=source_width, iterator=iterator):
+                    statement = self.program(f'for {iterator} phase in phases {{}}').statements[0]
+                    before = converter._QASM2QCXConverter__qcx_lines.copy()
+                    result = info(statement.set_declaration, statement.type, allow_angle_widening=True)
+                    self.assertEqual(result[1:], (2, qasm2qcx.ValueType.ANGLE, None))
+                    angle_type = converter._QASM2QCXConverter__angle_type(statement.type)
+                    self.assertEqual(angle_type.is_sized, iterator != 'angle')
+                    self.assertGreater(angle_type.width, source_width)
+                    self.assertEqual(converter._QASM2QCXConverter__qcx_lines, before)
+                    self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+                    with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                        info(statement.set_declaration, statement.type)
+
+    def test_widening_metadata_rejects_narrowing_and_invalid_types(self):
+        native = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        converter = self.converter(f'array[angle[{native}], 2] phases;')
+        info = converter._QASM2QCXConverter__collection_loop_info
+        for iterator in ('angle[1]', 'uint[1]', 'float', 'bool'):
+            with self.subTest(iterator=iterator), self.assertRaises(qasm2qcx.QASM2QCXError):
+                statement = self.program(f'for {iterator} phase in phases {{}}').statements[0]
+                info(statement.set_declaration, statement.type, allow_angle_widening=True)
+
     def test_rejects_width_and_element_type_mismatches_even_in_empty_loops(self):
         for iterator in ('angle[3]', 'angle[5]', 'angle', 'int', 'uint[4]', 'float', 'bool', 'complex'):
             with self.subTest(iterator=iterator), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):

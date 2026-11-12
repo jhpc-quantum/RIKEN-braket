@@ -6577,7 +6577,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __collection_loop_info(
             self, source: ast.Identifier, iteration_type: ast.QASMNode,
-            iterators: set[str] | dict[str, ValueType] | None = None
+            iterators: set[str] | dict[str, ValueType] | None = None, *,
+            allow_angle_widening: bool = False
             ) -> tuple[str | _ConstantBitRegister, int, ValueType, _UnsignedIntegerType | None]:
         name = source.name
         if ((iterators is not None and name in iterators)
@@ -6617,7 +6618,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     raise UnsupportedOpenQASMError('UINT array iteration requires matching effective widths')
             if value_type == ValueType.ANGLE:
                 angle_type = self.__angle_type(iteration_type, iterators)
-                if angle_type.width != self.__angle_array_types[variable_name].width:
+                source_width = self.__angle_array_types[variable_name].width
+                if (angle_type.width != source_width
+                        and (not allow_angle_widening or angle_type.width < source_width)):
                     raise UnsupportedOpenQASMError('angle array iteration requires matching effective widths')
             if (not self.__is_initialization_process
                     and variable_name not in self.__array_element_types):
