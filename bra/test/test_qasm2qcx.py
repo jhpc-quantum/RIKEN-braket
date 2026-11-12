@@ -24139,6 +24139,35 @@ class UnsignedArrayLoopTests(unittest.TestCase):
             qasm2qcx._RuntimeIteratorBinding('PRIVATE_INT', qasm2qcx.ValueType.INT,
                                            qasm2qcx._UnsignedIntegerType(4, True))
 
+    def test_widening_collection_metadata_is_opt_in_and_non_emitting(self) -> None:
+        native = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        for width in range(1, native):
+            converter = self.assert_clean_conversion(f'array[uint[{width}], 2] values;')
+            info = converter._QASM2QCXConverter__collection_loop_info
+            for iterator in (f'uint[{width + 1}]', f'uint[{native}]', 'uint'):
+                statement = qasm2qcx.openqasm3.parser.parse(
+                    f'OPENQASM 3; for {iterator} value in values {{}}').statements[0]
+                with self.subTest(width=width, iterator=iterator):
+                    before = list(converter)
+                    result = info(statement.set_declaration, statement.type, allow_uint_widening=True)
+                    target = native if iterator == 'uint' else int(iterator[5:-1])
+                    self.assertEqual(result, ('VALUES63', 2, qasm2qcx.ValueType.UINT,
+                                              qasm2qcx._UnsignedIntegerType(target, iterator != 'uint')))
+                    self.assertEqual(list(converter), before)
+                    self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+                    with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                        info(statement.set_declaration, statement.type)
+
+    def test_widening_metadata_rejects_narrowing_and_other_types(self) -> None:
+        native = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        converter = self.assert_clean_conversion(f'array[uint[{native}], 2] values;')
+        info = converter._QASM2QCXConverter__collection_loop_info
+        for iterator in ('uint[1]', 'int', 'float', 'bit', 'angle[4]'):
+            with self.subTest(iterator=iterator), self.assertRaises(qasm2qcx.QASM2QCXError):
+                statement = qasm2qcx.openqasm3.parser.parse(
+                    f'OPENQASM 3; for {iterator} value in values {{}}').statements[0]
+                info(statement.set_declaration, statement.type, allow_uint_widening=True)
+
     def test_uint_loop_storage_and_live_read_body_are_generated_once(self) -> None:
         converter = self.assert_clean_conversion('array[uint[4], 3] values = {1, 2, 15}; uint total = 0; '
             'for uint[4] value in values { total += value; values[1] = 7; }')
