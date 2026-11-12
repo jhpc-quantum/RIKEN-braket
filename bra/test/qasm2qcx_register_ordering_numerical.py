@@ -17,6 +17,14 @@ class BackendTests(unittest.TestCase):
     program = registers.BackendTests.program
     check_exact = registers.BackendTests.check_exact
 
+    def test_documented_example(self):
+        document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+        marker = '<!-- bit-register-ordering-example -->'
+        self.assertEqual(document.count(marker), 1)
+        source = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+        self.check_exact(source.replace('OPENQASM 3.0;', '', 1),
+                         tuple((name, None) for name in ('lower', 'reversed', 'equal')), (1, 1, 1))
+
     def test_small_values_all_operators_and_operand_kinds(self):
         for width in (1, 2, 3):
             for a in range(1 << width):
@@ -81,6 +89,16 @@ class BackendTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn('assertion failed', result.stderr)
                 self.assertNotIn('runtime error:', result.stderr)
+
+    def test_wide_runtime_bit_ranges_and_array_angle_source(self):
+        wide = '1' + '0' * 128
+        below = '0' + '1' * 128
+        self.check_exact(f'''bit[129] high="{wide}"; bit[129] low="{below}";
+            int first=0; int last=128; bool greater=high[first:last]>low[first:last];
+            bool less=low[last:-1:first]>high[last:-1:first];
+            array[angle[4],2] phases={{angle[4]("1011"),angle[4]("1101")}};
+            int slot=1; last=3; bool array_result=phases[slot][first:last]>"1011";
+        ''', (('greater', None), ('less', None), ('array_result', None)), (1,1,1))
 
     def test_both_operands_complete_before_comparison_or_result_write(self):
         cases = (('a[first:first] < b[first:last]', ('LEFT_SNAPSHOT_DONE', 'RIGHT_SNAPSHOT_DONE'),
