@@ -3814,9 +3814,9 @@ operand is evaluated. Each leaf has its own storage capacity, independent of
 the destination width. Unlike a direct angle-range copy, the final length is
 checked only after the complete expression has been evaluated. Expressions
 containing angle ranges also support static selections, runtime index sets, and
-runtime-range destinations as described below. Whole-register, static-selection,
-and runtime index-set bitwise compounds also accept these expressions. Runtime-range
-compounds and other expression contexts remain outside this angle-range subset.
+runtime-range destinations as described below. Bitwise compounds on whole
+registers, static selections, runtime index sets, and runtime ranges also accept
+these expressions. Other expression contexts remain outside this angle-range subset.
 
 <!-- runtime-angle-range-expression-assignment-example -->
 ```qasm
@@ -3873,8 +3873,8 @@ their existing paths. Static selections also accept the
 [expression assignment subset](#assigning-runtime-range-expressions-to-static-selections)
 below, as do [runtime index-set destinations](#assigning-runtime-range-expressions-to-runtime-index-sets)
 and [runtime-range destinations](#assigning-runtime-range-expressions-to-runtime-ranges).
-Whole registers, static selections, and runtime index sets also support these
-angle-range expressions in bitwise compound assignments. For expressions with bit-register ranges, these destinations support
+Whole registers, static selections, runtime index sets, and runtime ranges also
+support these angle-range expressions in bitwise compound assignments. These destinations support
 [bitwise compounds with runtime-range expressions](#bitwise-compound-assignments-with-runtime-range-expressions).
 Shift and arithmetic compound extensions remain separate work. Runtime-dependent `const`
 initializers, declaration widths, general block-local declarations, runtime
@@ -4104,8 +4104,8 @@ Existing [direct runtime-range copies](#copies-from-runtime-bit-register-ranges)
 retain their capture/check timing, and fixed-width selected assignments retain
 their existing paths. [Runtime index-set destinations](#assigning-runtime-range-expressions-to-runtime-index-sets)
 and [runtime-range destinations](#assigning-runtime-range-expressions-to-runtime-ranges)
-also accept this RHS subset. Static selections and runtime index sets support these
-angle-range RHS expressions in bitwise compound assignments. For bit-register range RHS expressions, these destinations support
+also accept this RHS subset. Static selections, runtime index sets, and runtime ranges
+support these angle-range RHS expressions in bitwise compound assignments. These destinations support
 [bitwise compound assignments](#bitwise-compound-assignments-with-runtime-range-expressions).
 Existing direct-copy and fixed-width subsets remain available. Scalar
 elements, angle-bit destinations, aliases, concatenation, computed-result
@@ -4692,10 +4692,10 @@ mixing ranges on mutable or constant bit registers with supported known-width
 register values. Known-width destinations have a required entry count; runtime
 range destinations capture their count during execution.
 
-Whole mutable bit registers, their static selections, and runtime index sets also accept direct or nested runtime ranges on
+Whole mutable bit registers and their static selections, runtime index sets, and
+runtime ranges also accept direct or nested runtime ranges on
 explicitly sized angle variables, constants, array elements, and supported
-angle iterators, including mixed angle and bit-register expressions. Runtime-range
-destinations do not yet support angle-range RHS expressions in compound assignments.
+angle iterators, including mixed angle and bit-register expressions.
 
 Execution follows this order:
 
@@ -4761,6 +4761,20 @@ bit[8] bits = "11010000";
 bits[{high, low, 5, 0}] ^= ~phase[first:last]; // "01110000"
 bit[8] direct = "11010000";
 direct[{high, low, 5, 0}] |= phase[first:last]; // "11010011"
+```
+
+<!-- angle-range-runtime-range-compound-example -->
+```qasm
+OPENQASM 3.0;
+angle[8] phase = angle[8]("10110101");
+int first = 1;
+int last = 4;
+int dest_first = 1;
+int dest_last = 4;
+bit[8] bits = "11010000";
+bits[dest_first:dest_last] ^= ~phase[first:last]; // "11011010"
+bit[8] direct = "11010000";
+direct[dest_first:dest_last] |= phase[first:last]; // "11010100"
 ```
 
 <!-- runtime-expression-bitwise-compound-example -->
@@ -5257,8 +5271,8 @@ build option is required.
 Existing direct runtime-range copies and fixed-width RHS assignments retain
 their own capture/check timing.
 [Bitwise compound assignments](#bitwise-compound-assignments-with-runtime-range-expressions)
-also accept nested runtime bit-register range RHS expressions; angle-range RHS
-expressions in runtime-range destination compounds remain unsupported. Angle-bit destinations, aliases,
+also accept nested runtime bit-register and angle-range RHS expressions.
+Angle-bit destinations, aliases,
 concatenation, computed-result indexing, and general block-local declarations
 remain outside this subset. Exact capture/check order, duplicate rejection,
 and resource limits are documented converter policies.
@@ -9247,6 +9261,12 @@ references. It covers all three operators, changing and overlapping destinations
 skipped paths, and failure order. Run with `--bra /path/to/bra`, including a
 UBSan build.
 
+`bra/test/qasm2qcx_angle_range_runtime_range_compound_numerical.py` checks runtime
+range compounds with runtime angle ranges against independent bit-vector
+references. It covers all three operators, changing and overlapping destinations,
+skipped paths, and failure order. Run with `--bra /path/to/bra`, including a
+UBSan build.
+
 `bra/test/qasm2qcx_static_angle_bit_selection_numerical.py` checks selected bits
 and packed angle storage against independent integer references at every
 supported width. It covers constants, variables, runtime array-element indices,
@@ -10623,6 +10643,7 @@ python3 bra/test/qasm2qcx_angle_range_runtime_range_numerical.py --bra bra/bin/b
 python3 bra/test/qasm2qcx_angle_range_register_compound_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_range_static_compound_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_range_runtime_set_compound_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_angle_range_runtime_range_compound_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_angle_selection_uint_cast_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_angle_bit_selection_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_angle_selection_compound_numerical.py --bra bra/bin/bra
