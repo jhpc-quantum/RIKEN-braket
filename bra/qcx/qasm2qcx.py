@@ -4436,6 +4436,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return None
         return dataclasses.replace(info, operator=statement.op.name)
 
+    def __runtime_angle_range_set_compound_assignment_info(
+            self, statement: ast.ClassicalAssignment,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeBitRegisterAssignment | None:
+        if statement.op.name not in ('&=', '|=', '^='):
+            return None
+        info = self.__runtime_angle_range_set_expression_assignment_info(statement.lvalue, statement.rvalue, iterators)
+        if info is None:
+            return None
+        return dataclasses.replace(info, operator=statement.op.name)
+
     def __runtime_register_assignment_destination_width(
             self, target: ast.Identifier,
             iterators: set[str] | dict[str, ValueType] | None) -> int:
@@ -5857,6 +5867,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return True
         if self.__runtime_angle_range_static_compound_assignment_info(statement, iterators) is not None:
             return True
+        if self.__runtime_angle_range_set_compound_assignment_info(statement, iterators) is not None:
+            return True
         if self.__runtime_bit_range_copy_info(statement, iterators) is not None:
             return True
         if self.__runtime_register_compound_assignment_info(statement, iterators) is not None:
@@ -5944,6 +5956,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if self.__runtime_angle_range_register_compound_assignment_info(node, iterators) is not None:
                 return
             if self.__runtime_angle_range_static_compound_assignment_info(node, iterators) is not None:
+                return
+            if self.__runtime_angle_range_set_compound_assignment_info(node, iterators) is not None:
                 return
             if self.__runtime_bit_range_copy_info(node, iterators) is not None:
                 return
@@ -11881,6 +11895,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         angle_static_compound = self.__runtime_angle_range_static_compound_assignment_info(statement)
         if angle_static_compound is not None:
             self.__emit_runtime_register_assignment(angle_static_compound)
+            return
+        angle_set_compound = self.__runtime_angle_range_set_compound_assignment_info(statement)
+        if angle_set_compound is not None:
+            self.__emit_runtime_register_assignment(angle_set_compound)
             return
         bit_range_copy = self.__runtime_bit_range_copy_info(statement)
         if bit_range_copy is not None:
