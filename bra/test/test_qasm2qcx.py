@@ -24123,6 +24123,64 @@ class UnsignedArrayAccessTests(unittest.TestCase):
         self.assertIn('LET A1:QASM2QCX_INT_0 &= 15', lines)
 
 
+class StaticArraySliceAssignmentFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def info(self, converter, statement, iterators=None):
+        node = self.program(statement).statements[0]
+        return converter._QASM2QCXConverter__static_array_slice_assignment_info(node, iterators)
+
+    def test_matching_types_and_selection_metadata(self):
+        for element in ('int', 'int[4]', 'uint[4]', 'float[32]', 'bool', 'complex', 'angle[4]'):
+            with self.subTest(element=element):
+                c = self.converter(f'array[{element},5] left; array[{element},4] right;')
+                info = self.info(c, 'left[0:4] = right[-4:0];')
+                self.assertIsInstance(info, qasm2qcx._StaticArraySliceAssignment)
+                self.assertEqual(info.count, 5)
+                self.assertEqual(list(info.destination.indices), [0,1,2,3,4])
+                self.assertEqual(list(info.source.indices), [-4,-3,-2,-1,0])
+                with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                    info.count = 0
+        c = self.converter('array[int,5] left; array[int,5] right;')
+        self.assertEqual(self.info(c, 'left[4:-2:0] = right[-1:-2:-5];').count, 3)
+        self.assertEqual(self.info(c, 'left[3:1] = right[2:0];').count, 0)
+
+    def test_mismatch_invalid_ranges_and_repeated_destinations(self):
+        declarations = ('array[int,5] a; array[int,4] b; array[uint[4],5] u; '
+                        'array[int[4],5] narrow; array[float[32],5] f; array[float[64],5] g; int index;')
+        c = self.converter(declarations)
+        for assignment in ('a[0:2]=b[0:1];', 'a[0:2]=u[0:2];', 'a[0:2]=narrow[0:2];',
+                           'f[0:2]=g[0:2];', 'a[-5:0]=a[0:4];', 'a[0:0:2]=b[0:2];',
+                           'a[0:5]=a[0:4];', 'a[index:2]=b[0:2];', 'a[0:1]=b[{0,1}];',
+                           'a[0:1]=index;', 'a[0:1]+=b[0:1];'):
+            with self.subTest(assignment=assignment), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(c, assignment)
+        self.assertIsNone(self.info(c, 'a[0]=index;'))
+
+    def test_type_widths_are_frozen_before_iterator_shadowing(self):
+        c = self.converter('const int W=4; const int V=2+2; '
+                           'array[uint[W],3] a; array[uint[V],3] b; '
+                           'array[angle[W],3] c; array[angle[V],3] d;')
+        for assignment in ('a[0:2]=b[0:2];', 'c[0:2]=d[0:2];'):
+            with self.subTest(assignment=assignment):
+                self.assertEqual(self.info(c, assignment, {'W': qasm2qcx.ValueType.INT}).count, 3)
+
+    def test_metadata_preserves_state_and_checks_visibility(self):
+        program = self.program('array[int,3] a; array[int,3] b;')
+        c = qasm2qcx.QASM2QCXConverter(program)
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            self.info(c, 'a[0:1]=b[0:1];')
+        c.visit(program)
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__'+field) for field in fields]
+        lines = c._QASM2QCXConverter__qcx_lines.copy()
+        self.assertEqual(self.info(c, 'a[0:1]=b[1:2];').count, 2)
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__'+field) for field in fields])
+        self.assertEqual(lines, c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+
 class StaticArraySliceLoopFoundationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)
