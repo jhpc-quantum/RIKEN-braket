@@ -308,6 +308,12 @@ class _RuntimeArraySliceCopy:
 
 
 @dataclasses.dataclass(frozen=True)
+class _StaticArraySliceInitializer:
+    source: _StaticArraySliceLoop
+    count: int
+
+
+@dataclasses.dataclass(frozen=True)
 class _StaticBitSelection:
     source_name: str
     indices: tuple[int, ...]
@@ -6732,6 +6738,28 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError('array slice assignment with unresolved element type widths')
         if left_signature != right_signature:
             raise InvalidArrayOperandException('Array slice assignment requires matching element types')
+
+    def __static_array_slice_initializer_info(
+            self, statement: ast.ClassicalDeclaration) -> _StaticArraySliceInitializer | None:
+        initializer = statement.init_expression
+        if not isinstance(initializer, ast.IndexExpression):
+            return None
+        if not isinstance(initializer.collection, ast.Identifier):
+            raise UnsupportedOpenQASMError('array slice initializer requires an array slice source')
+        name = statement.identifier.name
+        source_name = initializer.collection.name
+        source_type = self.__classical_source_types.get(source_name)
+        if not isinstance(source_type, ast.ArrayType):
+            raise UnsupportedOpenQASMError('array slice initializer requires an array slice source')
+        if source_name == name or self.__capitalize_variable_name(source_name) not in self.__array_element_types:
+            raise NoVariableNameException(source_name)
+        source = self.__static_array_slice_loop_info(
+            initializer, self.__array_slice_element_type(source_name, source_type))
+        self.__check_array_slice_assignment_types(name, source_name)
+        count = self.__loop_value_count(source.indices)
+        if count != self.__array_source_sizes[name]:
+            raise InvalidArrayOperandException('Array slice initializer requires matching lengths')
+        return _StaticArraySliceInitializer(source, count)
 
     def __capture_array_slice_positions(
             self, selection: _RuntimeArraySliceLoop, label: str) -> tuple[str, str]:
