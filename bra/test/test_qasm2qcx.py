@@ -23896,8 +23896,8 @@ class AngleArrayIntegrationTests(unittest.TestCase):
             with self.subTest(declaration=declaration), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter('array[angle[4], 1] a = {pi}; ' + declaration)
 
-    def test_mismatched_slices_whole_array_operations_and_bit_indexing_remain_unsupported(self):
-        for statement in ('a = a;', 'a[0:1] = a[0:0];', 'bit b = a[0][0];',
+    def test_mismatched_slices_and_invalid_bit_indexing_are_rejected(self):
+        for statement in ('a[0:1] = a[0:0];', 'bit b = a[0][0];',
                            'a[0][0] = true;'):
             with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter('array[angle[4], 2] a = {pi, pi}; ' + statement)
@@ -24397,6 +24397,12 @@ class WholeArrayCopyFoundationTests(unittest.TestCase):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 check('a', source)
         self.assertEqual(check('a', 'a'), 3)
+
+    def test_validation_in_empty_loops(self):
+        self.converter('array[int,2] a; array[int,2] b; for int i in [1:0] { a=b; }')
+        for source in ('array[uint,2] b;', 'array[int,3] b;'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(f'array[int,2] a; {source} for int i in [1:0] {{ a=b; }}')
 
 
 class ArrayCopyInitializerTests(unittest.TestCase):
