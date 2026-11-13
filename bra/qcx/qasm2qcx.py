@@ -6813,7 +6813,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __runtime_array_slice_destination_assignment_info(
             self, statement: ast.ClassicalAssignment,
             iterators: set[str] | dict[str, ValueType] | None = None
-            ) -> _RuntimeArraySliceDestinationAssignment | None:
+            ) -> _RuntimeArraySliceDestinationAssignment | _RuntimeArraySliceCopy | None:
         target = statement.lvalue
         if not isinstance(target, ast.IndexedIdentifier):
             return None
@@ -6837,10 +6837,58 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         source_type = self.__classical_source_types.get(rhs.collection.name)
         if not isinstance(source_type, ast.ArrayType):
             raise UnsupportedOpenQASMError('array slice assignment requires an array slice source')
-        source = self.__static_array_slice_loop_info(
-            rhs, self.__array_slice_element_type(rhs.collection.name, source_type), iterators)
+        element_type = self.__array_slice_element_type(rhs.collection.name, source_type)
+        source = self.__runtime_array_slice_loop_info(rhs, element_type, iterators)
+        if source is None:
+            source = self.__static_array_slice_loop_info(rhs, element_type, iterators)
         self.__check_array_slice_assignment_types(name, rhs.collection.name)
+        if isinstance(source, _RuntimeArraySliceLoop):
+            return _RuntimeArraySliceCopy(destination, source)
         return _RuntimeArraySliceDestinationAssignment(destination, source, self.__loop_value_count(source.indices))
+
+    def __emit_runtime_array_slice_copy(self, info: _RuntimeArraySliceCopy) -> None:
+        previous_state = (self.__expression_kind, self.__value, self.__value_type,
+                          self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        previous_declarations = self.__declared_temporary_variables.copy()
+        prefix = f'QASM2QCX_ARRAY_SLICE_COPY_{self.__array_index}'
+        self.__array_index += 1
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            destination, destination_count = self.__capture_array_slice_positions(info.destination, prefix + '_DEST')
+            source, source_count = self.__capture_array_slice_positions(info.source, prefix + '_SOURCE')
+            self.__qcx_lines.append(f'ASSERT {destination_count} == {source_count}')
+            distinct_end = prefix + '_DISTINCT_END'
+            self.__qcx_lines.append(f'JUMPIF {distinct_end} {destination_count} <= 1')
+            self.__emit_array_slice_distinct_positions(destination, destination_count, prefix + '_DISTINCT')
+            self.__qcx_lines.append(f'@{distinct_end}')
+
+            capacity = min(2 * info.destination.source_size, 2 * info.source.source_size,
+                           self.MAX_RUNTIME_BIT_RANGE_POSITIONS, self.QCX_INT_MAX)
+            temporary = self.__add_temporary_array(
+                capacity, 'ARRAY_SLICE', self.__array_slice_storage_type(info.source.value_type))
+            index = self.__add_new_temporary_variable(ValueType.INT)
+            physical = self.__add_new_temporary_variable(ValueType.INT)
+            snapshot_loop, write_loop, end = (prefix + suffix for suffix in ('_SNAPSHOT', '_WRITE', '_END'))
+            self.__qcx_lines.extend([
+                f'JUMPIF {end} {source_count} == 0',
+                f'LET {index} := 0', f'@{snapshot_loop}',
+                f'LET {physical} := {source}:{index}',
+                f'LET {temporary}:{index} := {info.source.source}:{physical}',
+                f'LET {index} += 1', f'JUMPIF {snapshot_loop} {index} < {source_count}',
+                f'LET {index} := 0', f'@{write_loop}',
+                f'LET {physical} := {destination}:{index}',
+                f'LET {info.destination.source}:{physical} := {temporary}:{index}',
+                f'LET {index} += 1', f'JUMPIF {write_loop} {index} < {destination_count}', f'@{end}',
+            ])
+            if len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES:
+                raise InvalidArrayOperandException('Array slice assignment exceeds QCX output limit')
+            self.__hoist_temporary_declarations(previous_declarations)
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous_state
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
 
     def __emit_runtime_array_slice_destination_assignment(
             self, info: _RuntimeArraySliceDestinationAssignment) -> None:
@@ -12378,6 +12426,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
 
         runtime_destination = self.__runtime_array_slice_destination_assignment_info(statement)
+        if isinstance(runtime_destination, _RuntimeArraySliceCopy):
+            self.__emit_runtime_array_slice_copy(runtime_destination)
+            return
         if runtime_destination is not None:
             self.__emit_runtime_array_slice_destination_assignment(runtime_destination)
             return

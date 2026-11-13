@@ -24153,7 +24153,7 @@ class RuntimeArraySliceDestinationTests(unittest.TestCase):
 
     def test_invalid_sources_types_and_skipped_bodies(self):
         declarations = 'array[int,4] a; array[uint,4] u; int start; int stop;'
-        for assignment in ('a[start:stop] = u[0:1];', 'a[start:stop] = a[start:stop];',
+        for assignment in ('a[start:stop] = u[0:1];', 'a[start:stop] = u[start:stop];',
                            'a[start:stop] = start;', 'a[start:stop] += a[0:1];',
                            'a[start:stop] = a[0:4];'):
             for wrapper in ('{}', 'for int i in [1:0] {{ {} }}'):
