@@ -6096,6 +6096,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # skipped body. Sized angle bit selections were handled above.
             self.__loop_index_info(node, iterators)
         if isinstance(node, ast.ClassicalAssignment):
+            if self.__whole_to_runtime_array_slice_assignment_info(node, iterators) is not None:
+                return
             if self.__whole_to_static_array_slice_assignment_info(node, iterators) is not None:
                 return
             if self.__runtime_array_slice_to_whole_assignment_info(node, iterators) is not None:
@@ -6998,7 +7000,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __whole_to_static_array_slice_assignment_info(
             self, statement: ast.ClassicalAssignment,
-            iterators: set[str] | dict[str, ValueType] | None = None) -> _StaticArraySliceAssignment | None:
+            iterators: set[str] | dict[str, ValueType] | None = None, *,
+            allow_runtime_destination: bool = False
+            ) -> _StaticArraySliceAssignment | _RuntimeArraySliceDestinationAssignment | None:
         target, source = statement.lvalue, statement.rvalue
         if not isinstance(target, ast.IndexedIdentifier) or not isinstance(source, ast.Identifier):
             return None
@@ -7014,7 +7018,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         bounds = ast.RangeDefinition(ast.IntegerLiteral(0), ast.IntegerLiteral(size - 1), None)
         whole_slice = ast.IndexExpression(source, [bounds])
         equivalent = dataclasses.replace(statement, rvalue=whole_slice)
+        if allow_runtime_destination:
+            return self.__runtime_array_slice_destination_assignment_info(equivalent, iterators)
         return self.__static_array_slice_assignment_info(equivalent, iterators)
+
+    def __whole_to_runtime_array_slice_assignment_info(
+            self, statement: ast.ClassicalAssignment,
+            iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> _RuntimeArraySliceDestinationAssignment | None:
+        return self.__whole_to_static_array_slice_assignment_info(statement, iterators, allow_runtime_destination=True)
 
     def __static_array_slice_assignment_info(
             self, statement: ast.ClassicalAssignment,
@@ -12707,6 +12719,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__is_initialization_process:
             return
 
+        whole_to_runtime_slice = self.__whole_to_runtime_array_slice_assignment_info(statement)
+        if whole_to_runtime_slice is not None:
+            self.__emit_runtime_array_slice_destination_assignment(whole_to_runtime_slice)
+            return
         whole_to_static_slice = self.__whole_to_static_array_slice_assignment_info(statement)
         if whole_to_static_slice is not None:
             self.__emit_static_array_slice_assignment(whole_to_static_slice)
