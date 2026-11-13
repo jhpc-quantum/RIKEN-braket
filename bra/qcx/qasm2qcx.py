@@ -314,6 +314,12 @@ class _StaticArraySliceInitializer:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeArraySliceInitializer:
+    source: _RuntimeArraySliceLoop
+    count: int
+
+
+@dataclasses.dataclass(frozen=True)
 class _StaticBitSelection:
     source_name: str
     indices: tuple[int, ...]
@@ -6739,8 +6745,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if left_signature != right_signature:
             raise InvalidArrayOperandException('Array slice assignment requires matching element types')
 
-    def __static_array_slice_initializer_info(
-            self, statement: ast.ClassicalDeclaration) -> _StaticArraySliceInitializer | None:
+    def __array_slice_initializer_source(
+            self, statement: ast.ClassicalDeclaration) -> tuple[ast.IndexExpression, str, ast.ArrayType] | None:
         initializer = statement.init_expression
         if not isinstance(initializer, ast.IndexExpression):
             return None
@@ -6753,6 +6759,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError('array slice initializer requires an array slice source')
         if source_name == name or self.__capitalize_variable_name(source_name) not in self.__array_element_types:
             raise NoVariableNameException(source_name)
+        return initializer, source_name, source_type
+
+    def __static_array_slice_initializer_info(
+            self, statement: ast.ClassicalDeclaration) -> _StaticArraySliceInitializer | None:
+        details = self.__array_slice_initializer_source(statement)
+        if details is None:
+            return None
+        initializer, source_name, source_type = details
+        name = statement.identifier.name
         source = self.__static_array_slice_loop_info(
             initializer, self.__array_slice_element_type(source_name, source_type))
         self.__check_array_slice_assignment_types(name, source_name)
@@ -6760,6 +6775,20 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if count != self.__array_source_sizes[name]:
             raise InvalidArrayOperandException('Array slice initializer requires matching lengths')
         return _StaticArraySliceInitializer(source, count)
+
+    def __runtime_array_slice_initializer_info(
+            self, statement: ast.ClassicalDeclaration) -> _RuntimeArraySliceInitializer | None:
+        details = self.__array_slice_initializer_source(statement)
+        if details is None:
+            return None
+        initializer, source_name, source_type = details
+        source = self.__runtime_array_slice_loop_info(
+            initializer, self.__array_slice_element_type(source_name, source_type))
+        if source is None:
+            return None
+        name = statement.identifier.name
+        self.__check_array_slice_assignment_types(name, source_name)
+        return _RuntimeArraySliceInitializer(source, self.__array_source_sizes[name])
 
     def __capture_array_slice_positions(
             self, selection: _RuntimeArraySliceLoop, label: str) -> tuple[str, str]:

@@ -24376,6 +24376,34 @@ class RuntimeArraySliceAssignmentLoweringTests(unittest.TestCase):
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
 
 
+class RuntimeArraySliceInitializerFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def info(self, converter, declaration):
+        node = self.program(declaration).statements[0]
+        return converter._QASM2QCXConverter__runtime_array_slice_initializer_info(node)
+
+    def test_runtime_metadata_and_static_fallback(self):
+        for element in ('int', 'uint[4]', 'float', 'bool', 'complex', 'angle[4]'):
+            with self.subTest(element=element):
+                c = self.converter(f'array[{element},4] a; array[{element},2] b; int first; int last;')
+                info = self.info(c, f'array[{element},2] b=a[first:last];')
+                self.assertIsInstance(info, qasm2qcx._RuntimeArraySliceInitializer)
+                self.assertEqual(info.count, 2)
+                self.assertIsInstance(info.source, qasm2qcx._RuntimeArraySliceLoop)
+                with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                    info.count = 0
+                self.assertIsNone(self.info(c, f'array[{element},2] b=a[0:1];'))
+
+    def test_invalid_types_and_source(self):
+        c = self.converter('array[int,4] a; array[uint,4] u; array[int,2] b; int first;')
+        for source in ('u[first:1]', 'b[first:1]', 'a[first:true:1]', 'a[{first,1}]'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(c, f'array[int,2] b={source};')
+        self.assertIsNone(self.info(c, 'array[int,2] b={1,2};'))
+
+
 class StaticArraySliceInitializerFoundationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)
