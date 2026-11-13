@@ -6037,6 +6037,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # skipped body. Sized angle bit selections were handled above.
             self.__loop_index_info(node, iterators)
         if isinstance(node, ast.ClassicalAssignment):
+            if self.__static_array_slice_assignment_info(node, iterators) is not None:
+                return  # Validate both slices together, including skipped loops.
             if (node.op.name == '=' and self.__runtime_angle_range_register_assignment_info(
                     node.lvalue, node.rvalue, iterators) is not None):
                 return
@@ -6739,6 +6741,29 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if count and destination.source_size % stride == 0 and count > destination.source_size // stride:
             raise InvalidArrayOperandException('Array slice assignment destination repeats an index')
         return _StaticArraySliceAssignment(destination, source, count)
+
+    def __emit_static_array_slice_assignment(self, info: _StaticArraySliceAssignment) -> None:
+        if not info.count:
+            return
+        # Check the complete output budget before allocating or emitting any
+        # destination writes. Both passes are bounded by this guard.
+        if len(self.__qcx_lines) + 2 * info.count + 1 > self.MAX_LOOP_OUTPUT_LINES:
+            raise InvalidArrayOperandException('Array slice assignment exceeds QCX output limit')
+        storage = {ValueType.INT: ValueType.INT, ValueType.BOOL: ValueType.INT,
+                   ValueType.UINT: ValueType.UINT, ValueType.ANGLE: ValueType.UINT,
+                   ValueType.FLOAT: ValueType.FLOAT, ValueType.COMPLEX: ValueType.COMPLEX}[info.source.value_type]
+        previous_declarations = self.__declared_temporary_variables.copy()
+        temporary = self.__add_temporary_array(info.count, 'ARRAY_SLICE', storage)
+        try:
+            for index, position in enumerate(info.source.indices):
+                physical = position if position >= 0 else info.source.source_size + position
+                self.__qcx_lines.append(f'LET {temporary}:{index} := {info.source.source}:{physical}')
+            for index, position in enumerate(info.destination.indices):
+                physical = position if position >= 0 else info.destination.source_size + position
+                self.__qcx_lines.append(f'LET {info.destination.source}:{physical} := {temporary}:{index}')
+            self.__hoist_temporary_declarations(previous_declarations)
+        finally:
+            self.__release_temporary_variable(temporary)
 
     def __collection_loop_info(
             self, source: ast.Identifier, iteration_type: ast.QASMNode,
@@ -11358,11 +11383,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return self.__add_temporary_array(width, purpose, ValueType.INT)
 
     def __add_temporary_array(self, width: int, purpose: str, value_type: ValueType) -> str:
-        if value_type not in (ValueType.INT, ValueType.UINT):
-            raise ValueError('temporary arrays require INT or UINT storage')
-        # Preserve INT-array names. A distinct UINT namespace prevents reuse
-        # of storage that was already declared with a different element type.
-        prefix = f'QASM2QCX_{purpose}_{"UINT_" if value_type == ValueType.UINT else ""}{width}_'
+        types = {ValueType.INT: 'INT', ValueType.UINT: 'UINT',
+                 ValueType.FLOAT: 'REAL', ValueType.COMPLEX: 'COMPLEX'}
+        if value_type not in types:
+            raise ValueError('unsupported temporary array storage type')
+        storage_type = types[value_type]
+        # Preserve existing INT names; all other storage types use distinct
+        # namespaces to prevent reuse of differently typed declarations.
+        prefix = f'QASM2QCX_{purpose}_{"" if value_type == ValueType.INT else storage_type + "_"}{width}_'
         index = 0
         name = prefix + str(index)
         while name in self.__used_temporary_variables or name in self.__reserved_variable_names:
@@ -11373,7 +11401,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__temporary_uint_types[name] = _UnsignedIntegerType(self.QCX_UINT_WIDTH, False)
         if name not in self.__declared_temporary_variables:
             self.__declared_temporary_variables.add(name)
-            self.__qcx_lines.append(f'VAR {name} {value_type.name} {width}')
+            self.__qcx_lines.append(f'VAR {name} {storage_type} {width}')
         return name
 
     @contextlib.contextmanager
@@ -12180,6 +12208,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def visit_ClassicalAssignment(self, statement: ast.ClassicalAssignment) -> None:
         if self.__is_initialization_process:
+            return
+
+        array_slice = self.__static_array_slice_assignment_info(statement)
+        if array_slice is not None:
+            self.__emit_static_array_slice_assignment(array_slice)
             return
 
         if statement.op.name == '=':
