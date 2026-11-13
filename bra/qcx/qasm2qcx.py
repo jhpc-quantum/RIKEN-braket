@@ -827,6 +827,12 @@ class _LoopContext:
     continue_label: str
 
 
+@dataclasses.dataclass(frozen=True)
+class _BasicGateDefinition:
+    qubits: tuple[str, ...]
+    body: tuple[ast.QuantumGate, ...]
+
+
 class QASM2QCXConverter(visitor.QASMVisitor):
     # bra::int_type is C++ int. These bounds describe a backend built for the
     # converter's host; OpenQASM declared widths do not change QCX storage.
@@ -840,6 +846,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     MAX_LOOP_OUTPUT_LINES = 1000000
     MAX_RUNTIME_BIT_RANGE_POSITIONS = 1000000
     MAX_GATE_POWER_OUTPUT_LINES = 100000
+    MAX_GATE_DEFINITION_OUTPUT_LINES = 100000
     # Keep literal instruction metadata within bra's ANGLEBITS2PHASE limits.
     MAX_ANGLE_PHASE_MODIFIERS = 1024
     MAX_ANGLE_PHASE_LITERAL_CHARS = 4096
@@ -996,6 +1003,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__declared_constant_variables: set[str] = set()
 
         self.__is_stdgates_included: bool = False
+        self.__gate_definition_stdgates_available: bool = False
+        self.__basic_gate_definitions: dict[str, _BasicGateDefinition] = {}
+        self.__defined_basic_gate_names: set[str] = set()
         self.__quantum_registers: dict[str, int] = {}
         self.__sized_quantum_registers: set[str] = set()
         self.__declared_quantum_registers: set[str] = set()
@@ -2344,7 +2354,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def visit_Include(self, statement: ast.Include) -> None:
         if statement.filename != 'stdgates.inc':
             raise UnsupportedOpenQASMError(f'include "{statement.filename}"')
-        if not self.__is_initialization_process:
+        if self.__is_initialization_process:
+            for name in self.__basic_gate_definitions:
+                if name in self.stdgates_qcx_map:
+                    raise DuplicateIdentifierException(name)
+            self.__gate_definition_stdgates_available = True
+        else:
             self.__is_stdgates_included = True
 
     def visit_QubitDeclaration(self, statement: ast.QubitDeclaration) -> None:
@@ -3186,6 +3201,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         previous_used = self.__used_temporary_variables.copy()
         previous_kind = self.__expression_kind
         try:
+            if statement.name.name in self.__basic_gate_definitions:
+                self.__emit_basic_gate_call(statement)
+                return
             self.__emit_quantum_gate(statement)
         finally:
             self.__expression_kind = previous_kind
@@ -4201,7 +4219,115 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__release_temporary_variable(str(self.__value))
 
     def visit_QuantumGateDefinition(self, statement: ast.QuantumGateDefinition) -> None:
-        raise UnsupportedOpenQASMError('gate definition')
+        if not self.__is_initialization_process:
+            self.__defined_basic_gate_names.add(statement.name.name)
+            return
+        name = statement.name.name
+        if (name in self.default_gates_qcx_map
+                or (self.__gate_definition_stdgates_available and name in self.stdgates_qcx_map)):
+            raise DuplicateIdentifierException(name)
+        self.__register_source_identifier(name)
+        if statement.arguments:
+            raise UnsupportedOpenQASMError('parameterized gate definition')
+        formal_qubits = tuple(qubit.name for qubit in statement.qubits)
+        if len(set(formal_qubits)) != len(formal_qubits):
+            raise DuplicateIdentifierException('gate qubit argument')
+        for child in statement.body:
+            if not isinstance(child, ast.QuantumGate):
+                raise UnsupportedOpenQASMError(f'gate definition body {type(child).__name__}')
+            gate_name = child.name.name
+            if (gate_name not in self.default_gates_qcx_map
+                    and not (self.__gate_definition_stdgates_available and gate_name in self.stdgates_qcx_map)):
+                raise UnsupportedOpenQASMError(f'gate {gate_name} in gate definition')
+            if child.duration is not None:
+                raise UnsupportedOpenQASMError('gate duration in gate definition')
+            expressions = list(child.arguments) + [modifier.argument for modifier in child.modifiers
+                                                   if modifier.argument is not None]
+            for expression in expressions:
+                if self.__loop_bound_names(expression) - {'pi', 'tau', 'euler'}:
+                    raise UnsupportedOpenQASMError('nonlocal expression in gate definition')
+            for argument in child.arguments:
+                value_type, _ = self.__loop_expression_info(argument)
+                if value_type in (ValueType.BIT, ValueType.BOOL, ValueType.COMPLEX):
+                    raise WrongParameterTypeException(value_type)
+            info = self.__analyze_gate_modifiers(child.modifiers, allow_float=True)
+            parameters, qubits = self.gate_signatures[gate_name]
+            qubits += sum(count for _, count in info.controls)
+            if len(child.arguments) != parameters or len(child.qubits) != qubits:
+                raise WrongGateArityException(gate_name, parameters, qubits,
+                                              len(child.arguments), len(child.qubits))
+            for qubit in child.qubits:
+                if not isinstance(qubit, ast.Identifier) or qubit.name not in formal_qubits:
+                    raise UnsupportedOpenQASMError('gate definition requires unindexed formal qubits')
+            if len({qubit.name for qubit in child.qubits}) != len(child.qubits):
+                raise InvalidQubitOperandException('gate operation requires distinct qubit operands')
+        self.__basic_gate_definitions[name] = _BasicGateDefinition(formal_qubits, tuple(statement.body))
+
+    def __validate_basic_gate_call(
+            self, statement: ast.QuantumGate,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _BasicGateDefinition:
+        name = statement.name.name
+        if not self.__is_initialization_process and name not in self.__defined_basic_gate_names:
+            raise UnsupportedOpenQASMError(f'gate {name} used before definition')
+        definition = self.__basic_gate_definitions[name]
+        if statement.modifiers:
+            raise UnsupportedOpenQASMError('modifiers on user-defined gates')
+        if statement.duration is not None:
+            raise UnsupportedOpenQASMError('duration on user-defined gate')
+        if statement.arguments or len(statement.qubits) != len(definition.qubits):
+            raise WrongGateArityException(name, 0, len(definition.qubits),
+                                          len(statement.arguments), len(statement.qubits))
+        active = set(iterators or ()) | {key for scope in self.__loop_bindings for key in scope}
+        for operand in statement.qubits:
+            operand_name = self.__operand_name(operand)
+            declared = (self.__quantum_registers if self.__is_initialization_process
+                        else self.__declared_quantum_registers)
+            if operand_name in active or operand_name not in declared:
+                raise InvalidQubitOperandException(f'{operand_name} is not a declared qubit operand')
+            if isinstance(operand, ast.Identifier):
+                if operand_name in self.__sized_quantum_registers:
+                    raise UnsupportedOpenQASMError('register broadcasting on user-defined gates')
+            elif (len(operand.indices) != 1 or not isinstance(operand.indices[0], list)
+                  or len(operand.indices[0]) != 1
+                  or isinstance(operand.indices[0][0], (ast.RangeDefinition, ast.DiscreteSet))):
+                raise UnsupportedOpenQASMError('register selection on user-defined gates')
+            else:
+                index = operand.indices[0][0]
+                value_type, _ = self.__loop_expression_info(index, iterators)
+                if value_type not in (ValueType.INT, ValueType.UINT):
+                    raise InvalidQubitOperandException('Qubit index must be an integer')
+                names = self.__loop_bound_names(index)
+                if (any(name in self.__classical_source_types and name not in active for name in names)
+                        or any(isinstance(scope.get(name), _RuntimeIteratorBinding)
+                               for scope in self.__loop_bindings for name in names)):
+                    raise UnsupportedOpenQASMError('runtime qubit index on user-defined gate')
+        if (not self.__is_initialization_process
+                and all(isinstance(operand, ast.Identifier)
+                        or self.__is_literal_qubit_selector(operand.indices[0][0])
+                        for operand in statement.qubits)):
+            physical = [self.__flattened_qubit_operand(operand)[0][0] for operand in statement.qubits]
+            if len(set(physical)) != len(physical):
+                raise InvalidQubitOperandException('user-defined gate requires distinct qubit operands')
+        return definition
+
+    def __emit_basic_gate_call(self, statement: ast.QuantumGate) -> None:
+        definition = self.__validate_basic_gate_call(statement)
+        # Resolve all operands first so an invalid or aliased call emits nothing.
+        physical = []
+        for operand in statement.qubits:
+            indices, is_register = self.__flattened_qubit_operand(operand)
+            if is_register or len(indices) != 1:
+                raise UnsupportedOpenQASMError('register broadcasting on user-defined gates')
+            physical.append(indices[0])
+        if len(set(physical)) != len(physical):
+            raise InvalidQubitOperandException('user-defined gate requires distinct qubit operands')
+        bindings = dict(zip(definition.qubits, statement.qubits))
+        output_start = len(self.__qcx_lines)
+        for operation in definition.body:
+            self.visit(dataclasses.replace(operation, qubits=[bindings[qubit.name] for qubit in operation.qubits]))
+            if (len(self.__qcx_lines) - output_start > self.MAX_GATE_DEFINITION_OUTPUT_LINES
+                    or len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES):
+                raise InvalidLoopRangeException('user-defined gate expansion exceeds QCX output limit')
 
     def visit_QuantumMeasurementStatement(
             self, statement: ast.QuantumMeasurementStatement) -> None:
@@ -5097,7 +5223,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                             child_statement,
                             (ast.ClassicalDeclaration,
                              ast.ConstantDeclaration,
-                             ast.QubitDeclaration)):
+                             ast.QubitDeclaration,
+                             ast.QuantumGateDefinition)):
                         raise UnsupportedOpenQASMError(
                             'block-local declaration')
                     self.visit(child_statement)
@@ -5839,6 +5966,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise UnsupportedOpenQASMError(f'assignment operator {child.op.name}')
             if isinstance(child, ast.ClassicalAssignment) and child.op.name in ('&=', '|=', '^=', '<<=', '>>=', '**='):
                 self.__validate_integer_operator_assignment_types(child, iterators)
+            if isinstance(child, ast.QuantumGate) and child.name.name in self.__basic_gate_definitions:
+                self.__validate_basic_gate_call(child, iterators)
+                continue
             angle_parameter = (self.__angle_phase_parameter(child, iterators)
                                if isinstance(child, (ast.QuantumGate, ast.QuantumPhase)) else None)
             if (isinstance(child, (ast.QuantumGate, ast.QuantumPhase))

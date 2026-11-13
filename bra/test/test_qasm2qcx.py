@@ -21,6 +21,130 @@ def convert(source: str) -> list[str]:
     return qasm2qcx.convert(source)
 
 
+class BasicGateDefinitionFoundationTests(unittest.TestCase):
+    def converter(self, source):
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ' + source)
+        return qasm2qcx.QASM2QCXConverter(program)
+
+    def test_definitions_are_recorded_without_emitting_gates(self):
+        source = ('include "stdgates.inc"; gate bell a,b { h a; cx a,b; } '
+                  'gate idle a {} gate rotated a { U(pi/2,0,pi) a; inv @ x a; } qubit[2] q;')
+        c = self.converter(source)
+        definitions = c._QASM2QCXConverter__basic_gate_definitions
+        self.assertEqual(definitions['bell'].qubits, ('a', 'b'))
+        self.assertEqual([gate.name.name for gate in definitions['bell'].body], ['h', 'cx'])
+        self.assertEqual(definitions['idle'].body, ())
+        with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+            definitions['bell'].qubits = ()
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ' + source)
+        c.visit(program)
+        self.assertEqual(list(c), ['QUBITS 2'])
+
+    def test_rejects_unsupported_or_invalid_definitions(self):
+        for source in (
+                'gate g a { h a; }',
+                'gate g a { h a; } include "stdgates.inc";',
+                'include "stdgates.inc"; gate x a {}',
+                'gate x a {} include "stdgates.inc";',
+                'gate U a {}',
+                'gate g a {} gate g b {}',
+                'gate g a,a {}',
+                'gate g(theta) a {}',
+                'include "stdgates.inc"; gate g a { h missing; }',
+                'include "stdgates.inc"; gate g a { h a[0]; }',
+                'include "stdgates.inc"; gate g a { cx a,a; }',
+                'include "stdgates.inc"; gate g a { x a,a; }',
+                'gate g a { U(other,0,0) a; }',
+                'gate g a { U(true,0,0) a; }',
+                'gate g a { gphase(pi); }',
+                'gate g a { g a; }',
+                'gate g a {} gate h a { g a; }'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(source)
+
+
+class BasicGateCallTests(unittest.TestCase):
+    prefix = 'OPENQASM 3; include "stdgates.inc"; '
+
+    def test_expansion_matches_inline_circuit(self):
+        defined = ('gate bell a,b { h a; cx a,b; } gate idle a {} '
+                   'gate rot a { U(pi/2,0,pi) a; inv @ x a; } '
+                   'qubit[2] q; bell q[0],q[1]; idle q[1]; rot q[0]; bell q[1],q[0];')
+        inline = 'qubit[2] q; h q[0]; cx q[0],q[1]; U(pi/2,0,pi) q[0]; inv @ x q[0]; h q[1]; cx q[1],q[0];'
+        self.assertEqual(convert(self.prefix + defined), convert(self.prefix + inline))
+
+    def test_calls_in_loops_and_empty_loops(self):
+        declarations = 'gate flip a { x a; } qubit[2] q; '
+        self.assertEqual(convert(self.prefix + declarations + 'for int i in [0:1] { flip q[i]; }'),
+                         convert(self.prefix + 'qubit[2] q; x q[0]; x q[1];'))
+        self.assertEqual(convert(self.prefix + declarations + 'for int i in [1:0] { flip q[i]; }'), ['QUBITS 2'])
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            convert(self.prefix + declarations + 'for int i in [1:0] { flip q; }')
+        for body in ('int n=0; for int i in [1:0] { flip q[n]; }',
+                     'int stop=1; for int i in [0:stop] { flip q[i]; }'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(self.prefix + declarations + body)
+
+    def test_invalid_calls(self):
+        definition = 'gate pair a,b { cx a,b; } qubit[2] q; '
+        for call in ('pair q[0];', 'pair(1) q[0],q[1];', 'pair q[0],q[0];',
+                     'pair q[0],q[-2];', 'pair q,q;', 'inv @ pair q[0],q[1];'):
+            with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(self.prefix + definition + call)
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            convert(self.prefix + 'qubit[2] q; pair q[0],q[1]; gate pair a,b { cx a,b; }')
+        for call in ('pair q[0],q[0];', 'pair q[0],q[2];', 'inv @ pair q[0],q[1];'):
+            with self.subTest(skipped_call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(self.prefix + definition + f'for int i in [1:0] {{ {call} }}')
+
+    def test_expansion_limit(self):
+        source = self.prefix + 'gate pair a,b { h a; cx a,b; } qubit[2] q; pair q[0],q[1];'
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_GATE_DEFINITION_OUTPUT_LINES', 1), \
+                self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'expansion exceeds'):
+            convert(source)
+
+    def test_body_controls_and_global_phase_match_inline(self):
+        defined = ('gate mixed a,b { ctrl @ x a,b; U(pi/2,0,pi) b; } '
+                   'qubit[2] q; mixed q[0],q[1]; mixed q[1],q[0];')
+        inline = ('qubit[2] q; ctrl @ x q[0],q[1]; U(pi/2,0,pi) q[1]; '
+                  'ctrl @ x q[1],q[0]; U(pi/2,0,pi) q[0];')
+        self.assertEqual(convert(self.prefix + defined), convert(self.prefix + inline))
+
+    def test_empty_gate_and_scalar_qubit(self):
+        self.assertEqual(convert(self.prefix + 'gate idle a {} qubit q; idle q;'), ['QUBITS 1'])
+        self.assertEqual(convert(self.prefix + 'gate flip a { x a; } qubit q; flip q;'), ['QUBITS 1', 'X 0'])
+
+    def test_calls_inside_branches_and_runtime_loops(self):
+        definition = 'gate flip a { x a; } qubit[2] q; '
+        self.assertEqual(convert(self.prefix + definition + 'if (true) { flip q[0]; }'),
+                         convert(self.prefix + 'qubit[2] q; if (true) { x q[0]; }'))
+        self.assertEqual(convert(self.prefix + definition + 'int stop=1; for int i in [0:stop] { flip q[0]; }'),
+                         convert(self.prefix + 'qubit[2] q; int stop=1; for int i in [0:stop] { x q[0]; }'))
+
+    def test_register_selections_and_invalid_names_are_rejected(self):
+        definition = 'gate flip a { x a; } qubit[2] q; '
+        for call in ('flip q[0:0];', 'flip q[{0}];', 'flip missing;', 'flip q[2];', 'flip q[true];'):
+            with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(self.prefix + definition + call)
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            convert(self.prefix + 'gate flip a { x a; } flip q[0]; qubit[2] q;')
+
+    def test_failed_expansion_does_not_mutate_definition_or_leak_temporaries(self):
+        source = ('include "stdgates.inc"; gate rot a { U(pi/2,0,pi) a; x a; } qubit q;')
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ' + source)
+        c = qasm2qcx.QASM2QCXConverter(program)
+        c.visit(program)
+        definition = c._QASM2QCXConverter__basic_gate_definitions['rot']
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        call = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; rot q;').statements[0]
+        with patch.object(c, 'MAX_GATE_DEFINITION_OUTPUT_LINES', 0), \
+                self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'expansion exceeds'):
+            c.visit(call)
+        self.assertEqual([gate.qubits[0].name for gate in definition.body], ['a', 'a'])
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+
+
+
 class ScalarAngleFoundationTests(unittest.TestCase):
     @staticmethod
     def program(source):
