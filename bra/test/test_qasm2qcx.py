@@ -24123,6 +24123,59 @@ class UnsignedArrayAccessTests(unittest.TestCase):
         self.assertIn('LET A1:QASM2QCX_INT_0 &= 15', lines)
 
 
+class RuntimeArraySliceCopyTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def test_runtime_copy_types_and_metadata(self):
+        for element in ('int', 'int[4]', 'uint[4]', 'float[32]', 'bool', 'complex', 'angle[4]'):
+            with self.subTest(element=element):
+                c = self.converter(f'array[{element},4] a; array[{element},4] b; int first; int last;')
+                node = self.program('a[first:last] = b[first:last];').statements[0]
+                info = c._QASM2QCXConverter__runtime_array_slice_destination_assignment_info(node)
+                self.assertIsInstance(info, qasm2qcx._RuntimeArraySliceCopy)
+                self.assertIsInstance(info.source, qasm2qcx._RuntimeArraySliceLoop)
+                self.assertIsInstance(info.destination, qasm2qcx._RuntimeArraySliceLoop)
+
+    def test_invalid_copies_even_in_empty_loops(self):
+        declarations = 'array[int,4] a; array[uint,4] u; int first; int last;'
+        for statement in ('a[first:last]=u[first:last];', 'a[first:last]+=a[first:last];',
+                          'a[first:last]=a[first:true:last];', 'a[first:last]=missing[first:last];'):
+            for wrapper in ('{}', 'for int i in [1:0] {{ {} }}'):
+                with self.subTest(statement=statement, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    self.converter(declarations + wrapper.format(statement))
+
+    def test_capture_and_snapshot_precede_writes(self):
+        lines = convert('OPENQASM 3; array[int,4] a; int d; int e; int s; int t; a[d:e]=a[s:t];')
+        destination_capture = next(i for i, line in enumerate(lines) if '_DEST_ENTRY' in line and line.startswith('@'))
+        source_capture = next(i for i, line in enumerate(lines) if '_SOURCE_ENTRY' in line and line.startswith('@'))
+        snapshot = next(i for i, line in enumerate(lines) if line.endswith('_SNAPSHOT') and line.startswith('@'))
+        write = next(i for i, line in enumerate(lines) if line.startswith('LET A1:'))
+        last_assert = max(i for i, line in enumerate(lines) if line.startswith('ASSERT '))
+        self.assertLess(destination_capture, source_capture)
+        self.assertLess(source_capture, last_assert)
+        self.assertLess(last_assert, snapshot)
+        self.assertLess(snapshot, write)
+
+    def test_failed_capture_restores_state_and_temporaries(self):
+        c = self.converter('array[int,4] a; int d; int e; int s; int t;')
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__' + field) for field in fields]
+        capture = c._QASM2QCXConverter__capture_array_slice_positions
+        def fail_source(selection, label):
+            result = capture(selection, label)
+            if label.endswith('_SOURCE'):
+                raise RuntimeError('source capture failed')
+            return result
+        node = self.program('a[d:e]=a[s:t];').statements[0]
+        with patch.object(c, '_QASM2QCXConverter__capture_array_slice_positions', side_effect=fail_source), \
+                self.assertRaisesRegex(RuntimeError, 'source capture failed'):
+            c.visit(node)
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__' + field) for field in fields])
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+
+
 class RuntimeArraySliceDestinationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)
