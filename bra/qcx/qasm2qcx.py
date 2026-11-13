@@ -12318,14 +12318,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         size = self.__array_source_sizes[statement.identifier.name]
         element_type = self.__source_value_type(statement.type.base_type)
         initializer = statement.init_expression
+        slice_initializer = self.__static_array_slice_initializer_info(statement)
         if initializer is not None:
-            if not isinstance(initializer, ast.ArrayLiteral):
+            if slice_initializer is not None:
+                if len(self.__qcx_lines) + slice_initializer.count + 1 > self.MAX_LOOP_OUTPUT_LINES:
+                    raise InvalidArrayOperandException('Array slice initializer exceeds QCX output limit')
+            elif not isinstance(initializer, ast.ArrayLiteral):
                 raise UnsupportedOpenQASMError('classical array initializer other than an array literal')
-            if len(initializer.values) != size:
+            elif len(initializer.values) != size:
                 raise InvalidDeclarationException(
                     f'Classical array {statement.identifier.name} initializer has '
                     f'{len(initializer.values)} elements; expected {size}')
-            if any(isinstance(value, ast.ArrayLiteral) for value in initializer.values):
+            elif any(isinstance(value, ast.ArrayLiteral) for value in initializer.values):
                 raise UnsupportedOpenQASMError('nested classical array initializer')
         # Angle arrays use UINT storage without becoming UINT expressions or
         # scalar angle variables. Keep their element width in separate metadata.
@@ -12333,6 +12337,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__declare_classical_variable(storage_type, variable_name, size)
         self.__array_element_types[variable_name] = element_type
         if initializer is None:
+            return
+        if slice_initializer is not None:
+            source = slice_initializer.source
+            for index, position in enumerate(source.indices):
+                physical = position if position >= 0 else source.source_size + position
+                self.__qcx_lines.append(f'LET {variable_name}:{index} := {source.source}:{physical}')
             return
         for index, expression in enumerate(initializer.values):
             if element_type == ValueType.ANGLE:
