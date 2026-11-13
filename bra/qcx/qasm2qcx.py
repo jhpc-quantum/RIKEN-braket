@@ -5595,6 +5595,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __validate_loop_header(
             self, statement: ast.ForInLoop,
             iterators: set[str] | dict[str, ValueType] | None = None) -> None:
+        if self.__runtime_array_slice_loop_info(statement.set_declaration, statement.type, iterators) is not None:
+            return
         if self.__static_array_slice_loop_info(statement.set_declaration, statement.type, iterators) is not None:
             return
         if self.__angle_selection_loop_info(statement.set_declaration, statement.type, iterators) is not None:
@@ -5676,7 +5678,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if isinstance(bounds, ast.Identifier):
             return self.__collection_loop_info(
                 bounds, statement.type, iterators, allow_angle_widening=True, allow_uint_widening=True)[3]
-        array_slice = self.__static_array_slice_loop_info(bounds, statement.type, iterators)
+        array_slice = (self.__runtime_array_slice_loop_info(bounds, statement.type, iterators)
+                       or self.__static_array_slice_loop_info(bounds, statement.type, iterators))
         if array_slice is not None:
             return array_slice.uint_type
         if (self.__angle_selection_loop_info(bounds, statement.type, iterators) is not None
@@ -6009,7 +6012,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # Nested for bodies need their own typed iterator scope and are checked
         # by __validate_loop_body. Never invent values for an empty loop.
         if isinstance(node, ast.ForInLoop):
-            if (self.__angle_selection_loop_info(node.set_declaration, node.type, iterators) is None
+            if (self.__runtime_array_slice_loop_info(node.set_declaration, node.type, iterators) is None
+                    and self.__static_array_slice_loop_info(node.set_declaration, node.type, iterators) is None
+                    and self.__angle_selection_loop_info(node.set_declaration, node.type, iterators) is None
                     and self.__bit_selection_loop_info(node.set_declaration, node.type, iterators) is None):
                 self.__validate_bitwise_types(node.set_declaration, iterators)
             return
@@ -6175,7 +6180,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__validate_loop_header(statement)
         source = statement.set_declaration
         if isinstance(source, ast.IndexExpression):
-            array_slice = self.__static_array_slice_loop_info(source, statement.type)
+            array_slice = (self.__runtime_array_slice_loop_info(source, statement.type)
+                           or self.__static_array_slice_loop_info(source, statement.type))
             if array_slice is not None:
                 self.__visit_collection_for(statement, array_slice)
             elif self.__angle_selection_loop_info(source, statement.type) is not None:
@@ -6486,7 +6492,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __capture_bit_range_positions(
             self, bounds: ast.RangeDefinition, width: int, label: str, *,
-            capacity: int | None = None) -> tuple[str, str]:
+            capacity: int | None = None, allow_empty: bool = False) -> tuple[str, str]:
         capacity = min(2 * width, self.MAX_RUNTIME_BIT_RANGE_POSITIONS) if capacity is None else capacity
         if not 1 <= capacity <= self.QCX_INT_MAX:
             raise InvalidLoopRangeException('Bit-range position capacity must fit QCX INT indexing')
@@ -6529,8 +6535,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             f'LET {previous_low} := {current[1]}', f'LET {current[1]} += {step[1]}',
             f'LET {current[0]} += {step[0]}',
             f'JUMPIF {entry} {current[1]} >= {previous_low}',
-            f'LET {current[0]} += 1', f'JUMP {entry}', f'@{finish}', f'ASSERT {count} > 0',
+            f'LET {current[0]} += 1', f'JUMP {entry}', f'@{finish}',
         ])
+        if not allow_empty:
+            self.__qcx_lines.append(f'ASSERT {count} > 0')
         return positions, count
 
     @contextlib.contextmanager
@@ -6732,7 +6740,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         raise UnsupportedOpenQASMError('for-loop identifier other than an int/uint/float/bool/complex/angle array or bit register')
 
     def __visit_collection_for(self, statement: ast.ForInLoop,
-                               array_slice: _StaticArraySliceLoop | None = None) -> None:
+                               array_slice: _StaticArraySliceLoop | _RuntimeArraySliceLoop | None = None) -> None:
         if array_slice is None:
             source, size, value_type, uint_type = self.__collection_loop_info(
                 statement.set_declaration, statement.type, allow_angle_widening=True, allow_uint_widening=True)
@@ -6757,7 +6765,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 for child in statement.block:
                     self.visit(child)
             return
-        if array_slice is not None and not self.__loop_value_count(array_slice.indices):
+        if isinstance(array_slice, _StaticArraySliceLoop) and not self.__loop_value_count(array_slice.indices):
             return
 
         previous_temporaries = self.__declared_temporary_variables.copy()
@@ -6775,6 +6783,22 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if array_slice is None:
                 operand = source if value_type == ValueType.BIT and size == 1 else f'{source}:{index}'
                 self.__qcx_lines.extend([f'LET {index} := 0', f'@{body_label}', f'LET {iterator} := {operand}'])
+            elif isinstance(array_slice, _RuntimeArraySliceLoop):
+                previous = (self.__expression_kind, self.__value, self.__value_type,
+                            self.__value_kind, self.__evaluate_constant)
+                try:
+                    self.__expression_kind = ExpressionKind.ARITHMETIC
+                    capacity = min(2 * size, self.MAX_RUNTIME_BIT_RANGE_POSITIONS, self.QCX_INT_MAX)
+                    positions, count = self.__capture_bit_range_positions(
+                        array_slice.bounds, size, f'QASM2QCX_LOOP_{loop_index}_SLICE',
+                        capacity=capacity, allow_empty=True)
+                finally:
+                    (self.__expression_kind, self.__value, self.__value_type,
+                     self.__value_kind, self.__evaluate_constant) = previous
+                physical = self.__add_new_temporary_variable(ValueType.INT)
+                self.__qcx_lines.extend([f'LET {index} := 0', f'JUMPIF {end_label} {index} >= {count}',
+                                        f'@{body_label}', f'LET {physical} := {positions}:{index}',
+                                        f'LET {iterator} := {source}:{physical}'])
             else:
                 physical = self.__add_new_temporary_variable(ValueType.INT)
                 nonnegative = f'QASM2QCX_LOOP_{loop_index}_SLICE_NONNEGATIVE'
@@ -6795,6 +6819,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if array_slice is None:
                 self.__qcx_lines.extend([f'@{next_label}', f'JUMPIF {end_label} {index} == {size - 1}',
                                         f'LET {index} += 1', f'JUMP {body_label}', f'@{end_label}'])
+            elif isinstance(array_slice, _RuntimeArraySliceLoop):
+                self.__qcx_lines.extend([f'@{next_label}', f'LET {index} += 1',
+                                        f'JUMPIF {body_label} {index} < {count}', f'@{end_label}'])
             else:
                 count = self.__loop_value_count(array_slice.indices)
                 last = array_slice.indices.start + (count - 1) * array_slice.indices.step

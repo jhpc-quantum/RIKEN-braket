@@ -24253,6 +24253,58 @@ class RuntimeArraySliceLoopFoundationTests(unittest.TestCase):
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
 
 
+class RuntimeArraySliceLoopLoweringTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def test_bounds_captured_once_in_written_order_before_body(self):
+        c = self.converter('array[int,5] values; int first; int step; int last; int total;')
+        loop = self.program('for int value in values[first:step:last] { total+=value; }').statements[0]
+        bounds = loop.set_declaration.index[0]
+        capture = c._QASM2QCXConverter__capture_bit_range_integer
+        seen = []
+        def record(expression, label):
+            seen.append(expression)
+            return capture(expression, label)
+        with patch.object(c, '_QASM2QCXConverter__capture_bit_range_integer', side_effect=record):
+            c.visit(loop)
+        self.assertEqual(seen, [bounds.start, bounds.step, bounds.end])
+        lines = c._QASM2QCXConverter__qcx_lines
+        finish = lines.index('@QASM2QCX_LOOP_0_SLICE_FINISH')
+        body = lines.index('@QASM2QCX_LOOP_0_BODY')
+        self.assertLess(finish, body)
+        self.assertTrue(any(line.startswith('JUMPIF QASM2QCX_LOOP_0_END ') for line in lines[finish:body]))
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_nested_empty_loops_validate_without_evaluation(self):
+        self.converter('array[uint[4],3] values; int first; int zero; uint total; '
+                       'for int outer in [1:0] { for uint[8] value in values[first/zero:0:99] '
+                       '{ total+=value; } }')
+        for body in ('value=1;', 'total=missing;', 'total+=unknown(first);'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('array[int,3] values; int first; int total; '
+                               f'for int outer in [1:0] {{ for int value in values[first:2] {{ {body} }} }}')
+
+    def test_failed_capture_restores_caller_storage_and_expression_state(self):
+        c = self.converter('array[int,3] values; int first;')
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__'+field) for field in fields]
+        capture = c._QASM2QCXConverter__capture_bit_range_positions
+        def fail(*args, **kwargs):
+            capture(*args, **kwargs)
+            raise RuntimeError('capture failed')
+        loop = self.program('for int item in values[first:2] {}').statements[0]
+        with patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions', side_effect=fail), \
+             self.assertRaisesRegex(RuntimeError, 'capture failed'):
+            c.visit(loop)
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__'+field) for field in fields])
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(c._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(c._QASM2QCXConverter__loop_contexts, [])
+
+
 class StaticArraySliceLoopLoweringTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)
@@ -24286,7 +24338,7 @@ class StaticArraySliceLoopLoweringTests(unittest.TestCase):
     def test_source_shadowing_and_unsupported_ranges(self):
         self.converter('array[int,5] values; int total; '
                        'for int values in values[1:3] { total+=values; } total+=values[0];')
-        for source in ('values[0:0:2]', 'values[0:5]', 'values[0:stop]', 'values[{0,1}]'):
+        for source in ('values[0:0:2]', 'values[0:5]', 'values[0:true:stop]', 'values[{0,1}]'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter('array[int,5] values; int stop; '
                                f'for int value in {source} {{}}')
