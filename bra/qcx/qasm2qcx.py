@@ -308,6 +308,12 @@ class _RuntimeArraySliceCopy:
 
 
 @dataclasses.dataclass(frozen=True)
+class _StaticArraySliceInitializer:
+    source: _StaticArraySliceLoop
+    count: int
+
+
+@dataclasses.dataclass(frozen=True)
 class _StaticBitSelection:
     source_name: str
     indices: tuple[int, ...]
@@ -6733,6 +6739,28 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if left_signature != right_signature:
             raise InvalidArrayOperandException('Array slice assignment requires matching element types')
 
+    def __static_array_slice_initializer_info(
+            self, statement: ast.ClassicalDeclaration) -> _StaticArraySliceInitializer | None:
+        initializer = statement.init_expression
+        if not isinstance(initializer, ast.IndexExpression):
+            return None
+        if not isinstance(initializer.collection, ast.Identifier):
+            raise UnsupportedOpenQASMError('array slice initializer requires an array slice source')
+        name = statement.identifier.name
+        source_name = initializer.collection.name
+        source_type = self.__classical_source_types.get(source_name)
+        if not isinstance(source_type, ast.ArrayType):
+            raise UnsupportedOpenQASMError('array slice initializer requires an array slice source')
+        if source_name == name or self.__capitalize_variable_name(source_name) not in self.__array_element_types:
+            raise NoVariableNameException(source_name)
+        source = self.__static_array_slice_loop_info(
+            initializer, self.__array_slice_element_type(source_name, source_type))
+        self.__check_array_slice_assignment_types(name, source_name)
+        count = self.__loop_value_count(source.indices)
+        if count != self.__array_source_sizes[name]:
+            raise InvalidArrayOperandException('Array slice initializer requires matching lengths')
+        return _StaticArraySliceInitializer(source, count)
+
     def __capture_array_slice_positions(
             self, selection: _RuntimeArraySliceLoop, label: str) -> tuple[str, str]:
         capacity = min(2 * selection.source_size, self.MAX_RUNTIME_BIT_RANGE_POSITIONS, self.QCX_INT_MAX)
@@ -12290,14 +12318,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         size = self.__array_source_sizes[statement.identifier.name]
         element_type = self.__source_value_type(statement.type.base_type)
         initializer = statement.init_expression
+        slice_initializer = self.__static_array_slice_initializer_info(statement)
         if initializer is not None:
-            if not isinstance(initializer, ast.ArrayLiteral):
+            if slice_initializer is not None:
+                if len(self.__qcx_lines) + slice_initializer.count + 1 > self.MAX_LOOP_OUTPUT_LINES:
+                    raise InvalidArrayOperandException('Array slice initializer exceeds QCX output limit')
+            elif not isinstance(initializer, ast.ArrayLiteral):
                 raise UnsupportedOpenQASMError('classical array initializer other than an array literal')
-            if len(initializer.values) != size:
+            elif len(initializer.values) != size:
                 raise InvalidDeclarationException(
                     f'Classical array {statement.identifier.name} initializer has '
                     f'{len(initializer.values)} elements; expected {size}')
-            if any(isinstance(value, ast.ArrayLiteral) for value in initializer.values):
+            elif any(isinstance(value, ast.ArrayLiteral) for value in initializer.values):
                 raise UnsupportedOpenQASMError('nested classical array initializer')
         # Angle arrays use UINT storage without becoming UINT expressions or
         # scalar angle variables. Keep their element width in separate metadata.
@@ -12305,6 +12337,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__declare_classical_variable(storage_type, variable_name, size)
         self.__array_element_types[variable_name] = element_type
         if initializer is None:
+            return
+        if slice_initializer is not None:
+            source = slice_initializer.source
+            for index, position in enumerate(source.indices):
+                physical = position if position >= 0 else source.source_size + position
+                self.__qcx_lines.append(f'LET {variable_name}:{index} := {source.source}:{physical}')
             return
         for index, expression in enumerate(initializer.values):
             if element_type == ValueType.ANGLE:
