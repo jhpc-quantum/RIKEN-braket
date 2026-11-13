@@ -24446,7 +24446,7 @@ class StaticArraySliceInitializerTests(unittest.TestCase):
                 'array[int,4] a; array[int,2] b=a[0:2];',
                 'array[int,4] a; array[int,2] b=a[0:4];',
                 'array[int,4] a; array[int,2] b=a[0:0:1];',
-                'array[int,4] a; int i; array[int,2] b=a[i:1];',
+                'array[int,4] a; bool flag; array[int,2] b=a[flag:1];',
                 'array[uint[4],4] a; array[uint[5],2] b=a[0:1];',
                 'array[angle[4],4] a; array[angle[5],2] b=a[0:1];',
                 'array[int,2] b=a[0:1]; array[int,4] a;',
