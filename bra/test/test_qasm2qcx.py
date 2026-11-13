@@ -24804,7 +24804,7 @@ class WholeToStaticArraySliceTests(unittest.TestCase):
                 ('array[int,4] a; array[int,3] b;', 'a[0:1]=b;'),
                 ('array[int,4] a; array[int,3] b;', 'a[2:4]=b;'),
                 ('array[int,4] a; array[int,3] b;', 'a[0:0:2]=b;'),
-                ('array[int,4] a; array[int,3] b; int i;', 'a[i:2]=b;'),
+                ('array[int,4] a; array[int,3] b; bool flag;', 'a[flag:2]=b;'),
                 ('array[int,4] a; array[int,5] b;', 'a[-4:0]=b;'),
                 ('array[uint[4],4] a; array[uint[5],3] b;', 'a[0:2]=b;'),
                 ('array[angle[4],4] a; array[angle[5],3] b;', 'a[0:2]=b;'),
