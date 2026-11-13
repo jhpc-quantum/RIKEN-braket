@@ -24157,6 +24157,17 @@ class StaticArraySliceAssignmentFoundationTests(unittest.TestCase):
             with self.subTest(assignment=assignment), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.info(c, assignment)
         self.assertIsNone(self.info(c, 'a[0]=index;'))
+        with self.assertRaisesRegex(qasm2qcx.InvalidArrayOperandException, 'destination repeats'):
+            self.info(c, 'a[-5:5:0]=b[0:1];')
+
+    def test_element_width_and_sizedness_must_match(self):
+        native = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        for left, right in (('uint', f'uint[{native}]'), ('angle', f'angle[{native}]'),
+                            ('complex[float[32]]', 'complex[float[64]]')):
+            with self.subTest(left=left, right=right):
+                c = self.converter(f'array[{left},2] a; array[{right},2] b;')
+                with self.assertRaisesRegex(qasm2qcx.InvalidArrayOperandException, 'matching element types'):
+                    self.info(c, 'a[0:1]=b[0:1];')
 
     def test_type_widths_are_frozen_before_iterator_shadowing(self):
         c = self.converter('const int W=4; const int V=2+2; '
