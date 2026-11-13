@@ -24412,6 +24412,36 @@ class StaticSliceToWholeArrayTests(unittest.TestCase):
         self.assertFalse(any(line.startswith('LET A1:') for line in c._QASM2QCXConverter__qcx_lines))
 
 
+class RuntimeSliceToWholeArrayFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def info(self, converter, statement, iterators=None):
+        node = self.program(statement).statements[0]
+        return converter._QASM2QCXConverter__runtime_array_slice_to_whole_assignment_info(node, iterators)
+
+    def test_metadata_for_supported_types_and_static_fallback(self):
+        for element in ('int', 'uint[4]', 'float[32]', 'bool', 'complex', 'angle[4]'):
+            with self.subTest(element=element):
+                c = self.converter(f'array[{element},4] a; array[{element},2] b; int first; int last;')
+                info = self.info(c, 'b=a[first:last];')
+                self.assertIsInstance(info, qasm2qcx._RuntimeArraySliceToWholeAssignment)
+                self.assertIsInstance(info.source, qasm2qcx._RuntimeArraySliceLoop)
+                self.assertEqual((info.destination, info.count), ('B1', 2))
+                with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                    info.count = 0
+                self.assertIsNone(self.info(c, 'b=a[0:1];'))
+
+    def test_invalid_types_and_shadowing(self):
+        c = self.converter('array[int,4] a; array[int,2] b; array[uint,4] u; int first;')
+        for statement in ('b=u[first:1];', 'b+=a[first:1];', 'b=a[first:true:1];', 'b=a[{first,1}];'):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(c, statement)
+        self.assertIsNone(self.info(c, 'b=a[first:1];', {'b'}))
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.info(c, 'b=a[first:1];', {'a'})
+
+
 class StaticSliceToWholeArrayFoundationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)

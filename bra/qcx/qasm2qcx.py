@@ -340,6 +340,13 @@ class _StaticArraySliceToWholeAssignment:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeArraySliceToWholeAssignment:
+    destination: str
+    source: _RuntimeArraySliceLoop
+    count: int
+
+
+@dataclasses.dataclass(frozen=True)
 class _StaticBitSelection:
     source_name: str
     indices: tuple[int, ...]
@@ -6813,8 +6820,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __static_array_slice_to_whole_assignment_info(
             self, statement: ast.ClassicalAssignment,
-            iterators: set[str] | dict[str, ValueType] | None = None
-            ) -> _StaticArraySliceToWholeAssignment | None:
+            iterators: set[str] | dict[str, ValueType] | None = None, *,
+            allow_runtime_source: bool = False
+            ) -> _StaticArraySliceToWholeAssignment | _RuntimeArraySliceToWholeAssignment | None:
         target, source = statement.lvalue, statement.rvalue
         if not isinstance(target, ast.Identifier) or not isinstance(source, ast.IndexExpression):
             return None
@@ -6833,13 +6841,26 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         source_type = self.__classical_source_types.get(source_name)
         if not isinstance(source_type, ast.ArrayType):
             raise UnsupportedOpenQASMError('whole-array assignment requires an array slice source')
-        selection = self.__static_array_slice_loop_info(
-            source, self.__array_slice_element_type(source_name, source_type), iterators)
+        element_type = self.__array_slice_element_type(source_name, source_type)
+        if allow_runtime_source:
+            selection = self.__runtime_array_slice_loop_info(source, element_type, iterators)
+            if selection is None:
+                return None  # Preserve the static path for compile-time ranges.
+        else:
+            selection = self.__static_array_slice_loop_info(source, element_type, iterators)
         self.__check_array_slice_assignment_types(name, source_name)
         count = self.__array_source_sizes[name]
+        if isinstance(selection, _RuntimeArraySliceLoop):
+            return _RuntimeArraySliceToWholeAssignment(self.__capitalize_variable_name(name), selection, count)
         if self.__loop_value_count(selection.indices) != count:
             raise InvalidArrayOperandException('Array slice assignment requires matching lengths')
         return _StaticArraySliceToWholeAssignment(self.__capitalize_variable_name(name), selection, count)
+
+    def __runtime_array_slice_to_whole_assignment_info(
+            self, statement: ast.ClassicalAssignment,
+            iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> _RuntimeArraySliceToWholeAssignment | None:
+        return self.__static_array_slice_to_whole_assignment_info(statement, iterators, allow_runtime_source=True)
 
     def __emit_whole_array_assignment(self, info: _ArrayCopyAssignment) -> None:
         if info.destination == info.source:
