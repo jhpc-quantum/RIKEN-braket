@@ -15,6 +15,12 @@ def main():
     parser.add_argument('--bra', required=True, type=pathlib.Path)
     bra = parser.parse_args().bra
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+    marker = '<!-- runtime-array-slice-loop-example -->'
+    if document.count(marker) != 1:
+        raise RuntimeError('Expected exactly one runtime array slice loop example')
+    example = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+    check_program(bra, example.replace('OPENQASM 3.0;', '', 1), ('TOTAL31', 'LAST15'), ['9', '0'])
     def fail_before_body(source):
         lines = qasm2qcx.convert('OPENQASM 3; ' + source)
         body = lines.index('@QASM2QCX_LOOP_0_BODY')
