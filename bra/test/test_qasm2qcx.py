@@ -99,6 +99,47 @@ class BasicGateCallTests(unittest.TestCase):
                 self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'expansion exceeds'):
             convert(source)
 
+    def test_body_controls_and_global_phase_match_inline(self):
+        defined = ('gate mixed a,b { ctrl @ x a,b; U(pi/2,0,pi) b; } '
+                   'qubit[2] q; mixed q[0],q[1]; mixed q[1],q[0];')
+        inline = ('qubit[2] q; ctrl @ x q[0],q[1]; U(pi/2,0,pi) q[1]; '
+                  'ctrl @ x q[1],q[0]; U(pi/2,0,pi) q[0];')
+        self.assertEqual(convert(self.prefix + defined), convert(self.prefix + inline))
+
+    def test_empty_gate_and_scalar_qubit(self):
+        self.assertEqual(convert(self.prefix + 'gate idle a {} qubit q; idle q;'), ['QUBITS 1'])
+        self.assertEqual(convert(self.prefix + 'gate flip a { x a; } qubit q; flip q;'), ['QUBITS 1', 'X 0'])
+
+    def test_calls_inside_branches_and_runtime_loops(self):
+        definition = 'gate flip a { x a; } qubit[2] q; '
+        self.assertEqual(convert(self.prefix + definition + 'if (true) { flip q[0]; }'),
+                         convert(self.prefix + 'qubit[2] q; if (true) { x q[0]; }'))
+        self.assertEqual(convert(self.prefix + definition + 'int stop=1; for int i in [0:stop] { flip q[0]; }'),
+                         convert(self.prefix + 'qubit[2] q; int stop=1; for int i in [0:stop] { x q[0]; }'))
+
+    def test_register_selections_and_invalid_names_are_rejected(self):
+        definition = 'gate flip a { x a; } qubit[2] q; '
+        for call in ('flip q[0:0];', 'flip q[{0}];', 'flip missing;', 'flip q[2];', 'flip q[true];'):
+            with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(self.prefix + definition + call)
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            convert(self.prefix + 'gate flip a { x a; } flip q[0]; qubit[2] q;')
+
+    def test_failed_expansion_does_not_mutate_definition_or_leak_temporaries(self):
+        source = ('include "stdgates.inc"; gate rot a { U(pi/2,0,pi) a; x a; } qubit q;')
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ' + source)
+        c = qasm2qcx.QASM2QCXConverter(program)
+        c.visit(program)
+        definition = c._QASM2QCXConverter__basic_gate_definitions['rot']
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        call = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; rot q;').statements[0]
+        with patch.object(c, 'MAX_GATE_DEFINITION_OUTPUT_LINES', 0), \
+                self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'expansion exceeds'):
+            c.visit(call)
+        self.assertEqual([gate.qubits[0].name for gate in definition.body], ['a', 'a'])
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+
+
 
 class ScalarAngleFoundationTests(unittest.TestCase):
     @staticmethod
