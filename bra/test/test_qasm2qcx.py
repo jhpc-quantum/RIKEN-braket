@@ -24262,6 +24262,18 @@ class RuntimeArraySliceAssignmentLoweringTests(unittest.TestCase):
                 self.assertFalse(any(line.startswith('LET A1:') for line in c._QASM2QCXConverter__qcx_lines))
                 self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
 
+    def test_failed_finalization_releases_all_copy_temporaries(self):
+        c = self.converter('array[complex,3] a; int first; int last;')
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__'+field) for field in fields]
+        node = self.program('a[0:1]=a[first:last];').statements[0]
+        with patch.object(c, '_QASM2QCXConverter__hoist_temporary_declarations', side_effect=RuntimeError('failed')), \
+             self.assertRaisesRegex(RuntimeError, 'failed'):
+            c.visit(node)
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__'+field) for field in fields])
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+
 
 class StaticArraySliceAssignmentFoundationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
