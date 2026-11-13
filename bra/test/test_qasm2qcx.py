@@ -24376,6 +24376,42 @@ class RuntimeArraySliceAssignmentLoweringTests(unittest.TestCase):
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
 
 
+class ArrayCopyInitializerTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def test_emits_copies_in_order(self):
+        for element in ('int', 'uint[4]', 'float[32]', 'bool', 'complex', 'angle[4]'):
+            with self.subTest(element=element):
+                lines = convert(f'OPENQASM 3; array[{element},3] a; array[{element},3] b=a;')
+                self.assertEqual([line for line in lines if line.startswith('LET B1:')],
+                                 ['LET B1:0 := A1:0', 'LET B1:1 := A1:1', 'LET B1:2 := A1:2'])
+
+    def test_rejects_mismatched_or_invalid_sources(self):
+        for source in (
+                'array[int,3] a; array[int,2] b=a;',
+                'array[int,3] a; array[uint,3] b=a;',
+                'array[uint[4],3] a; array[uint[5],3] b=a;',
+                'array[angle[4],3] a; array[angle[5],3] b=a;',
+                'array[float[32],3] a; array[float[64],3] b=a;',
+                'int a; array[int,3] b=a;',
+                'array[int,3] b=a; array[int,3] a;',
+                'array[int,3] a=a;'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(source)
+
+    def test_output_limit_is_checked_before_declaration(self):
+        c = self.converter('array[int,3] a;')
+        node = self.program('array[int,3] b=a;').statements[0]
+        c._QASM2QCXConverter__is_initialization_process = True
+        c.visit(node)
+        c._QASM2QCXConverter__is_initialization_process = False
+        with patch.object(c, 'MAX_LOOP_OUTPUT_LINES', len(c._QASM2QCXConverter__qcx_lines) + 3), \
+                self.assertRaisesRegex(qasm2qcx.InvalidArrayOperandException, 'output limit'):
+            c.visit(node)
+        self.assertFalse(any(line.startswith('VAR B1') for line in c._QASM2QCXConverter__qcx_lines))
+
+
 class ArrayCopyInitializerFoundationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)
