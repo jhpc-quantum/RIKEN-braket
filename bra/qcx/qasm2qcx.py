@@ -288,6 +288,13 @@ class _StaticArraySliceAssignment:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeArraySliceAssignment:
+    destination: _StaticArraySliceLoop
+    source: _RuntimeArraySliceLoop
+    count: int
+
+
+@dataclasses.dataclass(frozen=True)
 class _StaticBitSelection:
     source_name: str
     indices: tuple[int, ...]
@@ -6692,7 +6699,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __static_array_slice_assignment_info(
             self, statement: ast.ClassicalAssignment,
-            iterators: set[str] | dict[str, ValueType] | None = None) -> _StaticArraySliceAssignment | None:
+            iterators: set[str] | dict[str, ValueType] | None = None, *,
+            allow_runtime_source: bool = False
+            ) -> _StaticArraySliceAssignment | _RuntimeArraySliceAssignment | None:
         target = statement.lvalue
         if not isinstance(target, ast.IndexedIdentifier):
             return None
@@ -6723,8 +6732,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         source_type = self.__classical_source_types.get(rhs.collection.name)
         if not isinstance(source_type, ast.ArrayType):
             raise UnsupportedOpenQASMError('array slice assignment requires an array slice source')
-        source = self.__static_array_slice_loop_info(
-            rhs, resolved_element_type(rhs.collection.name, source_type), iterators)
+        if allow_runtime_source:
+            source = self.__runtime_array_slice_loop_info(
+                rhs, resolved_element_type(rhs.collection.name, source_type), iterators)
+            if source is None:
+                return None  # Preserve the existing wholly static copy path.
+        else:
+            source = self.__static_array_slice_loop_info(
+                rhs, resolved_element_type(rhs.collection.name, source_type), iterators)
         left_signature = self.__array_element_signatures[name]
         right_signature = self.__array_element_signatures[rhs.collection.name]
         if 'unresolved' in (left_signature[0], right_signature[0]):
@@ -6732,7 +6747,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if left_signature != right_signature:
             raise InvalidArrayOperandException('Array slice assignment requires matching element types')
         count = self.__loop_value_count(destination.indices)
-        if count != self.__loop_value_count(source.indices):
+        if isinstance(source, _StaticArraySliceLoop) and count != self.__loop_value_count(source.indices):
             raise InvalidArrayOperandException('Array slice assignment requires matching lengths')
         # Normalization maps -size and 0 to the same element. A monotone
         # arithmetic range repeats a physical destination exactly when it
@@ -6740,7 +6755,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         stride = abs(destination.indices.step)
         if count and destination.source_size % stride == 0 and count > destination.source_size // stride:
             raise InvalidArrayOperandException('Array slice assignment destination repeats an index')
-        return _StaticArraySliceAssignment(destination, source, count)
+        return (_RuntimeArraySliceAssignment(destination, source, count)
+                if isinstance(source, _RuntimeArraySliceLoop)
+                else _StaticArraySliceAssignment(destination, source, count))
+
+    def __runtime_array_slice_assignment_info(
+            self, statement: ast.ClassicalAssignment,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeArraySliceAssignment | None:
+        return self.__static_array_slice_assignment_info(statement, iterators, allow_runtime_source=True)
 
     def __emit_static_array_slice_assignment(self, info: _StaticArraySliceAssignment) -> None:
         if not info.count:

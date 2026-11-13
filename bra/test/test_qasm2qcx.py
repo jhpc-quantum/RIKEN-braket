@@ -24123,6 +24123,71 @@ class UnsignedArrayAccessTests(unittest.TestCase):
         self.assertIn('LET A1:QASM2QCX_INT_0 &= 15', lines)
 
 
+class RuntimeArraySliceAssignmentFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def setUp(self):
+        self.c = self.converter('const int W=4; array[int,4] a; array[int,4] b; '
+                                'array[uint[W],4] u; array[uint[W],4] v; '
+                                'int first; uint step; int last; float real;')
+
+    def info(self, statement, iterators=None):
+        return self.c._QASM2QCXConverter__runtime_array_slice_assignment_info(
+            self.program(statement).statements[0], iterators)
+
+    def test_runtime_source_metadata_preserves_bounds_and_destination(self):
+        node = self.program('a[1:3]=b[first:step:last];').statements[0]
+        info = self.c._QASM2QCXConverter__runtime_array_slice_assignment_info(node)
+        self.assertIsInstance(info, qasm2qcx._RuntimeArraySliceAssignment)
+        self.assertIs(info.source.bounds, node.rvalue.index[0])
+        self.assertEqual((info.count, list(info.destination.indices)), (3, [1,2,3]))
+        self.assertEqual((info.source.start_type, info.source.step_type, info.source.stop_type),
+                         (qasm2qcx.ValueType.INT, qasm2qcx.ValueType.UINT, qasm2qcx.ValueType.INT))
+        with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+            info.count = 2
+        self.assertIsNone(self.info('a[0:1]=b[1:2];'))
+        self.assertIsNone(self.info('a[0]=first;'))
+
+    def test_frozen_types_shadowing_and_empty_destination(self):
+        info = self.info('u[2:1]=v[first:last];', {'W': qasm2qcx.ValueType.INT})
+        self.assertEqual(info.count, 0)
+        self.assertEqual(info.source.uint_type, qasm2qcx._UnsignedIntegerType(4, True))
+        self.assertIsNotNone(self.info('a[0:1]=b[W:last];', {'W': qasm2qcx.ValueType.INT}))
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            self.info('a[0:1]=b[first:last];', {'a': qasm2qcx.ValueType.INT})
+
+    def test_invalid_destination_types_and_bounds_are_rejected(self):
+        for statement in ('a[first:2]=b[first:last];', 'a[-4:4:0]=b[first:last];',
+                          'a[0:1]=u[first:last];', 'a[0:1]=b[first:real:last];',
+                          'a[0:1]=b[true:last];', 'a[0:1]=b[first:missing];',
+                          'a[0:1]=b[{first,last}];', 'a[0:1]+=b[first:last];'):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(statement)
+        with self.assertRaisesRegex(qasm2qcx.InvalidArrayOperandException, 'destination repeats'):
+            self.info('a[-4:4:0]=b[first:last];')
+
+    def test_metadata_does_not_evaluate_allocate_or_emit(self):
+        c = self.c
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__'+field) for field in fields]
+        lines = c._QASM2QCXConverter__qcx_lines.copy()
+        node = self.program('a[0:1]=b[first/0:0:999];').statements[0]
+        visit = c.visit
+        runtime_bounds = node.rvalue.index[0]
+        def checked_visit(expression, *args, **kwargs):
+            if expression is runtime_bounds.start or expression is runtime_bounds.step or expression is runtime_bounds.end:
+                raise AssertionError('runtime bounds must not be evaluated')
+            return visit(expression, *args, **kwargs)
+        with patch.object(c, 'visit', side_effect=checked_visit), \
+             patch.object(c, '_QASM2QCXConverter__add_new_temporary_variable', side_effect=AssertionError('no allocation')):
+            info = c._QASM2QCXConverter__runtime_array_slice_assignment_info(node)
+        self.assertIsNotNone(info)
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__'+field) for field in fields])
+        self.assertEqual(lines, c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+
 class StaticArraySliceAssignmentFoundationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)
