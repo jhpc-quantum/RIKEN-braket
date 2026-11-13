@@ -23896,8 +23896,8 @@ class AngleArrayIntegrationTests(unittest.TestCase):
             with self.subTest(declaration=declaration), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter('array[angle[4], 1] a = {pi}; ' + declaration)
 
-    def test_mismatched_slices_whole_array_operations_and_bit_indexing_remain_unsupported(self):
-        for statement in ('a = a;', 'a[0:1] = a[0:0];', 'bit b = a[0][0];',
+    def test_mismatched_slices_and_invalid_bit_indexing_are_rejected(self):
+        for statement in ('a[0:1] = a[0:0];', 'bit b = a[0][0];',
                            'a[0][0] = true;'):
             with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter('array[angle[4], 2] a = {pi, pi}; ' + statement)
@@ -24374,6 +24374,79 @@ class RuntimeArraySliceAssignmentLoweringTests(unittest.TestCase):
             c.visit(node)
         self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__'+field) for field in fields])
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+
+
+class WholeArrayAssignmentTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def test_emits_copy_for_all_supported_types(self):
+        for element in ('int', 'uint[4]', 'float[32]', 'bool', 'complex', 'angle[4]'):
+            with self.subTest(element=element):
+                lines = convert(f'OPENQASM 3; array[{element},3] a; array[{element},3] b; b=a;')
+                self.assertEqual([line for line in lines if line.startswith('LET B1:')],
+                                 ['LET B1:0 := A1:0', 'LET B1:1 := A1:1', 'LET B1:2 := A1:2'])
+
+    def test_self_assignment_emits_no_copy(self):
+        lines = convert('OPENQASM 3; array[int,3] a; a=a;')
+        self.assertFalse(any(line.startswith('LET A1:') for line in lines))
+
+    def test_invalid_operands_and_skipped_loops(self):
+        for declarations, statement in (
+                ('array[int,2] a; array[int,3] b;', 'a=b;'),
+                ('array[int,2] a; array[uint,2] b;', 'a=b;'),
+                ('array[uint[4],2] a; array[uint[5],2] b;', 'a=b;'),
+                ('array[angle[4],2] a; array[angle[5],2] b;', 'a=b;'),
+                ('array[int,2] a; int b;', 'a=b;'),
+                ('array[int,2] a;', 'a=missing;'),
+                ('array[int,2] a; array[int,2] b;', 'a+=b;'),
+                ('array[int,2] a; array[int,2] b;', 'a=b[0:1];')):
+            for wrapper in ('{}', 'for int i in [1:0] {{ {} }}'):
+                with self.subTest(statement=statement, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    self.converter(declarations + wrapper.format(statement))
+
+    def test_loop_iterator_shadowing_is_scalar(self):
+        self.converter('array[int,2] a; int x; for int a in [0:1] { x=a; }')
+        for bounds in ('0:1', '1:0'):
+            with self.subTest(bounds=bounds), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(f'array[int,2] a; for int i in [{bounds}] {{ a=i; }}')
+
+    def test_output_limit_before_copy(self):
+        c = self.converter('array[int,3] a; array[int,3] b;')
+        node = self.program('b=a;').statements[0]
+        with patch.object(c, 'MAX_LOOP_OUTPUT_LINES', len(c._QASM2QCXConverter__qcx_lines) + 2), \
+                self.assertRaisesRegex(qasm2qcx.InvalidArrayOperandException, 'output limit'):
+            c.visit(node)
+        self.assertFalse(any(line.startswith('LET B1:') for line in c._QASM2QCXConverter__qcx_lines))
+
+
+class WholeArrayCopyFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def test_compatible_types_lengths_and_immutable_metadata(self):
+        for element in ('int', 'uint[4]', 'float[32]', 'bool', 'complex', 'angle[4]'):
+            with self.subTest(element=element):
+                c = self.converter(f'array[{element},3] a; array[{element},3] b;')
+                count = c._QASM2QCXConverter__check_whole_array_copy_types_and_lengths('a', 'b')
+                info = qasm2qcx._ArrayCopyAssignment('A1', 'B1', count)
+                self.assertEqual((info.destination, info.source, info.count), ('A1', 'B1', 3))
+                with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                    info.count = 0
+
+    def test_incompatible_types_and_lengths(self):
+        c = self.converter('array[int,3] a; array[int,2] b; array[uint,3] u;')
+        check = c._QASM2QCXConverter__check_whole_array_copy_types_and_lengths
+        for source in ('b', 'u'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                check('a', source)
+        self.assertEqual(check('a', 'a'), 3)
+
+    def test_validation_in_empty_loops(self):
+        self.converter('array[int,2] a; array[int,2] b; for int i in [1:0] { a=b; }')
+        for source in ('array[uint,2] b;', 'array[int,3] b;'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(f'array[int,2] a; {source} for int i in [1:0] {{ a=b; }}')
 
 
 class ArrayCopyInitializerTests(unittest.TestCase):

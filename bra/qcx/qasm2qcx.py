@@ -326,6 +326,13 @@ class _ArrayCopyInitializer:
 
 
 @dataclasses.dataclass(frozen=True)
+class _ArrayCopyAssignment:
+    destination: str
+    source: str
+    count: int
+
+
+@dataclasses.dataclass(frozen=True)
 class _StaticBitSelection:
     source_name: str
     indices: tuple[int, ...]
@@ -6075,6 +6082,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # skipped body. Sized angle bit selections were handled above.
             self.__loop_index_info(node, iterators)
         if isinstance(node, ast.ClassicalAssignment):
+            if self.__whole_array_assignment_info(node, iterators) is not None:
+                return
             if self.__runtime_array_slice_destination_assignment_info(node, iterators) is not None:
                 return
             if self.__runtime_array_slice_assignment_info(node, iterators) is not None:
@@ -6760,6 +6769,47 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise NoVariableNameException(source_name)
         return source_type
 
+    def __check_whole_array_copy_types_and_lengths(self, destination: str, source: str) -> int:
+        self.__check_array_slice_assignment_types(destination, source)
+        count = self.__array_source_sizes[destination]
+        if count != self.__array_source_sizes[source]:
+            raise InvalidArrayOperandException('Array copy requires matching lengths')
+        return count
+
+    def __whole_array_assignment_info(
+            self, statement: ast.ClassicalAssignment,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _ArrayCopyAssignment | None:
+        target = statement.lvalue
+        if not isinstance(target, ast.Identifier):
+            return None
+        name = target.name
+        active = set(iterators or ()) | {key for scope in self.__loop_bindings for key in scope}
+        if name in active or not isinstance(self.__classical_source_types.get(name), ast.ArrayType):
+            return None
+        if (not self.__is_initialization_process
+                and self.__capitalize_variable_name(name) not in self.__array_element_types):
+            raise NoVariableNameException(name)
+        if statement.op.name != '=':
+            raise UnsupportedOpenQASMError('compound whole-array assignment')
+        source = statement.rvalue
+        if (not isinstance(source, ast.Identifier) or source.name in active
+                or not isinstance(self.__classical_source_types.get(source.name), ast.ArrayType)):
+            raise UnsupportedOpenQASMError('whole-array assignment requires an array source')
+        if (not self.__is_initialization_process
+                and self.__capitalize_variable_name(source.name) not in self.__array_element_types):
+            raise NoVariableNameException(source.name)
+        count = self.__check_whole_array_copy_types_and_lengths(name, source.name)
+        return _ArrayCopyAssignment(self.__capitalize_variable_name(name),
+                                    self.__capitalize_variable_name(source.name), count)
+
+    def __emit_whole_array_assignment(self, info: _ArrayCopyAssignment) -> None:
+        if info.destination == info.source:
+            return
+        if len(self.__qcx_lines) + info.count > self.MAX_LOOP_OUTPUT_LINES:
+            raise InvalidArrayOperandException('Array assignment exceeds QCX output limit')
+        for index in range(info.count):
+            self.__qcx_lines.append(f'LET {info.destination}:{index} := {info.source}:{index}')
+
     def __array_slice_initializer_source(
             self, statement: ast.ClassicalDeclaration) -> tuple[ast.IndexExpression, str, ast.ArrayType] | None:
         initializer = statement.init_expression
@@ -6780,10 +6830,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         name = statement.identifier.name
         source_name = initializer.name
         self.__array_initializer_source_type(name, source_name)
-        self.__check_array_slice_assignment_types(name, source_name)
-        count = self.__array_source_sizes[name]
-        if count != self.__array_source_sizes[source_name]:
-            raise InvalidArrayOperandException('Array initializer requires matching lengths')
+        count = self.__check_whole_array_copy_types_and_lengths(name, source_name)
         return _ArrayCopyInitializer(self.__capitalize_variable_name(source_name), count)
 
     def __static_array_slice_initializer_info(
@@ -12564,6 +12611,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__is_initialization_process:
             return
 
+        whole_array = self.__whole_array_assignment_info(statement)
+        if whole_array is not None:
+            self.__emit_whole_array_assignment(whole_array)
+            return
         runtime_destination = self.__runtime_array_slice_destination_assignment_info(statement)
         if isinstance(runtime_destination, _RuntimeArraySliceCopy):
             self.__emit_runtime_array_slice_copy(runtime_destination)
