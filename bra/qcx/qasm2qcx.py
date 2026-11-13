@@ -6096,6 +6096,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # skipped body. Sized angle bit selections were handled above.
             self.__loop_index_info(node, iterators)
         if isinstance(node, ast.ClassicalAssignment):
+            if self.__whole_to_static_array_slice_assignment_info(node, iterators) is not None:
+                return
             if self.__runtime_array_slice_to_whole_assignment_info(node, iterators) is not None:
                 return
             if self.__static_array_slice_to_whole_assignment_info(node, iterators) is not None:
@@ -12705,6 +12707,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__is_initialization_process:
             return
 
+        whole_to_static_slice = self.__whole_to_static_array_slice_assignment_info(statement)
+        if whole_to_static_slice is not None:
+            self.__emit_static_array_slice_assignment(whole_to_static_slice)
+            return
         runtime_slice_to_whole = self.__runtime_array_slice_to_whole_assignment_info(statement)
         if runtime_slice_to_whole is not None:
             self.__emit_runtime_array_slice_to_whole_assignment(runtime_slice_to_whole)
