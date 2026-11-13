@@ -24127,6 +24127,20 @@ class RuntimeArraySliceDestinationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)
 
+    def test_runtime_copy_metadata_is_immutable(self):
+        c = self.converter('array[int,4] a; array[int,4] b; int first; int last;')
+        node = self.program('a[first:last] = b[first:last];').statements[0]
+        identify = c._QASM2QCXConverter__runtime_array_slice_loop_info
+        target = qasm2qcx.ast.IndexExpression(node.lvalue.name, node.lvalue.indices[0])
+        element_type = qasm2qcx.ast.IntType()
+        destination = identify(target, element_type)
+        source = identify(node.rvalue, element_type)
+        info = qasm2qcx._RuntimeArraySliceCopy(destination, source)
+        self.assertIs(info.destination, destination)
+        self.assertIs(info.source, source)
+        with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+            info.source = destination
+
     def test_element_types_and_static_source(self):
         for element in ('int', 'int[4]', 'uint[4]', 'float[32]', 'bool', 'complex', 'angle[4]'):
             with self.subTest(element=element):
