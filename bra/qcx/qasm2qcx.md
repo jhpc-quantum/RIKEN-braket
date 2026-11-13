@@ -7965,7 +7965,7 @@ array loop inside an expanded loop contributes its generated statements and
 instructions. Unsigned-integer-array, floating-point-array, Boolean-array,
 complex-array, angle-array, and bit-register iteration are described below.
 Iteration over unsupported array types, aliases, or arbitrary array expressions
-remains unsupported. Static slice iteration is described below.
+remains unsupported. Static and runtime slice iteration are described below.
 
 ## Static array-slice for loops
 
@@ -8000,9 +8000,47 @@ for int value in values[4:-2:0] {
 
 The body is generated once and uses a private position and copied iterator;
 negative positions are normalized at each visit. `break`, `continue`, nested
-loops, and source shadowing follow the ordinary array-loop rules. Runtime
-slice bounds, discrete index sets, slice assignment and initialization,
+loops, and source shadowing follow the ordinary array-loop rules. Discrete
+index sets, slice assignment and initialization,
 concatenation, multidimensional arrays, and aliases remain unsupported.
+
+## Runtime array-slice for loops
+
+The same supported one-dimensional array types and iterator rules also accept
+runtime-dependent `int` or `uint` start, step, and stop expressions. Both bounds
+are required; an omitted step is one. They are captured once, in written order,
+when the loop is entered. Changing a bound in the body does not change the
+selected positions. The complete position list is checked before the first
+body execution, then each visit reads the current source element. Repeated
+negative aliases can therefore observe source mutations on later visits.
+
+Reached selections check that the step is nonzero and every generated index
+is valid. Native signed and unsigned bounds are retained without silently
+narrowing them. An empty range executes zero iterations; as with static array
+slices, this is the converter's documented interpretation. Skipped loops do
+not evaluate bounds or perform runtime checks, but their types, names, iterator
+bindings, and bodies are validated.
+
+<!-- runtime-array-slice-loop-example -->
+```qasm
+OPENQASM 3.0;
+array[int, 5] values = {1, 2, 3, 4, 5};
+int first = 1;
+int last = 3;
+int total = 0;
+for int value in values[first:last] {
+    total += value;
+    last = 0; // The selected positions remain 1, 2, and 3.
+}
+// total is 9.
+```
+
+The captured positions use private INT-indexed storage. Its capacity is the
+smallest of twice the array length, the converter's runtime position limit
+(`MAX_RUNTIME_BIT_RANGE_POSITIONS`, currently 1,000,000), and QCX `INT_MAX`.
+A reached selection exceeding that capacity fails before its body. The array
+element values are not snapshotted. Static slices continue to use their
+separate path and do not consume this runtime position storage.
 
 ## Unsigned-integer-array for loops
 
@@ -10361,6 +10399,12 @@ operations. It covers mixed signed/unsigned promotions, negative/static/runtime
 indices, nested self-references, captured destinations, shifts, exponentiation,
 skipped checks, bounds failures, zero divisors, and checked conversions.
 
+`bra/test/qasm2qcx_runtime_array_slice_loop_numerical.py` checks runtime slice
+loops against an independent index model, including 600 range shapes, all
+supported array element types, widening, live source mutations, captured bounds,
+empty and skipped loops, extreme steps, and failures before the body. It executes
+the documented example. Run with `--bra /path/to/bra`, including a UBSan build.
+
 `bra/test/qasm2qcx_static_array_slice_loop_numerical.py` compares static slice
 iteration with an independent index model. It covers forward, reverse, strided,
 negative, repeated, singleton and empty selections, all supported array element
@@ -10864,6 +10908,7 @@ python3 bra/test/qasm2qcx_runtime_step_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_set_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_array_slice_loop_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_array_slice_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_uint_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_uint_array_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_float_array_numerical.py --bra bra/bin/bra
