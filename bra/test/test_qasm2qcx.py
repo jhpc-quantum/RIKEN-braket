@@ -24376,6 +24376,29 @@ class RuntimeArraySliceAssignmentLoweringTests(unittest.TestCase):
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
 
 
+class WholeArrayCopyFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def test_compatible_types_lengths_and_immutable_metadata(self):
+        for element in ('int', 'uint[4]', 'float[32]', 'bool', 'complex', 'angle[4]'):
+            with self.subTest(element=element):
+                c = self.converter(f'array[{element},3] a; array[{element},3] b;')
+                count = c._QASM2QCXConverter__check_whole_array_copy_types_and_lengths('a', 'b')
+                info = qasm2qcx._ArrayCopyAssignment('A1', 'B1', count)
+                self.assertEqual((info.destination, info.source, info.count), ('A1', 'B1', 3))
+                with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                    info.count = 0
+
+    def test_incompatible_types_and_lengths(self):
+        c = self.converter('array[int,3] a; array[int,2] b; array[uint,3] u;')
+        check = c._QASM2QCXConverter__check_whole_array_copy_types_and_lengths
+        for source in ('b', 'u'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                check('a', source)
+        self.assertEqual(check('a', 'a'), 3)
+
+
 class ArrayCopyInitializerTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)
