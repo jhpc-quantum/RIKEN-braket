@@ -4292,9 +4292,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                   or isinstance(operand.indices[0][0], (ast.RangeDefinition, ast.DiscreteSet))):
                 raise UnsupportedOpenQASMError('register selection on user-defined gates')
             else:
-                value_type, _ = self.__loop_expression_info(operand.indices[0][0], iterators)
+                index = operand.indices[0][0]
+                value_type, _ = self.__loop_expression_info(index, iterators)
                 if value_type not in (ValueType.INT, ValueType.UINT):
                     raise InvalidQubitOperandException('Qubit index must be an integer')
+                names = self.__loop_bound_names(index)
+                if (any(name in self.__classical_source_types and name not in active for name in names)
+                        or any(isinstance(scope.get(name), _RuntimeIteratorBinding)
+                               for scope in self.__loop_bindings for name in names)):
+                    raise UnsupportedOpenQASMError('runtime qubit index on user-defined gate')
         if (not self.__is_initialization_process
                 and all(isinstance(operand, ast.Identifier)
                         or self.__is_literal_qubit_selector(operand.indices[0][0])

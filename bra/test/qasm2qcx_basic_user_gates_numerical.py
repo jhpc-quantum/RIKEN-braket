@@ -17,6 +17,13 @@ def main():
     scale = 1 / math.sqrt(2)
     expected = [0j] * 32
     expected[0] = expected[3] = scale
+    document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+    marker = '<!-- basic-user-gate-example -->'
+    if document.count(marker) != 1:
+        raise RuntimeError('Expected exactly one basic user-defined gate example')
+    example = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+    example = example.replace('OPENQASM 3.0;', '', 1).replace('include "stdgates.inc";', '', 1)
+    check_amplitudes(bra, example, expected)
     check_amplitudes(bra, '''gate bell a,b { h a; cx a,b; }
         qubit[5] q; bell q[0],q[1];''', expected)
     state = [0j] * 32

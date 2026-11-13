@@ -80,6 +80,10 @@ class BasicGateCallTests(unittest.TestCase):
         self.assertEqual(convert(self.prefix + declarations + 'for int i in [1:0] { flip q[i]; }'), ['QUBITS 2'])
         with self.assertRaises(qasm2qcx.QASM2QCXError):
             convert(self.prefix + declarations + 'for int i in [1:0] { flip q; }')
+        for body in ('int n=0; for int i in [1:0] { flip q[n]; }',
+                     'int stop=1; for int i in [0:stop] { flip q[i]; }'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(self.prefix + declarations + body)
 
     def test_invalid_calls(self):
         definition = 'gate pair a,b { cx a,b; } qubit[2] q; '
