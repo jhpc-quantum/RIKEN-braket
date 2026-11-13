@@ -13,6 +13,12 @@ def main():
     parser.add_argument('--bra', required=True, type=pathlib.Path)
     bra = parser.parse_args().bra.resolve()
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+    marker = '<!-- static-array-slice-initializer-example -->'
+    if document.count(marker) != 1:
+        raise RuntimeError('Expected exactly one static array-slice initializer example')
+    example = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+    check_program(bra, example.replace('OPENQASM 3.0;', '', 1), ('RESULT63:0', 'RESULT63:1'), ['2', '3'])
     check_program(bra, '''array[int,4] a={1,2,3,4}; array[int,2] b=a[1:2];
         a[1]=9; b[1]=8;''', ('A1:1', 'A1:2', 'B1:0', 'B1:1'), ['9', '3', '2', '8'])
     check_program(bra, '''array[int,4] a={1,2,3,4}; array[int,5] b=a[-4:0];''',
