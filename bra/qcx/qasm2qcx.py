@@ -6699,6 +6699,25 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise InvalidArrayOperandException(f'Array slice index is outside {name}[{size}]')
         return _StaticArraySliceLoop(array, size, indices, value_type, uint_type)
 
+    def __array_slice_element_type(self, array_name: str, array_type: ast.ArrayType) -> ast.QASMNode:
+        base = array_type.base_type
+        storage = self.__capitalize_variable_name(array_name)
+        if isinstance(base, ast.UintType):
+            info = self.__uint_variable_types[storage]
+            return ast.UintType(ast.IntegerLiteral(info.width) if info.is_sized else None)
+        if isinstance(base, ast.AngleType):
+            info = self.__angle_array_types[storage]
+            return ast.AngleType(ast.IntegerLiteral(info.width) if info.is_sized else None)
+        return base
+
+    def __check_array_slice_assignment_types(self, destination: str, source: str) -> None:
+        left_signature = self.__array_element_signatures[destination]
+        right_signature = self.__array_element_signatures[source]
+        if 'unresolved' in (left_signature[0], right_signature[0]):
+            raise UnsupportedOpenQASMError('array slice assignment with unresolved element type widths')
+        if left_signature != right_signature:
+            raise InvalidArrayOperandException('Array slice assignment requires matching element types')
+
     def __static_array_slice_assignment_info(
             self, statement: ast.ClassicalAssignment,
             iterators: set[str] | dict[str, ValueType] | None = None, *,
@@ -6716,18 +6735,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return None
         if statement.op.name != '=':
             raise UnsupportedOpenQASMError('compound array slice assignment')
-        def resolved_element_type(array_name: str, array_type: ast.ArrayType) -> ast.QASMNode:
-            base = array_type.base_type
-            storage = self.__capitalize_variable_name(array_name)
-            if isinstance(base, ast.UintType):
-                info = self.__uint_variable_types[storage]
-                return ast.UintType(ast.IntegerLiteral(info.width) if info.is_sized else None)
-            if isinstance(base, ast.AngleType):
-                info = self.__angle_array_types[storage]
-                return ast.AngleType(ast.IntegerLiteral(info.width) if info.is_sized else None)
-            return base
         destination = self.__static_array_slice_loop_info(
-            ast.IndexExpression(target.name, target.indices[0]), resolved_element_type(name, target_type), iterators)
+            ast.IndexExpression(target.name, target.indices[0]), self.__array_slice_element_type(name, target_type), iterators)
         rhs = statement.rvalue
         if not (isinstance(rhs, ast.IndexExpression) and isinstance(rhs.collection, ast.Identifier)):
             raise UnsupportedOpenQASMError('array slice assignment requires an array slice source')
@@ -6736,18 +6745,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError('array slice assignment requires an array slice source')
         if allow_runtime_source:
             source = self.__runtime_array_slice_loop_info(
-                rhs, resolved_element_type(rhs.collection.name, source_type), iterators)
+                rhs, self.__array_slice_element_type(rhs.collection.name, source_type), iterators)
             if source is None:
                 return None  # Preserve the existing wholly static copy path.
         else:
             source = self.__static_array_slice_loop_info(
-                rhs, resolved_element_type(rhs.collection.name, source_type), iterators)
-        left_signature = self.__array_element_signatures[name]
-        right_signature = self.__array_element_signatures[rhs.collection.name]
-        if 'unresolved' in (left_signature[0], right_signature[0]):
-            raise UnsupportedOpenQASMError('array slice assignment with unresolved element type widths')
-        if left_signature != right_signature:
-            raise InvalidArrayOperandException('Array slice assignment requires matching element types')
+                rhs, self.__array_slice_element_type(rhs.collection.name, source_type), iterators)
+        self.__check_array_slice_assignment_types(name, rhs.collection.name)
         count = self.__loop_value_count(destination.indices)
         if isinstance(source, _StaticArraySliceLoop) and count != self.__loop_value_count(source.indices):
             raise InvalidArrayOperandException('Array slice assignment requires matching lengths')
