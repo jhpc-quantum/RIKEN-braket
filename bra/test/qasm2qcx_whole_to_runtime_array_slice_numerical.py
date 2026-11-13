@@ -14,6 +14,13 @@ def main():
     parser.add_argument('--bra', required=True, type=pathlib.Path)
     bra = parser.parse_args().bra.resolve()
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+    marker = '<!-- whole-to-runtime-array-slice-example -->'
+    if document.count(marker) != 1:
+        raise RuntimeError('Expected exactly one whole-array to runtime-slice example')
+    example = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+    check_program(bra, example.replace('OPENQASM 3.0;', '', 1),
+                  ('RESULT63:0', 'RESULT63:1', 'RESULT63:2', 'RESULT63:3'), ['0', '1', '2', '3'])
     check_program(bra, '''array[int,3] a={1,2,3}; int first=2; int step=-1; int last=0;
         a[first:step:last]=a;''', ('A1:0','A1:1','A1:2'), ['3','2','1'])
     check_program(bra, '''array[int,4] a={0,0,0,0}; array[int,2] b={1,2}; int first=-1; int step=-2; int last=-3;
