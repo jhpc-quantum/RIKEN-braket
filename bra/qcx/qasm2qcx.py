@@ -333,6 +333,13 @@ class _ArrayCopyAssignment:
 
 
 @dataclasses.dataclass(frozen=True)
+class _StaticArraySliceToWholeAssignment:
+    destination: str
+    source: _StaticArraySliceLoop
+    count: int
+
+
+@dataclasses.dataclass(frozen=True)
 class _StaticBitSelection:
     source_name: str
     indices: tuple[int, ...]
@@ -6082,6 +6089,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # skipped body. Sized angle bit selections were handled above.
             self.__loop_index_info(node, iterators)
         if isinstance(node, ast.ClassicalAssignment):
+            if self.__static_array_slice_to_whole_assignment_info(node, iterators) is not None:
+                return
             if self.__whole_array_assignment_info(node, iterators) is not None:
                 return
             if self.__runtime_array_slice_destination_assignment_info(node, iterators) is not None:
@@ -6802,6 +6811,36 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return _ArrayCopyAssignment(self.__capitalize_variable_name(name),
                                     self.__capitalize_variable_name(source.name), count)
 
+    def __static_array_slice_to_whole_assignment_info(
+            self, statement: ast.ClassicalAssignment,
+            iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> _StaticArraySliceToWholeAssignment | None:
+        target, source = statement.lvalue, statement.rvalue
+        if not isinstance(target, ast.Identifier) or not isinstance(source, ast.IndexExpression):
+            return None
+        name = target.name
+        active = set(iterators or ()) | {key for scope in self.__loop_bindings for key in scope}
+        if name in active or not isinstance(self.__classical_source_types.get(name), ast.ArrayType):
+            return None
+        if (not self.__is_initialization_process
+                and self.__capitalize_variable_name(name) not in self.__array_element_types):
+            raise NoVariableNameException(name)
+        if statement.op.name != '=':
+            raise UnsupportedOpenQASMError('compound whole-array assignment')
+        if not isinstance(source.collection, ast.Identifier) or source.collection.name in active:
+            raise UnsupportedOpenQASMError('whole-array assignment requires an array slice source')
+        source_name = source.collection.name
+        source_type = self.__classical_source_types.get(source_name)
+        if not isinstance(source_type, ast.ArrayType):
+            raise UnsupportedOpenQASMError('whole-array assignment requires an array slice source')
+        selection = self.__static_array_slice_loop_info(
+            source, self.__array_slice_element_type(source_name, source_type), iterators)
+        self.__check_array_slice_assignment_types(name, source_name)
+        count = self.__array_source_sizes[name]
+        if self.__loop_value_count(selection.indices) != count:
+            raise InvalidArrayOperandException('Array slice assignment requires matching lengths')
+        return _StaticArraySliceToWholeAssignment(self.__capitalize_variable_name(name), selection, count)
+
     def __emit_whole_array_assignment(self, info: _ArrayCopyAssignment) -> None:
         if info.destination == info.source:
             return
@@ -6809,6 +6848,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise InvalidArrayOperandException('Array assignment exceeds QCX output limit')
         for index in range(info.count):
             self.__qcx_lines.append(f'LET {info.destination}:{index} := {info.source}:{index}')
+
+    def __emit_static_array_slice_to_whole_assignment(
+            self, info: _StaticArraySliceToWholeAssignment) -> None:
+        destination = _StaticArraySliceLoop(info.destination, info.count, range(info.count),
+                                            info.source.value_type, info.source.uint_type)
+        self.__emit_static_array_slice_assignment(_StaticArraySliceAssignment(destination, info.source, info.count))
 
     def __array_slice_initializer_source(
             self, statement: ast.ClassicalDeclaration) -> tuple[ast.IndexExpression, str, ast.ArrayType] | None:
@@ -12611,6 +12656,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__is_initialization_process:
             return
 
+        slice_to_whole = self.__static_array_slice_to_whole_assignment_info(statement)
+        if slice_to_whole is not None:
+            self.__emit_static_array_slice_to_whole_assignment(slice_to_whole)
+            return
         whole_array = self.__whole_array_assignment_info(statement)
         if whole_array is not None:
             self.__emit_whole_array_assignment(whole_array)

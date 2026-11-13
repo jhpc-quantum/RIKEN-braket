@@ -6247,8 +6247,33 @@ result = source;
 
 The converter validates names, types, and lengths even in skipped loop bodies.
 Non-self assignments emit one QCX copy per element and are checked against
-`MAX_LOOP_OUTPUT_LINES`. Whole-array compound assignments, assignment from
-slices to whole arrays, and general array expressions remain unsupported.
+`MAX_LOOP_OUTPUT_LINES`. Whole-array compound assignments and general array
+expressions remain unsupported.
+
+### Static slice-to-whole-array assignments
+
+A previously declared one-dimensional `int`, `uint`, `float`, `bool`,
+`complex`, or `angle` array may be assigned from a statically bounded range
+slice of another array. Declared element types, including widths and sizedness,
+must match, and the slice length must equal the destination length.
+
+<!-- static-slice-to-whole-array-example -->
+```qasm
+OPENQASM 3.0;
+array[int, 4] source = {1, 2, 3, 4};
+array[int, 2] result;
+result = source[1:2];
+// result contains {2, 3}.
+```
+
+Both bounds must be compile-time integers; an omitted step is one. A specified
+step must be a nonzero compile-time integer, and all selected positions must
+be valid. Negative positions are normalized individually and repeated source
+positions are allowed. The converter snapshots all source values before
+writing, preserving overlapping copies such as `a = a[2:-1:0]`. It validates
+static selections in skipped loop bodies and checks generated output against
+`MAX_LOOP_OUTPUT_LINES`. Runtime-dependent source slices and whole-array
+sources assigned to slices remain unsupported in this form.
 
 ### Static array-slice initializers
 
@@ -10647,6 +10672,11 @@ and destination slices, including all supported element types, overlap, range
 validation, and an independent model of positions and strides. It executes the
 documented example. Run with `--bra /path/to/bra`.
 
+`bra/test/qasm2qcx_static_slice_to_whole_array_numerical.py` checks static
+slice-to-whole assignments across supported element types, overlap, reverse
+strides, repeated source indices, and skipped assignments. It executes the
+documented example. Run with `--bra /path/to/bra`.
+
 `bra/test/qasm2qcx_whole_array_assignment_numerical.py` checks whole-array
 assignments across supported element types, self-assignment, independent
 storage, and skipped assignments. It executes the documented example. Run
@@ -11176,6 +11206,7 @@ python3 bra/test/qasm2qcx_runtime_set_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_array_copy_initializer_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_whole_array_assignment_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_static_slice_to_whole_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_array_slice_initializer_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_array_slice_initializer_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_array_slice_assignment_numerical.py --bra bra/bin/bra
