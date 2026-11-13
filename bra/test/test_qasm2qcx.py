@@ -24431,7 +24431,7 @@ class WholeArrayAssignmentTests(unittest.TestCase):
                 ('array[int,2] a; int b;', 'a=b;'),
                 ('array[int,2] a;', 'a=missing;'),
                 ('array[int,2] a; array[int,2] b;', 'a+=b;'),
-                ('array[int,2] a; array[int,2] b;', 'a=b[0:1];')):
+                ('array[int,2] a; array[int,2] b;', 'a=b[0:0];')):
             for wrapper in ('{}', 'for int i in [1:0] {{ {} }}'):
                 with self.subTest(statement=statement, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):
                     self.converter(declarations + wrapper.format(statement))

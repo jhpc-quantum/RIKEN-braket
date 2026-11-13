@@ -6089,6 +6089,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # skipped body. Sized angle bit selections were handled above.
             self.__loop_index_info(node, iterators)
         if isinstance(node, ast.ClassicalAssignment):
+            if self.__static_array_slice_to_whole_assignment_info(node, iterators) is not None:
+                return
             if self.__whole_array_assignment_info(node, iterators) is not None:
                 return
             if self.__runtime_array_slice_destination_assignment_info(node, iterators) is not None:
@@ -6846,6 +6848,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise InvalidArrayOperandException('Array assignment exceeds QCX output limit')
         for index in range(info.count):
             self.__qcx_lines.append(f'LET {info.destination}:{index} := {info.source}:{index}')
+
+    def __emit_static_array_slice_to_whole_assignment(
+            self, info: _StaticArraySliceToWholeAssignment) -> None:
+        destination = _StaticArraySliceLoop(info.destination, info.count, range(info.count),
+                                            info.source.value_type, info.source.uint_type)
+        self.__emit_static_array_slice_assignment(_StaticArraySliceAssignment(destination, info.source, info.count))
 
     def __array_slice_initializer_source(
             self, statement: ast.ClassicalDeclaration) -> tuple[ast.IndexExpression, str, ast.ArrayType] | None:
@@ -12648,6 +12656,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__is_initialization_process:
             return
 
+        slice_to_whole = self.__static_array_slice_to_whole_assignment_info(statement)
+        if slice_to_whole is not None:
+            self.__emit_static_array_slice_to_whole_assignment(slice_to_whole)
+            return
         whole_array = self.__whole_array_assignment_info(statement)
         if whole_array is not None:
             self.__emit_whole_array_assignment(whole_array)
