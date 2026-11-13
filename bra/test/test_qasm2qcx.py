@@ -23440,10 +23440,10 @@ class AngleArrayDeclarationTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(f'array[angle[4], 1] a = {{{value}}};')
 
-    def test_whole_arrays_cannot_be_used_as_scalars_or_implicitly_copied(self):
+    def test_whole_arrays_cannot_be_used_as_scalars(self):
         for size in (1, 2):
             for statement in ('angle a = values;', 'uint n = values;', 'float f = float(values);',
-                              'array[angle[4], 1] other = {values};', 'array[angle[4], 2] other = values;'):
+                              'array[angle[4], 1] other = {values};'):
                 with self.subTest(size=size, statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
                     self.converter(f'array[angle[4], {size}] values; ' + statement)
 

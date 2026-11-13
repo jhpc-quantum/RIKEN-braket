@@ -12407,12 +12407,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         initializer = statement.init_expression
         slice_initializer = (self.__runtime_array_slice_initializer_info(statement)
                              or self.__static_array_slice_initializer_info(statement))
+        copy_initializer = self.__array_copy_initializer_info(statement)
         if initializer is not None:
             if isinstance(slice_initializer, _StaticArraySliceInitializer):
                 if len(self.__qcx_lines) + slice_initializer.count + 1 > self.MAX_LOOP_OUTPUT_LINES:
                     raise InvalidArrayOperandException('Array slice initializer exceeds QCX output limit')
             elif isinstance(slice_initializer, _RuntimeArraySliceInitializer):
                 pass  # Runtime range validation and output checks happen during emission.
+            elif copy_initializer is not None:
+                if len(self.__qcx_lines) + copy_initializer.count + 1 > self.MAX_LOOP_OUTPUT_LINES:
+                    raise InvalidArrayOperandException('Array initializer exceeds QCX output limit')
             elif not isinstance(initializer, ast.ArrayLiteral):
                 raise UnsupportedOpenQASMError('classical array initializer other than an array literal')
             elif len(initializer.values) != size:
@@ -12427,6 +12431,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__declare_classical_variable(storage_type, variable_name, size)
         self.__array_element_types[variable_name] = element_type
         if initializer is None:
+            return
+        if copy_initializer is not None:
+            for index in range(copy_initializer.count):
+                self.__qcx_lines.append(f'LET {variable_name}:{index} := {copy_initializer.source}:{index}')
             return
         if isinstance(slice_initializer, _RuntimeArraySliceInitializer):
             self.__emit_runtime_array_slice_initializer(slice_initializer, variable_name)
