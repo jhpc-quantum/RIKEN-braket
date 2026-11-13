@@ -6237,8 +6237,8 @@ Both bounds and steps must be compile-time integers. Steps must be nonzero,
 each selected position must be valid, and source and destination counts must
 match. The same validation applies in skipped or empty enclosing loops. The
 converter emits two QCX `LET` instructions per selected element and rejects a
-copy that exceeds `MAX_LOOP_OUTPUT_LINES`. Runtime source or destination slices
-with a static slice on the other side are described below. Slice initializers,
+copy that exceeds `MAX_LOOP_OUTPUT_LINES`. Runtime source and destination slices
+are described below. Slice initializers,
 whole-array copies, array concatenation, and multidimensional array assignments
 remain unsupported.
 
@@ -6305,8 +6305,40 @@ positions use private INT-indexed storage bounded by the smallest of twice the
 destination array length, `MAX_RUNTIME_BIT_RANGE_POSITIONS` (currently
 1,000,000), and QCX `INT_MAX`. An oversized selection fails before any write.
 The typed snapshot uses the static source length; generated output is limited
-by `MAX_LOOP_OUTPUT_LINES`. Assignments with runtime-dependent slices on both
-sides remain unsupported.
+by `MAX_LOOP_OUTPUT_LINES`.
+
+### Assignments between runtime array slices
+
+Both slices may have runtime-dependent `int` or `uint` start, step, and stop
+expressions. Both bounds are required on each slice; an omitted step is one.
+The destination range is captured and checked first, followed by the source
+range; within each range, start, step, and stop are evaluated once in written
+order. The converter checks matching lengths and distinct normalized
+destination indices before writing. As with other slice assignments, source
+values are snapshotted before any destination writes, preserving overlapping
+copies. The element-type rules above continue to apply.
+
+<!-- runtime-array-slice-copy-example -->
+```qasm
+OPENQASM 3.0;
+array[int, 4] values = {1, 2, 3, 4};
+int destination_first = 1;
+int destination_last = 3;
+int source_first = 0;
+int source_last = 2;
+values[destination_first:destination_last] = values[source_first:source_last];
+// values is {1, 1, 2, 3}.
+```
+
+Reached ranges check nonzero steps and valid positions; repeated source
+positions are allowed. Empty-to-empty copies still evaluate and check both
+ranges. Skipped copies do not execute runtime checks, but names, types, and
+range expression types are validated. Each captured position array is limited
+by twice its corresponding array length, `MAX_RUNTIME_BIT_RANGE_POSITIONS`
+(currently 1,000,000), and QCX `INT_MAX`. The typed snapshot capacity is the
+smallest of those limits for both arrays. A reached selection exceeding a
+capacity fails before any destination write. Generated output is checked
+against `MAX_LOOP_OUTPUT_LINES`.
 
 ### Runtime array indexing
 
@@ -10516,6 +10548,11 @@ destinations for all supported element types, overlap, negative indices, empty
 and skipped copies, and range validation failures. It executes the documented
 example. Run with `--bra /path/to/bra`.
 
+`bra/test/qasm2qcx_runtime_array_slice_copy_numerical.py` checks runtime source
+and destination slices, including all supported element types, overlap, range
+validation, and an independent model of positions and strides. It executes the
+documented example. Run with `--bra /path/to/bra`.
+
 `bra/test/qasm2qcx_static_array_slice_assignment_numerical.py` checks slice
 copies against an independent snapshot model, including overlap, negative and
 repeated source indices, reverse strides, empty and skipped copies, all supported
@@ -11027,6 +11064,7 @@ python3 bra/test/qasm2qcx_integer_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_array_slice_assignment_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_array_slice_source_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_array_slice_destination_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_array_slice_copy_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_array_slice_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_array_slice_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_uint_array_numerical.py --bra bra/bin/bra
