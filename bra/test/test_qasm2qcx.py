@@ -24786,6 +24786,76 @@ class StaticArraySliceInitializerTests(unittest.TestCase):
         self.assertFalse(any(line.startswith('VAR B1') for line in c._QASM2QCXConverter__qcx_lines))
 
 
+class WholeToStaticArraySliceTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def test_snapshot_precedes_writes_for_supported_types(self):
+        for element in ('int', 'uint[4]', 'float[32]', 'bool', 'complex', 'angle[4]'):
+            with self.subTest(element=element):
+                lines = convert(f'OPENQASM 3; array[{element},3] a; a[2:-1:0]=a;')
+                snapshots = [i for i, line in enumerate(lines) if ':= A1:' in line]
+                writes = [i for i, line in enumerate(lines) if line.startswith('LET A1:')]
+                self.assertEqual((len(snapshots), len(writes)), (3, 3))
+                self.assertLess(max(snapshots), min(writes))
+
+    def test_invalid_cases_including_skipped_loops(self):
+        for declarations, assignment in (
+                ('array[int,4] a; array[int,3] b;', 'a[0:1]=b;'),
+                ('array[int,4] a; array[int,3] b;', 'a[2:4]=b;'),
+                ('array[int,4] a; array[int,3] b;', 'a[0:0:2]=b;'),
+                ('array[int,4] a; array[int,3] b; int i;', 'a[i:2]=b;'),
+                ('array[int,4] a; array[int,5] b;', 'a[-4:0]=b;'),
+                ('array[uint[4],4] a; array[uint[5],3] b;', 'a[0:2]=b;'),
+                ('array[angle[4],4] a; array[angle[5],3] b;', 'a[0:2]=b;'),
+                ('array[int,4] a; array[int,3] b;', 'a[0:2]+=b;'),
+                ('array[int,4] a; int b;', 'a[0:2]=b;')):
+            for wrapper in ('{}', 'for int j in [1:0] {{ {} }}'):
+                with self.subTest(assignment=assignment, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    self.converter(declarations + wrapper.format(assignment))
+        self.converter('array[int,4] a; array[int,3] b; for int j in [1:0] { a[0:2]=b; }')
+
+    def test_output_limit_before_copy(self):
+        c = self.converter('array[int,4] a; array[int,3] b;')
+        node = self.program('a[0:2]=b;').statements[0]
+        with patch.object(c, 'MAX_LOOP_OUTPUT_LINES', len(c._QASM2QCXConverter__qcx_lines) + 6), \
+                self.assertRaisesRegex(qasm2qcx.InvalidArrayOperandException, 'output limit'):
+            c.visit(node)
+        self.assertFalse(any(line.startswith('LET A1:') for line in c._QASM2QCXConverter__qcx_lines))
+
+
+class WholeToStaticArraySliceFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def info(self, converter, statement, iterators=None):
+        node = self.program(statement).statements[0]
+        return converter._QASM2QCXConverter__whole_to_static_array_slice_assignment_info(node, iterators)
+
+    def test_matching_types_and_slice_metadata(self):
+        for element in ('int', 'uint[4]', 'float[32]', 'bool', 'complex', 'angle[4]'):
+            with self.subTest(element=element):
+                c = self.converter(f'array[{element},4] a; array[{element},3] b;')
+                info = self.info(c, 'a[-1:-1:-3]=b;')
+                self.assertIsInstance(info, qasm2qcx._StaticArraySliceAssignment)
+                self.assertEqual(list(info.destination.indices), [-1, -2, -3])
+                self.assertEqual(list(info.source.indices), [0, 1, 2])
+                self.assertEqual(info.count, 3)
+                with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                    info.count = 0
+
+    def test_invalid_ranges_types_and_shadowing(self):
+        c = self.converter('array[int,4] a; array[int,3] b; array[int,5] c; array[uint,3] u; int scalar; int i;')
+        for statement in ('a[0:1]=b;', 'a[2:4]=b;', 'a[0:0:2]=b;', 'a[i:2]=b;',
+                          'a[-4:0]=c;', 'a[0:2]=u;', 'a[0:2]=scalar;', 'a[0:2]+=b;'):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(c, statement)
+        self.assertIsNone(self.info(c, 'a[0]=scalar;'))
+        for iterator in ('a', 'b'):
+            with self.subTest(iterator=iterator), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(c, 'a[0:2]=b;', {iterator})
+
+
 class StaticArraySliceAssignmentFoundationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)

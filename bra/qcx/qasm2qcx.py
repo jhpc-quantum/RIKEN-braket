@@ -6096,6 +6096,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # skipped body. Sized angle bit selections were handled above.
             self.__loop_index_info(node, iterators)
         if isinstance(node, ast.ClassicalAssignment):
+            if self.__whole_to_static_array_slice_assignment_info(node, iterators) is not None:
+                return
             if self.__runtime_array_slice_to_whole_assignment_info(node, iterators) is not None:
                 return
             if self.__static_array_slice_to_whole_assignment_info(node, iterators) is not None:
@@ -6993,6 +6995,26 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             f'LET {right} := {positions}:{inner}', f'ASSERT {left} \\= {right}',
             f'LET {inner} += 1', f'JUMPIF {label} {inner} < {count}',
         ])
+
+    def __whole_to_static_array_slice_assignment_info(
+            self, statement: ast.ClassicalAssignment,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _StaticArraySliceAssignment | None:
+        target, source = statement.lvalue, statement.rvalue
+        if not isinstance(target, ast.IndexedIdentifier) or not isinstance(source, ast.Identifier):
+            return None
+        if not isinstance(self.__classical_source_types.get(target.name.name), ast.ArrayType):
+            return None
+        if (len(target.indices) != 1 or not isinstance(target.indices[0], list)
+                or len(target.indices[0]) != 1 or not isinstance(target.indices[0][0], ast.RangeDefinition)):
+            return None
+        active = set(iterators or ()) | {key for scope in self.__loop_bindings for key in scope}
+        if source.name in active or not isinstance(self.__classical_source_types.get(source.name), ast.ArrayType):
+            raise UnsupportedOpenQASMError('array slice assignment requires an array source')
+        size = self.__array_source_sizes[source.name]
+        bounds = ast.RangeDefinition(ast.IntegerLiteral(0), ast.IntegerLiteral(size - 1), None)
+        whole_slice = ast.IndexExpression(source, [bounds])
+        equivalent = dataclasses.replace(statement, rvalue=whole_slice)
+        return self.__static_array_slice_assignment_info(equivalent, iterators)
 
     def __static_array_slice_assignment_info(
             self, statement: ast.ClassicalAssignment,
@@ -12685,6 +12707,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__is_initialization_process:
             return
 
+        whole_to_static_slice = self.__whole_to_static_array_slice_assignment_info(statement)
+        if whole_to_static_slice is not None:
+            self.__emit_static_array_slice_assignment(whole_to_static_slice)
+            return
         runtime_slice_to_whole = self.__runtime_array_slice_to_whole_assignment_info(statement)
         if runtime_slice_to_whole is not None:
             self.__emit_runtime_array_slice_to_whole_assignment(runtime_slice_to_whole)
