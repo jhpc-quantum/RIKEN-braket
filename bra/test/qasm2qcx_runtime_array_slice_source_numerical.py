@@ -16,6 +16,13 @@ def main():
     parser.add_argument('--bra', required=True, type=pathlib.Path)
     bra = parser.parse_args().bra
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+    marker = '<!-- runtime-array-slice-source-example -->'
+    if document.count(marker) != 1:
+        raise RuntimeError('Expected exactly one runtime array-slice source example')
+    example = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+    check_program(bra, example.replace('OPENQASM 3.0;', '', 1),
+                  ('VALUES63:0','VALUES63:1','VALUES63:2','VALUES63:3'), ['1','1','2','3'])
     check_program(bra, '''array[int,4] a={1,2,3,4}; int first=0; int last=2;
         a[1:3]=a[first:last];''', ('A1:0','A1:1','A1:2','A1:3'), ['1','1','2','3'])
     check_program(bra, '''array[int,5] a={0,0,0,0,0}; array[int,4] b={1,2,3,4};
@@ -82,6 +89,9 @@ def main():
         ('R1','I1'), ['5','2'])
     check_program(bra, '''array[int,4] a={2,3,0,1}; a[1:2]=a[a[2]:a[3]];''',
                   ('A1:0','A1:1','A1:2','A1:3'), ['2','2','3','1'])
+    check_program(bra, '''array[int,4] a={1,2,3,4}; int first=0; int last=1;
+        for int i in [0:1] { a[2:3]=a[first:last]; first=1; last=2; a[1]=9; }''',
+        ('A1:0','A1:1','A1:2','A1:3'), ['1','9','9','1'])
     check_program(bra, '''array[int,4] a={1,2,3,4}; array[int,4] b={5,6,7,8};
         int first=0; int last=2; int zero=0;
         if(false) { a[0:1]=b[first/zero:0:99]; }
@@ -111,6 +121,7 @@ def main():
     fail_before_snapshot('array[int,3] a; int first=0; int last=3; a[0:1]=a[first:last];', False)
     fail_before_snapshot('array[int,3] a; int first=0; int last=1; int step=0; a[0:1]=a[first:step:last];', False)
     fail_before_snapshot('array[int,3] a; int first=0; int last=0; a[2:1]=a[first:last];', True)
+    fail_before_snapshot('array[int,3] a; int first=2; int last=1; int step=0; a[2:1]=a[first:step:last];', False)
     previous_limit = qasm2qcx.QASM2QCXConverter.MAX_RUNTIME_BIT_RANGE_POSITIONS
     try:
         qasm2qcx.QASM2QCXConverter.MAX_RUNTIME_BIT_RANGE_POSITIONS = 2
