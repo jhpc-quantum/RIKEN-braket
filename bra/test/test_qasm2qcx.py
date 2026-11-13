@@ -57,8 +57,35 @@ class BasicGateDefinitionFoundationTests(unittest.TestCase):
                 'gate g a { U(other,0,0) a; }',
                 'gate g a { U(true,0,0) a; }',
                 'gate g a { gphase(pi); }',
-                'gate g a { g a; }',
-                'gate g a {} gate h a { g a; }'):
+                'gate g a { g a; }'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(source)
+
+
+class NestedGateDefinitionFoundationTests(unittest.TestCase):
+    def converter(self, source):
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ' + source)
+        return qasm2qcx.QASM2QCXConverter(program)
+
+    def test_records_previously_defined_nested_calls(self):
+        c = self.converter('include "stdgates.inc"; gate first a,b { x a; } '
+                           'gate second b,a { first a,b; } gate third a,b { second b,a; }')
+        definitions = c._QASM2QCXConverter__basic_gate_definitions
+        self.assertEqual([gate.name.name for gate in definitions['third'].body], ['second'])
+        self.assertEqual([qubit.name for qubit in definitions['second'].body[0].qubits], ['a', 'b'])
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'nested user-defined gate expansion'):
+            convert('OPENQASM 3; gate first a {} gate second a { first a; } qubit q; second q;')
+
+    def test_rejects_forward_recursive_and_invalid_nested_calls(self):
+        for source in (
+                'gate a q { b q; } gate b q {}',
+                'gate a q { a q; }',
+                'gate a q {} gate b q { a q,q; }',
+                'gate a q {} gate b q { a(1) q; }',
+                'gate a q {} gate b q { inv @ a q; }',
+                'gate a q {} gate b q { a missing; }',
+                'gate a q {} gate b q { a q[0]; }',
+                'gate a x,y {} gate b q { a q,q; }'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(source)
 

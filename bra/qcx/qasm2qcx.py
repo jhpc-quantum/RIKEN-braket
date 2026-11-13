@@ -4236,11 +4236,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if not isinstance(child, ast.QuantumGate):
                 raise UnsupportedOpenQASMError(f'gate definition body {type(child).__name__}')
             gate_name = child.name.name
-            if (gate_name not in self.default_gates_qcx_map
+            nested = self.__basic_gate_definitions.get(gate_name)
+            if (nested is None and gate_name not in self.default_gates_qcx_map
                     and not (self.__gate_definition_stdgates_available and gate_name in self.stdgates_qcx_map)):
                 raise UnsupportedOpenQASMError(f'gate {gate_name} in gate definition')
             if child.duration is not None:
                 raise UnsupportedOpenQASMError('gate duration in gate definition')
+            if nested is not None and child.modifiers:
+                raise UnsupportedOpenQASMError('modifiers on user-defined gates')
             expressions = list(child.arguments) + [modifier.argument for modifier in child.modifiers
                                                    if modifier.argument is not None]
             for expression in expressions:
@@ -4250,9 +4253,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 value_type, _ = self.__loop_expression_info(argument)
                 if value_type in (ValueType.BIT, ValueType.BOOL, ValueType.COMPLEX):
                     raise WrongParameterTypeException(value_type)
-            info = self.__analyze_gate_modifiers(child.modifiers, allow_float=True)
-            parameters, qubits = self.gate_signatures[gate_name]
-            qubits += sum(count for _, count in info.controls)
+            if nested is not None:
+                parameters, qubits = 0, len(nested.qubits)
+            else:
+                info = self.__analyze_gate_modifiers(child.modifiers, allow_float=True)
+                parameters, qubits = self.gate_signatures[gate_name]
+                qubits += sum(count for _, count in info.controls)
             if len(child.arguments) != parameters or len(child.qubits) != qubits:
                 raise WrongGateArityException(gate_name, parameters, qubits,
                                               len(child.arguments), len(child.qubits))
@@ -4324,6 +4330,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         bindings = dict(zip(definition.qubits, statement.qubits))
         output_start = len(self.__qcx_lines)
         for operation in definition.body:
+            if operation.name.name in self.__basic_gate_definitions:
+                raise UnsupportedOpenQASMError('nested user-defined gate expansion')
             self.visit(dataclasses.replace(operation, qubits=[bindings[qubit.name] for qubit in operation.qubits]))
             if (len(self.__qcx_lines) - output_start > self.MAX_GATE_DEFINITION_OUTPUT_LINES
                     or len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES):
