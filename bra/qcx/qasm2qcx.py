@@ -281,6 +281,13 @@ class _RuntimeArraySliceLoop:
 
 
 @dataclasses.dataclass(frozen=True)
+class _StaticArraySliceAssignment:
+    destination: _StaticArraySliceLoop
+    source: _StaticArraySliceLoop
+    count: int
+
+
+@dataclasses.dataclass(frozen=True)
 class _StaticBitSelection:
     source_name: str
     indices: tuple[int, ...]
@@ -895,6 +902,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__classical_source_types: dict[str, ast.QASMNode] = {}
         self.__constant_source_types: dict[str, ast.QASMNode] = {}
         self.__array_source_sizes: dict[str, int] = {}
+        self.__array_element_signatures: dict[str, tuple] = {}
         self.__bit_register_source_sizes: dict[str, int] = {}
 
         self.__int_variable_name_size_map: dict[str, int] = {}
@@ -6029,6 +6037,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # skipped body. Sized angle bit selections were handled above.
             self.__loop_index_info(node, iterators)
         if isinstance(node, ast.ClassicalAssignment):
+            if self.__static_array_slice_assignment_info(node, iterators) is not None:
+                return  # Validate both slices together, including skipped loops.
             if (node.op.name == '=' and self.__runtime_angle_range_register_assignment_info(
                     node.lvalue, node.rvalue, iterators) is not None):
                 return
@@ -6679,6 +6689,81 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if min(start, last) < -size or max(start, last) >= size:
                 raise InvalidArrayOperandException(f'Array slice index is outside {name}[{size}]')
         return _StaticArraySliceLoop(array, size, indices, value_type, uint_type)
+
+    def __static_array_slice_assignment_info(
+            self, statement: ast.ClassicalAssignment,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _StaticArraySliceAssignment | None:
+        target = statement.lvalue
+        if not isinstance(target, ast.IndexedIdentifier):
+            return None
+        name = target.name.name
+        target_type = self.__classical_source_types.get(name)
+        if not isinstance(target_type, ast.ArrayType):
+            return None
+        if (len(target.indices) != 1 or not isinstance(target.indices[0], list)
+                or len(target.indices[0]) != 1 or not isinstance(target.indices[0][0], ast.RangeDefinition)):
+            return None
+        if statement.op.name != '=':
+            raise UnsupportedOpenQASMError('compound array slice assignment')
+        def resolved_element_type(array_name: str, array_type: ast.ArrayType) -> ast.QASMNode:
+            base = array_type.base_type
+            storage = self.__capitalize_variable_name(array_name)
+            if isinstance(base, ast.UintType):
+                info = self.__uint_variable_types[storage]
+                return ast.UintType(ast.IntegerLiteral(info.width) if info.is_sized else None)
+            if isinstance(base, ast.AngleType):
+                info = self.__angle_array_types[storage]
+                return ast.AngleType(ast.IntegerLiteral(info.width) if info.is_sized else None)
+            return base
+        destination = self.__static_array_slice_loop_info(
+            ast.IndexExpression(target.name, target.indices[0]), resolved_element_type(name, target_type), iterators)
+        rhs = statement.rvalue
+        if not (isinstance(rhs, ast.IndexExpression) and isinstance(rhs.collection, ast.Identifier)):
+            raise UnsupportedOpenQASMError('array slice assignment requires an array slice source')
+        source_type = self.__classical_source_types.get(rhs.collection.name)
+        if not isinstance(source_type, ast.ArrayType):
+            raise UnsupportedOpenQASMError('array slice assignment requires an array slice source')
+        source = self.__static_array_slice_loop_info(
+            rhs, resolved_element_type(rhs.collection.name, source_type), iterators)
+        left_signature = self.__array_element_signatures[name]
+        right_signature = self.__array_element_signatures[rhs.collection.name]
+        if 'unresolved' in (left_signature[0], right_signature[0]):
+            raise UnsupportedOpenQASMError('array slice assignment with unresolved element type widths')
+        if left_signature != right_signature:
+            raise InvalidArrayOperandException('Array slice assignment requires matching element types')
+        count = self.__loop_value_count(destination.indices)
+        if count != self.__loop_value_count(source.indices):
+            raise InvalidArrayOperandException('Array slice assignment requires matching lengths')
+        # Normalization maps -size and 0 to the same element. A monotone
+        # arithmetic range repeats a physical destination exactly when it
+        # contains two raw indices separated by one source-array size.
+        stride = abs(destination.indices.step)
+        if count and destination.source_size % stride == 0 and count > destination.source_size // stride:
+            raise InvalidArrayOperandException('Array slice assignment destination repeats an index')
+        return _StaticArraySliceAssignment(destination, source, count)
+
+    def __emit_static_array_slice_assignment(self, info: _StaticArraySliceAssignment) -> None:
+        if not info.count:
+            return
+        # Check the complete output budget before allocating or emitting any
+        # destination writes. Both passes are bounded by this guard.
+        if len(self.__qcx_lines) + 2 * info.count + 1 > self.MAX_LOOP_OUTPUT_LINES:
+            raise InvalidArrayOperandException('Array slice assignment exceeds QCX output limit')
+        storage = {ValueType.INT: ValueType.INT, ValueType.BOOL: ValueType.INT,
+                   ValueType.UINT: ValueType.UINT, ValueType.ANGLE: ValueType.UINT,
+                   ValueType.FLOAT: ValueType.FLOAT, ValueType.COMPLEX: ValueType.COMPLEX}[info.source.value_type]
+        previous_declarations = self.__declared_temporary_variables.copy()
+        temporary = self.__add_temporary_array(info.count, 'ARRAY_SLICE', storage)
+        try:
+            for index, position in enumerate(info.source.indices):
+                physical = position if position >= 0 else info.source.source_size + position
+                self.__qcx_lines.append(f'LET {temporary}:{index} := {info.source.source}:{physical}')
+            for index, position in enumerate(info.destination.indices):
+                physical = position if position >= 0 else info.destination.source_size + position
+                self.__qcx_lines.append(f'LET {info.destination.source}:{physical} := {temporary}:{index}')
+            self.__hoist_temporary_declarations(previous_declarations)
+        finally:
+            self.__release_temporary_variable(temporary)
 
     def __collection_loop_info(
             self, source: ast.Identifier, iteration_type: ast.QASMNode,
@@ -11298,11 +11383,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return self.__add_temporary_array(width, purpose, ValueType.INT)
 
     def __add_temporary_array(self, width: int, purpose: str, value_type: ValueType) -> str:
-        if value_type not in (ValueType.INT, ValueType.UINT):
-            raise ValueError('temporary arrays require INT or UINT storage')
-        # Preserve INT-array names. A distinct UINT namespace prevents reuse
-        # of storage that was already declared with a different element type.
-        prefix = f'QASM2QCX_{purpose}_{"UINT_" if value_type == ValueType.UINT else ""}{width}_'
+        types = {ValueType.INT: 'INT', ValueType.UINT: 'UINT',
+                 ValueType.FLOAT: 'REAL', ValueType.COMPLEX: 'COMPLEX'}
+        if value_type not in types:
+            raise ValueError('unsupported temporary array storage type')
+        storage_type = types[value_type]
+        # Preserve existing INT names; all other storage types use distinct
+        # namespaces to prevent reuse of differently typed declarations.
+        prefix = f'QASM2QCX_{purpose}_{"" if value_type == ValueType.INT else storage_type + "_"}{width}_'
         index = 0
         name = prefix + str(index)
         while name in self.__used_temporary_variables or name in self.__reserved_variable_names:
@@ -11313,7 +11401,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__temporary_uint_types[name] = _UnsignedIntegerType(self.QCX_UINT_WIDTH, False)
         if name not in self.__declared_temporary_variables:
             self.__declared_temporary_variables.add(name)
-            self.__qcx_lines.append(f'VAR {name} {value_type.name} {width}')
+            self.__qcx_lines.append(f'VAR {name} {storage_type} {width}')
         return name
 
     @contextlib.contextmanager
@@ -11943,6 +12031,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__release_temporary_variable(index)
             raise
 
+    def __array_element_signature(self, element_type: ast.QASMNode) -> tuple:
+        # Preserve declared type identity, even where QCX uses a common
+        # storage type. Resolve widths before a loop can shadow constants.
+        if isinstance(element_type, ast.ComplexType):
+            return ('complex', None if element_type.base_type is None
+                    else self.__array_element_signature(element_type.base_type))
+        size = getattr(element_type, 'size', None)
+        if size is None:
+            return (type(element_type).__name__, None)
+        return (type(element_type).__name__, self.__constant_loop_integer(size, 'element width', kind='array'))
+
     def __array_size(self, variable_type: ast.ArrayType, variable_name: str) -> int:
         if len(variable_type.dimensions) != 1:
             raise UnsupportedOpenQASMError('multidimensional classical array')
@@ -12031,6 +12130,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 # can shadow constants referenced by the type expression.
                 self.__array_source_sizes[statement.identifier.name] = self.__array_size(
                     statement.type, statement.identifier.name)
+                try:
+                    self.__array_element_signatures[statement.identifier.name] = self.__array_element_signature(base_type)
+                except (QASM2QCXError, ArithmeticError, ValueError):
+                    # Existing array declarations can use widths that the
+                    # converter does not enforce. Slice copies conservatively
+                    # reject unresolved signatures instead of guessing.
+                    self.__array_element_signatures[statement.identifier.name] = ('unresolved',)
             if isinstance(statement.type, ast.BitType) and statement.type.size is not None:
                 # Keep register identity and size in declaration scope, just
                 # as for integer arrays; loop iterators may shadow size constants.
@@ -12102,6 +12208,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def visit_ClassicalAssignment(self, statement: ast.ClassicalAssignment) -> None:
         if self.__is_initialization_process:
+            return
+
+        array_slice = self.__static_array_slice_assignment_info(statement)
+        if array_slice is not None:
+            self.__emit_static_array_slice_assignment(array_slice)
             return
 
         if statement.op.name == '=':

@@ -23896,8 +23896,8 @@ class AngleArrayIntegrationTests(unittest.TestCase):
             with self.subTest(declaration=declaration), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter('array[angle[4], 1] a = {pi}; ' + declaration)
 
-    def test_slices_whole_array_operations_and_bit_indexing_remain_unsupported(self):
-        for statement in ('a = a;', 'a[0:1] = a[0:1];', 'bit b = a[0][0];',
+    def test_mismatched_slices_whole_array_operations_and_bit_indexing_remain_unsupported(self):
+        for statement in ('a = a;', 'a[0:1] = a[0:0];', 'bit b = a[0][0];',
                            'a[0][0] = true;'):
             with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter('array[angle[4], 2] a = {pi, pi}; ' + statement)
@@ -24121,6 +24121,124 @@ class UnsignedArrayAccessTests(unittest.TestCase):
                         'a[i] <<= count;')
         self.assertTrue(any(line.startswith('ASSERT ') and line.endswith(' < 4') for line in lines))
         self.assertIn('LET A1:QASM2QCX_INT_0 &= 15', lines)
+
+
+class StaticArraySliceAssignmentFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def info(self, converter, statement, iterators=None):
+        node = self.program(statement).statements[0]
+        return converter._QASM2QCXConverter__static_array_slice_assignment_info(node, iterators)
+
+    def test_matching_types_and_selection_metadata(self):
+        for element in ('int', 'int[4]', 'uint[4]', 'float[32]', 'bool', 'complex', 'angle[4]'):
+            with self.subTest(element=element):
+                c = self.converter(f'array[{element},5] left; array[{element},4] right;')
+                info = self.info(c, 'left[0:4] = right[-4:0];')
+                self.assertIsInstance(info, qasm2qcx._StaticArraySliceAssignment)
+                self.assertEqual(info.count, 5)
+                self.assertEqual(list(info.destination.indices), [0,1,2,3,4])
+                self.assertEqual(list(info.source.indices), [-4,-3,-2,-1,0])
+                with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                    info.count = 0
+        c = self.converter('array[int,5] left; array[int,5] right;')
+        self.assertEqual(self.info(c, 'left[4:-2:0] = right[-1:-2:-5];').count, 3)
+        self.assertEqual(self.info(c, 'left[3:1] = right[2:0];').count, 0)
+
+    def test_mismatch_invalid_ranges_and_repeated_destinations(self):
+        declarations = ('array[int,5] a; array[int,4] b; array[uint[4],5] u; '
+                        'array[int[4],5] narrow; array[float[32],5] f; array[float[64],5] g; int index;')
+        c = self.converter(declarations)
+        for assignment in ('a[0:2]=b[0:1];', 'a[0:2]=u[0:2];', 'a[0:2]=narrow[0:2];',
+                           'f[0:2]=g[0:2];', 'a[-5:0]=a[0:4];', 'a[0:0:2]=b[0:2];',
+                           'a[0:5]=a[0:4];', 'a[index:2]=b[0:2];', 'a[0:1]=b[{0,1}];',
+                           'a[0:1]=index;', 'a[0:1]+=b[0:1];'):
+            with self.subTest(assignment=assignment), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(c, assignment)
+        self.assertIsNone(self.info(c, 'a[0]=index;'))
+        with self.assertRaisesRegex(qasm2qcx.InvalidArrayOperandException, 'destination repeats'):
+            self.info(c, 'a[-5:5:0]=b[0:1];')
+
+    def test_element_width_and_sizedness_must_match(self):
+        native = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        for left, right in (('uint', f'uint[{native}]'), ('angle', f'angle[{native}]'),
+                            ('complex[float[32]]', 'complex[float[64]]')):
+            with self.subTest(left=left, right=right):
+                c = self.converter(f'array[{left},2] a; array[{right},2] b;')
+                with self.assertRaisesRegex(qasm2qcx.InvalidArrayOperandException, 'matching element types'):
+                    self.info(c, 'a[0:1]=b[0:1];')
+
+    def test_type_widths_are_frozen_before_iterator_shadowing(self):
+        c = self.converter('const int W=4; const int V=2+2; '
+                           'array[uint[W],3] a; array[uint[V],3] b; '
+                           'array[angle[W],3] c; array[angle[V],3] d;')
+        for assignment in ('a[0:2]=b[0:2];', 'c[0:2]=d[0:2];'):
+            with self.subTest(assignment=assignment):
+                self.assertEqual(self.info(c, assignment, {'W': qasm2qcx.ValueType.INT}).count, 3)
+
+    def test_metadata_preserves_state_and_checks_visibility(self):
+        program = self.program('array[int,3] a; array[int,3] b;')
+        c = qasm2qcx.QASM2QCXConverter(program)
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            self.info(c, 'a[0:1]=b[0:1];')
+        c.visit(program)
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__'+field) for field in fields]
+        lines = c._QASM2QCXConverter__qcx_lines.copy()
+        self.assertEqual(self.info(c, 'a[0:1]=b[1:2];').count, 2)
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__'+field) for field in fields])
+        self.assertEqual(lines, c._QASM2QCXConverter__qcx_lines)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+
+class StaticArraySliceAssignmentLoweringTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def test_complete_snapshot_precedes_writes_and_storage_reused(self):
+        c = self.converter('array[int,4] values={1,2,3,4}; '
+                           'values[1:3]=values[0:2]; values[0:2]=values[1:3];')
+        lines = c._QASM2QCXConverter__qcx_lines
+        temp = 'QASM2QCX_ARRAY_SLICE_3_0'
+        self.assertEqual(sum(line.startswith('VAR '+temp+' ') for line in lines), 1)
+        for offset, (destination, source) in enumerate(((1,0),(0,1))):
+            first_read = lines.index(f'LET {temp}:0 := VALUES63:{source}', 0 if not offset else first_write+1)
+            last_read = lines.index(f'LET {temp}:2 := VALUES63:{source+2}', first_read)
+            first_write = lines.index(f'LET VALUES63:{destination} := {temp}:0', last_read)
+            self.assertLess(first_read, last_read)
+            self.assertLess(last_read, first_write)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_empty_and_skipped_loop_validation(self):
+        c = self.converter('array[int,4] a; array[int,4] b; '
+                           'a[3:1]=b[2:0]; if(false) { a[1:2]=b[0:1]; } '
+                           'for int i in [1:0] { a[1:2]=b[0:1]; }')
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        for assignment in ('a[0:2]=b[0:1];', 'a[-4:0]=b[0:4];',
+                           'a[0:1]=b[0:9];', 'a[0:1]=b[i:2];'):
+            with self.subTest(assignment=assignment), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('array[int,4] a; array[int,4] b; '
+                               f'for int i in [1:0] {{ {assignment} }}')
+
+    def test_output_budget_fails_before_emitting_or_allocating(self):
+        c = self.converter('array[int,4] a; array[int,4] b;')
+        node = self.program('a[0:1]=b[1:2];').statements[0]
+        before = c._QASM2QCXConverter__qcx_lines.copy()
+        with patch.object(c, 'MAX_LOOP_OUTPUT_LINES', len(before) + 4), \
+             self.assertRaisesRegex(qasm2qcx.InvalidArrayOperandException, 'output limit'):
+            c.visit(node)
+        self.assertEqual(c._QASM2QCXConverter__qcx_lines, before)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_failure_releases_snapshot_without_releasing_caller(self):
+        c = self.converter('array[complex,2] a; array[complex,2] b;')
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        node = self.program('a[0:1]=b[0:1];').statements[0]
+        with patch.object(c, '_QASM2QCXConverter__hoist_temporary_declarations', side_effect=RuntimeError('failed')), \
+             self.assertRaisesRegex(RuntimeError, 'failed'):
+            c.visit(node)
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
 
 
 class StaticArraySliceLoopFoundationTests(unittest.TestCase):
