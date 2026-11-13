@@ -24376,6 +24376,32 @@ class RuntimeArraySliceAssignmentLoweringTests(unittest.TestCase):
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
 
 
+class ArrayCopyInitializerFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def info(self, converter, declaration):
+        node = self.program(declaration).statements[0]
+        return converter._QASM2QCXConverter__array_copy_initializer_info(node)
+
+    def test_metadata_for_supported_element_types(self):
+        for element in ('int', 'uint[4]', 'float', 'bool', 'complex', 'angle[4]'):
+            with self.subTest(element=element):
+                c = self.converter(f'array[{element},3] source; array[{element},3] result;')
+                info = self.info(c, f'array[{element},3] result=source;')
+                self.assertIsInstance(info, qasm2qcx._ArrayCopyInitializer)
+                self.assertEqual((info.source, info.count), ('SOURCE63', 3))
+                with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                    info.count = 0
+
+    def test_invalid_types_lengths_and_sources(self):
+        c = self.converter('array[int,2] a; array[uint,2] u; array[int,3] result; int scalar;')
+        for source in ('a', 'u', 'result', 'scalar', 'missing'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(c, f'array[int,3] result={source};')
+        self.assertIsNone(self.info(c, 'array[int,3] result={1,2,3};'))
+
+
 class RuntimeArraySliceInitializerTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)

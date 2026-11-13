@@ -320,6 +320,12 @@ class _RuntimeArraySliceInitializer:
 
 
 @dataclasses.dataclass(frozen=True)
+class _ArrayCopyInitializer:
+    source: str
+    count: int
+
+
+@dataclasses.dataclass(frozen=True)
 class _StaticBitSelection:
     source_name: str
     indices: tuple[int, ...]
@@ -6745,6 +6751,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if left_signature != right_signature:
             raise InvalidArrayOperandException('Array slice assignment requires matching element types')
 
+    def __array_initializer_source_type(
+            self, destination: str, source_name: str) -> ast.ArrayType:
+        source_type = self.__classical_source_types.get(source_name)
+        if not isinstance(source_type, ast.ArrayType):
+            raise UnsupportedOpenQASMError('array initializer requires an array source')
+        if source_name == destination or self.__capitalize_variable_name(source_name) not in self.__array_element_types:
+            raise NoVariableNameException(source_name)
+        return source_type
+
     def __array_slice_initializer_source(
             self, statement: ast.ClassicalDeclaration) -> tuple[ast.IndexExpression, str, ast.ArrayType] | None:
         initializer = statement.init_expression
@@ -6754,12 +6769,22 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError('array slice initializer requires an array slice source')
         name = statement.identifier.name
         source_name = initializer.collection.name
-        source_type = self.__classical_source_types.get(source_name)
-        if not isinstance(source_type, ast.ArrayType):
-            raise UnsupportedOpenQASMError('array slice initializer requires an array slice source')
-        if source_name == name or self.__capitalize_variable_name(source_name) not in self.__array_element_types:
-            raise NoVariableNameException(source_name)
+        source_type = self.__array_initializer_source_type(name, source_name)
         return initializer, source_name, source_type
+
+    def __array_copy_initializer_info(
+            self, statement: ast.ClassicalDeclaration) -> _ArrayCopyInitializer | None:
+        initializer = statement.init_expression
+        if not isinstance(initializer, ast.Identifier):
+            return None
+        name = statement.identifier.name
+        source_name = initializer.name
+        self.__array_initializer_source_type(name, source_name)
+        self.__check_array_slice_assignment_types(name, source_name)
+        count = self.__array_source_sizes[name]
+        if count != self.__array_source_sizes[source_name]:
+            raise InvalidArrayOperandException('Array initializer requires matching lengths')
+        return _ArrayCopyInitializer(self.__capitalize_variable_name(source_name), count)
 
     def __static_array_slice_initializer_info(
             self, statement: ast.ClassicalDeclaration) -> _StaticArraySliceInitializer | None:
