@@ -6272,8 +6272,39 @@ be valid. Negative positions are normalized individually and repeated source
 positions are allowed. The converter snapshots all source values before
 writing, preserving overlapping copies such as `a = a[2:-1:0]`. It validates
 static selections in skipped loop bodies and checks generated output against
-`MAX_LOOP_OUTPUT_LINES`. Runtime-dependent source slices and whole-array
-sources assigned to slices remain unsupported in this form.
+`MAX_LOOP_OUTPUT_LINES`. Runtime-dependent source slices are described below;
+whole-array sources assigned to slices remain unsupported in this form.
+
+### Runtime slice-to-whole-array assignments
+
+The same supported one-dimensional array types can be assigned from a range
+slice with runtime-dependent `int` or `uint` start, step, or stop expressions.
+Both bounds are required; an omitted step is one. Declared element types must
+match, including widths and sized versus unsized forms.
+
+<!-- runtime-slice-to-whole-array-example -->
+```qasm
+OPENQASM 3.0;
+array[int, 4] source = {1, 2, 3, 4};
+array[int, 2] result;
+int first = 1;
+int last = 2;
+result = source[first:last];
+// result contains {2, 3}.
+```
+
+Start, step, and stop are captured once in written order. The converter checks
+the step, every selected position, and the slice length before writing. Negative
+indices are normalized individually, repeated source positions are allowed,
+and source values are snapshotted before destination writes to preserve
+overlapping copies. Names, types, and range expression types are validated in
+skipped loop bodies without executing runtime checks.
+
+Captured positions use private INT-indexed storage bounded by the smallest of
+twice the source array length, `MAX_RUNTIME_BIT_RANGE_POSITIONS` (currently
+1,000,000), and QCX `INT_MAX`. A reached selection exceeding that capacity
+fails before any destination write. The typed snapshot uses the destination
+length; generated output is checked against `MAX_LOOP_OUTPUT_LINES`.
 
 ### Static array-slice initializers
 
@@ -10672,6 +10703,11 @@ and destination slices, including all supported element types, overlap, range
 validation, and an independent model of positions and strides. It executes the
 documented example. Run with `--bra /path/to/bra`.
 
+`bra/test/qasm2qcx_runtime_slice_to_whole_array_numerical.py` checks runtime
+slice-to-whole assignments across supported types, overlap, reverse ranges,
+repeated source indices, skipped assignments, and runtime validation failures.
+It executes the documented example. Run with `--bra /path/to/bra`.
+
 `bra/test/qasm2qcx_static_slice_to_whole_array_numerical.py` checks static
 slice-to-whole assignments across supported element types, overlap, reverse
 strides, repeated source indices, and skipped assignments. It executes the
@@ -11207,6 +11243,7 @@ python3 bra/test/qasm2qcx_integer_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_array_copy_initializer_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_whole_array_assignment_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_slice_to_whole_array_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_slice_to_whole_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_array_slice_initializer_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_array_slice_initializer_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_array_slice_assignment_numerical.py --bra bra/bin/bra

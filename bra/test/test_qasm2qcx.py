@@ -24394,7 +24394,7 @@ class StaticSliceToWholeArrayTests(unittest.TestCase):
                 ('array[int,2] a; array[int,4] b;', 'a=b[0:2];'),
                 ('array[int,2] a; array[int,4] b;', 'a=b[3:4];'),
                 ('array[int,2] a; array[int,4] b;', 'a=b[0:0:1];'),
-                ('array[int,2] a; array[int,4] b; int i;', 'a=b[i:1];'),
+                ('array[int,2] a; array[int,4] b; bool flag;', 'a=b[flag:1];'),
                 ('array[uint[4],2] a; array[uint[5],4] b;', 'a=b[0:1];'),
                 ('array[angle[4],2] a; array[angle[5],4] b;', 'a=b[0:1];'),
                 ('array[int,2] a; array[int,4] b;', 'a+=b[0:1];'),
@@ -24410,6 +24410,76 @@ class StaticSliceToWholeArrayTests(unittest.TestCase):
                 self.assertRaisesRegex(qasm2qcx.InvalidArrayOperandException, 'output limit'):
             c.visit(node)
         self.assertFalse(any(line.startswith('LET A1:') for line in c._QASM2QCXConverter__qcx_lines))
+
+
+class RuntimeSliceToWholeArrayTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def test_capture_and_snapshot_precede_writes_for_supported_types(self):
+        for element in ('int', 'uint[4]', 'float[32]', 'bool', 'complex', 'angle[4]'):
+            with self.subTest(element=element):
+                lines = convert(f'OPENQASM 3; array[{element},3] a; int first; int last; a=a[first:last];')
+                checks = [i for i, line in enumerate(lines) if line.startswith('ASSERT ')]
+                snapshots = [i for i, line in enumerate(lines) if ':= A1:' in line]
+                writes = [i for i, line in enumerate(lines) if line.startswith('LET A1:')]
+                self.assertEqual((len(snapshots), len(writes)), (3, 3))
+                self.assertLess(max(checks), min(snapshots))
+                self.assertLess(max(snapshots), min(writes))
+
+    def test_invalid_types_names_and_skipped_loops(self):
+        for declarations, assignment in (
+                ('array[int,2] a; array[uint,4] b; int first;', 'a=b[first:1];'),
+                ('array[uint[4],2] a; array[uint[5],4] b; int first;', 'a=b[first:1];'),
+                ('array[angle[4],2] a; array[angle[5],4] b; int first;', 'a=b[first:1];'),
+                ('array[int,2] a; array[int,4] b; int first;', 'a+=b[first:1];'),
+                ('array[int,2] a; array[int,4] b; int first;', 'a=b[first:true:1];'),
+                ('array[int,2] a; array[int,4] b; int first;', 'a=b[{first,1}];'),
+                ('array[int,2] a; int first;', 'a=missing[first:1];')):
+            for wrapper in ('{}', 'for int i in [1:0] {{ {} }}'):
+                with self.subTest(assignment=assignment, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    self.converter(declarations + wrapper.format(assignment))
+        self.converter('array[int,2] a; array[int,4] b; for int i in [1:0] { a=b[i:i+1]; }')
+
+    def test_output_limit_prevents_writes_and_releases_temporaries(self):
+        c = self.converter('array[int,2] a; array[int,4] b; int first; int last;')
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        node = self.program('a=b[first:last];').statements[0]
+        with patch.object(c, 'MAX_LOOP_OUTPUT_LINES', len(c._QASM2QCXConverter__qcx_lines) + 1), \
+                self.assertRaisesRegex(qasm2qcx.InvalidArrayOperandException, 'output limit'):
+            c.visit(node)
+        self.assertFalse(any(line.startswith('LET A1:') for line in c._QASM2QCXConverter__qcx_lines))
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+
+
+class RuntimeSliceToWholeArrayFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def info(self, converter, statement, iterators=None):
+        node = self.program(statement).statements[0]
+        return converter._QASM2QCXConverter__runtime_array_slice_to_whole_assignment_info(node, iterators)
+
+    def test_metadata_for_supported_types_and_static_fallback(self):
+        for element in ('int', 'uint[4]', 'float[32]', 'bool', 'complex', 'angle[4]'):
+            with self.subTest(element=element):
+                c = self.converter(f'array[{element},4] a; array[{element},2] b; int first; int last;')
+                info = self.info(c, 'b=a[first:last];')
+                self.assertIsInstance(info, qasm2qcx._RuntimeArraySliceToWholeAssignment)
+                self.assertIsInstance(info.source, qasm2qcx._RuntimeArraySliceLoop)
+                self.assertEqual((info.destination, info.count), ('B1', 2))
+                with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                    info.count = 0
+                self.assertIsNone(self.info(c, 'b=a[0:1];'))
+
+    def test_invalid_types_and_shadowing(self):
+        c = self.converter('array[int,4] a; array[int,2] b; array[uint,4] u; int first;')
+        for statement in ('b=u[first:1];', 'b+=a[first:1];', 'b=a[first:true:1];', 'b=a[{first,1}];'):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(c, statement)
+        self.assertIsNone(self.info(c, 'b=a[first:1];', {'b'}))
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.info(c, 'b=a[first:1];', {'a'})
 
 
 class StaticSliceToWholeArrayFoundationTests(unittest.TestCase):
