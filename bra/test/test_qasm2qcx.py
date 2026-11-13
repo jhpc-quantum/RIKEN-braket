@@ -24188,6 +24188,81 @@ class RuntimeArraySliceAssignmentFoundationTests(unittest.TestCase):
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
 
 
+class RuntimeArraySliceAssignmentLoweringTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def test_capture_order_validation_snapshot_then_writes(self):
+        c = self.converter('array[int,4] a; array[int,4] b; int first; int step; int last;')
+        node = self.program('a[1:3]=b[first:step:last];').statements[0]
+        bounds = node.rvalue.index[0]
+        original = c._QASM2QCXConverter__capture_bit_range_integer
+        seen = []
+        def record(expression, label):
+            seen.append(expression)
+            return original(expression, label)
+        with patch.object(c, '_QASM2QCXConverter__capture_bit_range_integer', side_effect=record):
+            c.visit(node)
+        self.assertEqual(seen, [bounds.start, bounds.step, bounds.end])
+        lines = c._QASM2QCXConverter__qcx_lines
+        finish = next(i for i, line in enumerate(lines) if line.startswith('@QASM2QCX_ARRAY_SLICE_COPY_')
+                      and line.endswith('_FINISH'))
+        self.assertTrue(lines[finish+1].startswith('ASSERT '))
+        self.assertTrue(lines[finish+1].endswith(' == 3'))
+        snapshots = [i for i, line in enumerate(lines) if line.startswith('LET QASM2QCX_ARRAY_SLICE_3_0:')]
+        writes = [i for i, line in enumerate(lines) if line.startswith('LET A1:')]
+        self.assertEqual((len(snapshots), len(writes)), (3, 3))
+        self.assertLess(finish, min(snapshots))
+        self.assertLess(max(snapshots), min(writes))
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_empty_destinations_still_check_runtime_selection(self):
+        c = self.converter('array[int,4] a; array[int,4] b; int first; int last; '
+                           'a[2:1]=b[first:last];')
+        lines = c._QASM2QCXConverter__qcx_lines
+        self.assertTrue(any(line.startswith('ASSERT ') and line.endswith(' == 0') for line in lines))
+        self.assertFalse(any(line.startswith('VAR QASM2QCX_ARRAY_SLICE_') for line in lines))
+        self.assertFalse(any(line.startswith('LET A1:') for line in lines))
+
+    def test_skipped_paths_validate_without_evaluating_runtime_bounds(self):
+        self.converter('array[int,4] a; array[int,4] b; int first; '
+                       'for int i in [1:0] { a[0:1]=b[first/0:0:999]; }')
+        for assignment in ('a[-4:4:0]=b[first:1];', 'a[0:1]=other[first:1];',
+                           'a[0:1]=b[first:true:1];'):
+            with self.subTest(assignment=assignment), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('array[int,4] a; array[int,4] b; int first; '
+                               f'for int i in [1:0] {{ {assignment} }}')
+
+    def test_failed_capture_restores_expression_state_and_caller_storage(self):
+        c = self.converter('array[int,4] a; array[int,4] b; int first;')
+        caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(c, '_QASM2QCXConverter__'+field) for field in fields]
+        capture = c._QASM2QCXConverter__capture_bit_range_positions
+        def fail(*args, **kwargs):
+            capture(*args, **kwargs)
+            raise RuntimeError('capture failed')
+        node = self.program('a[0:1]=b[first:1];').statements[0]
+        with patch.object(c, '_QASM2QCXConverter__capture_bit_range_positions', side_effect=fail), \
+             self.assertRaisesRegex(RuntimeError, 'capture failed'):
+            c.visit(node)
+        self.assertEqual(before, [getattr(c, '_QASM2QCXConverter__'+field) for field in fields])
+        self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+
+    def test_output_limit_checked_even_for_empty_destination(self):
+        for destination in ('0:1', '2:1'):
+            with self.subTest(destination=destination):
+                c = self.converter('array[int,4] a; array[int,4] b; int first;')
+                caller = c._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+                node = self.program(f'a[{destination}]=b[first:1];').statements[0]
+                with patch.object(c, 'MAX_LOOP_OUTPUT_LINES', len(c._QASM2QCXConverter__qcx_lines)+1), \
+                     self.assertRaisesRegex(qasm2qcx.InvalidArrayOperandException, 'output limit'):
+                    c.visit(node)
+                self.assertFalse(any(line.startswith('LET A1:') for line in c._QASM2QCXConverter__qcx_lines))
+                self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
+
+
 class StaticArraySliceAssignmentFoundationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)
@@ -24281,7 +24356,7 @@ class StaticArraySliceAssignmentLoweringTests(unittest.TestCase):
                            'for int i in [1:0] { a[1:2]=b[0:1]; }')
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, set())
         for assignment in ('a[0:2]=b[0:1];', 'a[-4:0]=b[0:4];',
-                           'a[0:1]=b[0:9];', 'a[0:1]=b[i:2];'):
+                           'a[0:1]=b[0:9];', 'a[0:1]=b[i:true:2];'):
             with self.subTest(assignment=assignment), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter('array[int,4] a; array[int,4] b; '
                                f'for int i in [1:0] {{ {assignment} }}')
