@@ -24123,6 +24123,40 @@ class UnsignedArrayAccessTests(unittest.TestCase):
         self.assertIn('LET A1:QASM2QCX_INT_0 &= 15', lines)
 
 
+class RuntimeArraySliceDestinationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def test_element_types_and_static_source(self):
+        for element in ('int', 'int[4]', 'uint[4]', 'float[32]', 'bool', 'complex', 'angle[4]'):
+            with self.subTest(element=element):
+                c = self.converter(f'array[{element},4] a; array[{element},4] b; int start; int stop;')
+                node = self.program('a[start:stop] = b[0:2];').statements[0]
+                info = c._QASM2QCXConverter__runtime_array_slice_destination_assignment_info(node)
+                self.assertIsInstance(info, qasm2qcx._RuntimeArraySliceDestinationAssignment)
+                self.assertEqual(info.count, 3)
+                self.assertEqual(list(info.source.indices), [0, 1, 2])
+
+    def test_invalid_sources_types_and_skipped_bodies(self):
+        declarations = 'array[int,4] a; array[uint,4] u; int start; int stop;'
+        for assignment in ('a[start:stop] = u[0:1];', 'a[start:stop] = a[start:stop];',
+                           'a[start:stop] = start;', 'a[start:stop] += a[0:1];',
+                           'a[start:stop] = a[0:4];'):
+            for wrapper in ('{}', 'for int i in [1:0] {{ {} }}'):
+                with self.subTest(assignment=assignment, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    self.converter(declarations + wrapper.format(assignment))
+
+    def test_snapshot_and_validation_precede_destination_writes(self):
+        lines = convert('OPENQASM 3; array[int,4] a; int first; int last; a[first:last]=a[0:2];')
+        destination_writes = [i for i, line in enumerate(lines) if line.startswith('LET A1:')]
+        snapshots = [i for i, line in enumerate(lines) if ':= A1:' in line]
+        validations = [i for i, line in enumerate(lines) if line.startswith('ASSERT ')]
+        self.assertEqual(len(destination_writes), 3)
+        self.assertEqual(len(snapshots), 3)
+        self.assertLess(max(validations), min(destination_writes))
+        self.assertLess(max(snapshots), min(destination_writes))
+
+
 class RuntimeArraySliceAssignmentFoundationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)

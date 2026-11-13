@@ -295,6 +295,13 @@ class _RuntimeArraySliceAssignment:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeArraySliceDestinationAssignment:
+    destination: _RuntimeArraySliceLoop
+    source: _StaticArraySliceLoop
+    count: int
+
+
+@dataclasses.dataclass(frozen=True)
 class _StaticBitSelection:
     source_name: str
     indices: tuple[int, ...]
@@ -6044,6 +6051,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # skipped body. Sized angle bit selections were handled above.
             self.__loop_index_info(node, iterators)
         if isinstance(node, ast.ClassicalAssignment):
+            if self.__runtime_array_slice_destination_assignment_info(node, iterators) is not None:
+                return
             if self.__runtime_array_slice_assignment_info(node, iterators) is not None:
                 return  # Validate destination and runtime source as one copy.
             if self.__static_array_slice_assignment_info(node, iterators) is not None:
@@ -6699,6 +6708,25 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise InvalidArrayOperandException(f'Array slice index is outside {name}[{size}]')
         return _StaticArraySliceLoop(array, size, indices, value_type, uint_type)
 
+    def __array_slice_element_type(self, array_name: str, array_type: ast.ArrayType) -> ast.QASMNode:
+        base = array_type.base_type
+        storage = self.__capitalize_variable_name(array_name)
+        if isinstance(base, ast.UintType):
+            info = self.__uint_variable_types[storage]
+            return ast.UintType(ast.IntegerLiteral(info.width) if info.is_sized else None)
+        if isinstance(base, ast.AngleType):
+            info = self.__angle_array_types[storage]
+            return ast.AngleType(ast.IntegerLiteral(info.width) if info.is_sized else None)
+        return base
+
+    def __check_array_slice_assignment_types(self, destination: str, source: str) -> None:
+        left_signature = self.__array_element_signatures[destination]
+        right_signature = self.__array_element_signatures[source]
+        if 'unresolved' in (left_signature[0], right_signature[0]):
+            raise UnsupportedOpenQASMError('array slice assignment with unresolved element type widths')
+        if left_signature != right_signature:
+            raise InvalidArrayOperandException('Array slice assignment requires matching element types')
+
     def __static_array_slice_assignment_info(
             self, statement: ast.ClassicalAssignment,
             iterators: set[str] | dict[str, ValueType] | None = None, *,
@@ -6716,18 +6744,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return None
         if statement.op.name != '=':
             raise UnsupportedOpenQASMError('compound array slice assignment')
-        def resolved_element_type(array_name: str, array_type: ast.ArrayType) -> ast.QASMNode:
-            base = array_type.base_type
-            storage = self.__capitalize_variable_name(array_name)
-            if isinstance(base, ast.UintType):
-                info = self.__uint_variable_types[storage]
-                return ast.UintType(ast.IntegerLiteral(info.width) if info.is_sized else None)
-            if isinstance(base, ast.AngleType):
-                info = self.__angle_array_types[storage]
-                return ast.AngleType(ast.IntegerLiteral(info.width) if info.is_sized else None)
-            return base
         destination = self.__static_array_slice_loop_info(
-            ast.IndexExpression(target.name, target.indices[0]), resolved_element_type(name, target_type), iterators)
+            ast.IndexExpression(target.name, target.indices[0]), self.__array_slice_element_type(name, target_type), iterators)
         rhs = statement.rvalue
         if not (isinstance(rhs, ast.IndexExpression) and isinstance(rhs.collection, ast.Identifier)):
             raise UnsupportedOpenQASMError('array slice assignment requires an array slice source')
@@ -6736,18 +6754,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError('array slice assignment requires an array slice source')
         if allow_runtime_source:
             source = self.__runtime_array_slice_loop_info(
-                rhs, resolved_element_type(rhs.collection.name, source_type), iterators)
+                rhs, self.__array_slice_element_type(rhs.collection.name, source_type), iterators)
             if source is None:
                 return None  # Preserve the existing wholly static copy path.
         else:
             source = self.__static_array_slice_loop_info(
-                rhs, resolved_element_type(rhs.collection.name, source_type), iterators)
-        left_signature = self.__array_element_signatures[name]
-        right_signature = self.__array_element_signatures[rhs.collection.name]
-        if 'unresolved' in (left_signature[0], right_signature[0]):
-            raise UnsupportedOpenQASMError('array slice assignment with unresolved element type widths')
-        if left_signature != right_signature:
-            raise InvalidArrayOperandException('Array slice assignment requires matching element types')
+                rhs, self.__array_slice_element_type(rhs.collection.name, source_type), iterators)
+        self.__check_array_slice_assignment_types(name, rhs.collection.name)
         count = self.__loop_value_count(destination.indices)
         if isinstance(source, _StaticArraySliceLoop) and count != self.__loop_value_count(source.indices):
             raise InvalidArrayOperandException('Array slice assignment requires matching lengths')
@@ -6765,6 +6778,90 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, statement: ast.ClassicalAssignment,
             iterators: set[str] | dict[str, ValueType] | None = None) -> _RuntimeArraySliceAssignment | None:
         return self.__static_array_slice_assignment_info(statement, iterators, allow_runtime_source=True)
+
+    def __runtime_array_slice_destination_assignment_info(
+            self, statement: ast.ClassicalAssignment,
+            iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> _RuntimeArraySliceDestinationAssignment | None:
+        target = statement.lvalue
+        if not isinstance(target, ast.IndexedIdentifier):
+            return None
+        name = target.name.name
+        target_type = self.__classical_source_types.get(name)
+        if not isinstance(target_type, ast.ArrayType):
+            return None
+        if (len(target.indices) != 1 or not isinstance(target.indices[0], list)
+                or len(target.indices[0]) != 1 or not isinstance(target.indices[0][0], ast.RangeDefinition)):
+            return None
+        destination = self.__runtime_array_slice_loop_info(
+            ast.IndexExpression(target.name, target.indices[0]),
+            self.__array_slice_element_type(name, target_type), iterators)
+        if destination is None:
+            return None
+        if statement.op.name != '=':
+            raise UnsupportedOpenQASMError('compound array slice assignment')
+        rhs = statement.rvalue
+        if not (isinstance(rhs, ast.IndexExpression) and isinstance(rhs.collection, ast.Identifier)):
+            raise UnsupportedOpenQASMError('array slice assignment requires an array slice source')
+        source_type = self.__classical_source_types.get(rhs.collection.name)
+        if not isinstance(source_type, ast.ArrayType):
+            raise UnsupportedOpenQASMError('array slice assignment requires an array slice source')
+        source = self.__static_array_slice_loop_info(
+            rhs, self.__array_slice_element_type(rhs.collection.name, source_type), iterators)
+        self.__check_array_slice_assignment_types(name, rhs.collection.name)
+        return _RuntimeArraySliceDestinationAssignment(destination, source, self.__loop_value_count(source.indices))
+
+    def __emit_runtime_array_slice_destination_assignment(
+            self, info: _RuntimeArraySliceDestinationAssignment) -> None:
+        previous_state = (self.__expression_kind, self.__value, self.__value_type,
+                          self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        previous_declarations = self.__declared_temporary_variables.copy()
+        prefix = f'QASM2QCX_ARRAY_SLICE_COPY_{self.__array_index}'
+        self.__array_index += 1
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            capacity = min(2 * info.destination.source_size, self.MAX_RUNTIME_BIT_RANGE_POSITIONS, self.QCX_INT_MAX)
+            positions, count = self.__capture_bit_range_positions(
+                info.destination.bounds, info.destination.source_size, prefix,
+                capacity=capacity, allow_empty=True)
+            # Bound unrolled snapshot and write output before generating it.
+            if len(self.__qcx_lines) + 3 * info.count + 20 > self.MAX_LOOP_OUTPUT_LINES:
+                raise InvalidArrayOperandException('Array slice assignment exceeds QCX output limit')
+            self.__qcx_lines.append(f'ASSERT {count} == {info.count}')
+            if info.count:
+                if info.count > 1:
+                    inner = self.__add_new_temporary_variable(ValueType.INT)
+                    left = self.__add_new_temporary_variable(ValueType.INT)
+                    right = self.__add_new_temporary_variable(ValueType.INT)
+                    inner_label = prefix + '_DISTINCT'
+                    # The raw indices form an arithmetic progression inside
+                    # [-size, size). Any alias is separated by exactly size;
+                    # if one exists, the first element has an alias too.
+                    self.__qcx_lines.extend([
+                        f'LET {left} := {positions}:0', f'LET {inner} := 1', f'@{inner_label}',
+                        f'LET {right} := {positions}:{inner}', f'ASSERT {left} \\= {right}',
+                        f'LET {inner} += 1', f'JUMPIF {inner_label} {inner} < {count}',
+                    ])
+                storage = {ValueType.INT: ValueType.INT, ValueType.BOOL: ValueType.INT,
+                           ValueType.UINT: ValueType.UINT, ValueType.ANGLE: ValueType.UINT,
+                           ValueType.FLOAT: ValueType.FLOAT, ValueType.COMPLEX: ValueType.COMPLEX}[info.source.value_type]
+                temporary = self.__add_temporary_array(info.count, 'ARRAY_SLICE', storage)
+                physical = self.__add_new_temporary_variable(ValueType.INT)
+                for index, position in enumerate(info.source.indices):
+                    source = position if position >= 0 else info.source.source_size + position
+                    self.__qcx_lines.append(f'LET {temporary}:{index} := {info.source.source}:{source}')
+                for index in range(info.count):
+                    self.__qcx_lines.extend([f'LET {physical} := {positions}:{index}',
+                                             f'LET {info.destination.source}:{physical} := {temporary}:{index}'])
+            if len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES:
+                raise InvalidArrayOperandException('Array slice assignment exceeds QCX output limit')
+            self.__hoist_temporary_declarations(previous_declarations)
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous_state
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
 
     def __emit_runtime_array_slice_assignment(self, info: _RuntimeArraySliceAssignment) -> None:
         previous_state = (self.__expression_kind, self.__value, self.__value_type,
@@ -12272,6 +12369,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__is_initialization_process:
             return
 
+        runtime_destination = self.__runtime_array_slice_destination_assignment_info(statement)
+        if runtime_destination is not None:
+            self.__emit_runtime_array_slice_destination_assignment(runtime_destination)
+            return
         runtime_array_slice = self.__runtime_array_slice_assignment_info(statement)
         if runtime_array_slice is not None:
             self.__emit_runtime_array_slice_assignment(runtime_array_slice)
