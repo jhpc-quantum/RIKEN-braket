@@ -5938,7 +5938,7 @@ support runtime indices as described below.
 
 Unsigned, floating-point, Boolean, complex, and angle arrays are supported as described below.
 Multidimensional arrays, arrays of other element types, slices outside supported loops, assignments and initializers,
-whole-array arithmetic or assignments, aliases, and
+whole-array arithmetic, aliases, and
 block-local array declarations remain unsupported.
 
 ### One-dimensional unsigned integer arrays
@@ -6040,7 +6040,7 @@ Floating-point `%`, `**`, bitwise operators, and shifts are not supported,
 including their compound assignments. These type restrictions also apply to
 integer-only operators in empty loops; validation does not execute the skipped
 arithmetic. Unsupported array element types, multidimensional arrays, slices outside supported loops, assignments and initializers,
-whole-array expressions outside supported initializers or assignments, whole-array assignments, aliases, and
+whole-array expressions outside supported initializers and assignments, aliases, and
 block-local declarations remain separate work.
 
 ### One-dimensional Boolean arrays
@@ -6084,7 +6084,7 @@ require an explicit numeric cast of a Boolean value. Direct iteration is describ
 under [Boolean-array for loops](#boolean-array-for-loops).
 
 Multidimensional arrays, slices outside supported loops, assignments and initializers, whole-array expressions outside supported
-initializers, whole-array assignments, aliases, and block-local declarations remain unsupported.
+initializers and assignments, aliases, and block-local declarations remain unsupported.
 
 ### One-dimensional complex arrays
 
@@ -6133,7 +6133,7 @@ integer index, range bound, step, or set element.
 
 Position-based loops can update complex elements; direct iteration is described
 under [Complex-array for loops](#complex-array-for-loops). Multidimensional arrays,
-slices outside supported loops, assignments and initializers, whole-array expressions outside supported initializers, whole-array assignments, aliases,
+slices outside supported loops, assignments and initializers, whole-array expressions outside supported initializers and assignments, aliases,
 and block-local declarations remain unsupported.
 
 ### One-dimensional angle arrays
@@ -6202,7 +6202,7 @@ using `phases[index][selector]`, including writes that preserve unselected bits.
 [Runtime single-bit indexing](#runtime-single-bit-indexing-on-sized-angles) and
 [runtime-valued discrete sets](#runtime-valued-discrete-set-bit-selections) also
 support reads and writes, including `phases[element][{i, j}]`.
-Array slices outside supported loops, assignments and initializers, whole-array operations and assignments, aliases, multidimensional
+Array slices outside supported loops, assignments and initializers, whole-array arithmetic, aliases, multidimensional
 arrays, and local array declarations remain unsupported.
 The positive-length restriction is an implementation limitation:
 [OpenQASM permits zero-length arrays](https://openqasm.com/language/types.html#arrays),
@@ -6225,8 +6225,30 @@ array[int, 3] result = source;
 ```
 
 The converter emits one QCX copy per element and rejects generated output
-exceeding `MAX_LOOP_OUTPUT_LINES`. Other whole-array expressions and
-whole-array assignment after declaration remain unsupported.
+exceeding `MAX_LOOP_OUTPUT_LINES`. Other whole-array expressions remain
+unsupported.
+
+### Whole-array assignments
+
+Previously declared one-dimensional `int`, `uint`, `float`, `bool`, `complex`,
+and `angle` arrays support assignment from another whole array with matching
+length and declared element type, including width and sized versus unsized
+forms. The source values are copied; subsequent changes to either array do not
+affect the other. Assignment of an array to itself is a no-op.
+
+<!-- whole-array-assignment-example -->
+```qasm
+OPENQASM 3.0;
+array[int, 3] source = {1, 2, 3};
+array[int, 3] result;
+result = source;
+// result contains {1, 2, 3}.
+```
+
+The converter validates names, types, and lengths even in skipped loop bodies.
+Non-self assignments emit one QCX copy per element and are checked against
+`MAX_LOOP_OUTPUT_LINES`. Whole-array compound assignments, assignment from
+slices to whole arrays, and general array expressions remain unsupported.
 
 ### Static array-slice initializers
 
@@ -6312,7 +6334,7 @@ each selected position must be valid, and source and destination counts must
 match. The same validation applies in skipped or empty enclosing loops. The
 converter emits two QCX `LET` instructions per selected element and rejects a
 copy that exceeds `MAX_LOOP_OUTPUT_LINES`. Runtime source and destination slices
-are described below. Whole-array copies, array concatenation, and multidimensional array assignments
+are described below. Array concatenation and multidimensional array assignments
 remain unsupported.
 
 ### Runtime array-slice sources in static slice assignments
@@ -10625,6 +10647,11 @@ and destination slices, including all supported element types, overlap, range
 validation, and an independent model of positions and strides. It executes the
 documented example. Run with `--bra /path/to/bra`.
 
+`bra/test/qasm2qcx_whole_array_assignment_numerical.py` checks whole-array
+assignments across supported element types, self-assignment, independent
+storage, and skipped assignments. It executes the documented example. Run
+with `--bra /path/to/bra`.
+
 `bra/test/qasm2qcx_array_copy_initializer_numerical.py` checks whole-array
 initializers for all supported element types and independent storage. It
 executes the documented example. Run with `--bra /path/to/bra`.
@@ -11148,6 +11175,7 @@ python3 bra/test/qasm2qcx_runtime_step_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_set_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_array_copy_initializer_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_whole_array_assignment_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_array_slice_initializer_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_array_slice_initializer_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_array_slice_assignment_numerical.py --bra bra/bin/bra
