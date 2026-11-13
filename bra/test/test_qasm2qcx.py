@@ -24376,6 +24376,37 @@ class RuntimeArraySliceAssignmentLoweringTests(unittest.TestCase):
         self.assertEqual(c._QASM2QCXConverter__used_temporary_variables, {caller})
 
 
+class StaticSliceToWholeArrayFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def info(self, converter, statement, iterators=None):
+        node = self.program(statement).statements[0]
+        return converter._QASM2QCXConverter__static_array_slice_to_whole_assignment_info(node, iterators)
+
+    def test_metadata_for_supported_types(self):
+        for element in ('int', 'uint[4]', 'float[32]', 'bool', 'complex', 'angle[4]'):
+            with self.subTest(element=element):
+                c = self.converter(f'array[{element},4] a; array[{element},3] b;')
+                info = self.info(c, 'b=a[-1:-1:-3];')
+                self.assertIsInstance(info, qasm2qcx._StaticArraySliceToWholeAssignment)
+                self.assertEqual((info.destination, info.count), ('B1', 3))
+                self.assertEqual(list(info.source.indices), [-1, -2, -3])
+                with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                    info.count = 0
+
+    def test_invalid_ranges_types_and_shadowing(self):
+        c = self.converter('array[int,4] a; array[int,2] b; array[uint,4] u; int index;')
+        for statement in ('b=a[0:2];', 'b=a[0:4];', 'b=a[0:0:1];', 'b=a[index:1];',
+                          'b=u[0:1];', 'b+=a[0:1];', 'b=a[{0,1}];'):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(c, statement)
+        self.assertIsNone(self.info(c, 'b=a;'))
+        self.assertIsNone(self.info(c, 'b=a[0:1];', {'b'}))
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.info(c, 'b=a[0:1];', {'a'})
+
+
 class WholeArrayAssignmentTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)

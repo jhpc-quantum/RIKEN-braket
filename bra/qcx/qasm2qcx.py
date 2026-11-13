@@ -333,6 +333,13 @@ class _ArrayCopyAssignment:
 
 
 @dataclasses.dataclass(frozen=True)
+class _StaticArraySliceToWholeAssignment:
+    destination: str
+    source: _StaticArraySliceLoop
+    count: int
+
+
+@dataclasses.dataclass(frozen=True)
 class _StaticBitSelection:
     source_name: str
     indices: tuple[int, ...]
@@ -6801,6 +6808,36 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         count = self.__check_whole_array_copy_types_and_lengths(name, source.name)
         return _ArrayCopyAssignment(self.__capitalize_variable_name(name),
                                     self.__capitalize_variable_name(source.name), count)
+
+    def __static_array_slice_to_whole_assignment_info(
+            self, statement: ast.ClassicalAssignment,
+            iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> _StaticArraySliceToWholeAssignment | None:
+        target, source = statement.lvalue, statement.rvalue
+        if not isinstance(target, ast.Identifier) or not isinstance(source, ast.IndexExpression):
+            return None
+        name = target.name
+        active = set(iterators or ()) | {key for scope in self.__loop_bindings for key in scope}
+        if name in active or not isinstance(self.__classical_source_types.get(name), ast.ArrayType):
+            return None
+        if (not self.__is_initialization_process
+                and self.__capitalize_variable_name(name) not in self.__array_element_types):
+            raise NoVariableNameException(name)
+        if statement.op.name != '=':
+            raise UnsupportedOpenQASMError('compound whole-array assignment')
+        if not isinstance(source.collection, ast.Identifier) or source.collection.name in active:
+            raise UnsupportedOpenQASMError('whole-array assignment requires an array slice source')
+        source_name = source.collection.name
+        source_type = self.__classical_source_types.get(source_name)
+        if not isinstance(source_type, ast.ArrayType):
+            raise UnsupportedOpenQASMError('whole-array assignment requires an array slice source')
+        selection = self.__static_array_slice_loop_info(
+            source, self.__array_slice_element_type(source_name, source_type), iterators)
+        self.__check_array_slice_assignment_types(name, source_name)
+        count = self.__array_source_sizes[name]
+        if self.__loop_value_count(selection.indices) != count:
+            raise InvalidArrayOperandException('Array slice assignment requires matching lengths')
+        return _StaticArraySliceToWholeAssignment(self.__capitalize_variable_name(name), selection, count)
 
     def __emit_whole_array_assignment(self, info: _ArrayCopyAssignment) -> None:
         if info.destination == info.source:
