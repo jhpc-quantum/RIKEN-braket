@@ -15,6 +15,20 @@ def main():
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     check_program(bra, '''array[int,3] a={1,2,3}; a[2:-1:0]=a;''',
                   ('A1:0', 'A1:1', 'A1:2'), ['3', '2', '1'])
+    check_program(bra, '''array[int,4] a={0,0,0,0}; array[int,2] b={1,2}; a[-1:-2:-3]=b;''',
+                  ('A1:0','A1:1','A1:2','A1:3'), ['0','2','0','1'])
+    check_program(bra, '''array[uint[4],3] a; array[uint[4],2] b={1,15}; a[1:2]=b;''',
+                  ('A1:1','A1:2'), ['1','15'])
+    check_program(bra, '''array[float,3] a; array[float,2] b={1.5,2.5}; a[2:-1:1]=b;''',
+                  ('A1:1','A1:2'), ['2.5','1.5'])
+    check_program(bra, '''array[bool,3] a; array[bool,2] b={true,false}; a[1:2]=b;''',
+                  ('A1:1','A1:2'), ['1','0'])
+    check_program(bra, '''array[complex,2] a; array[complex,1] b={3+4im}; a[1:1]=b;
+        int r=int(real(a[1])); int i=int(imag(a[1]));''', ('R1','I1'), ['3','4'])
+    check_program(bra, '''array[angle[4],3] a; array[angle[4],2] b={angle[4]("0001"),angle[4]("0010")};
+        a[1:2]=b;''', ('A1:1','A1:2'), ['1','2'])
+    check_program(bra, '''array[int,3] a={1,2,3}; array[int,2] b={4,5};
+        if (false) { a[0:1]=b; }''', ('A1:0','A1:1','A1:2'), ['1','2','3'])
 
 
 if __name__ == '__main__':
