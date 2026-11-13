@@ -6994,6 +6994,26 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             f'LET {inner} += 1', f'JUMPIF {label} {inner} < {count}',
         ])
 
+    def __whole_to_static_array_slice_assignment_info(
+            self, statement: ast.ClassicalAssignment,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _StaticArraySliceAssignment | None:
+        target, source = statement.lvalue, statement.rvalue
+        if not isinstance(target, ast.IndexedIdentifier) or not isinstance(source, ast.Identifier):
+            return None
+        if not isinstance(self.__classical_source_types.get(target.name.name), ast.ArrayType):
+            return None
+        if (len(target.indices) != 1 or not isinstance(target.indices[0], list)
+                or len(target.indices[0]) != 1 or not isinstance(target.indices[0][0], ast.RangeDefinition)):
+            return None
+        active = set(iterators or ()) | {key for scope in self.__loop_bindings for key in scope}
+        if source.name in active or not isinstance(self.__classical_source_types.get(source.name), ast.ArrayType):
+            raise UnsupportedOpenQASMError('array slice assignment requires an array source')
+        size = self.__array_source_sizes[source.name]
+        bounds = ast.RangeDefinition(ast.IntegerLiteral(0), ast.IntegerLiteral(size - 1), None)
+        whole_slice = ast.IndexExpression(source, [bounds])
+        equivalent = dataclasses.replace(statement, rvalue=whole_slice)
+        return self.__static_array_slice_assignment_info(equivalent, iterators)
+
     def __static_array_slice_assignment_info(
             self, statement: ast.ClassicalAssignment,
             iterators: set[str] | dict[str, ValueType] | None = None, *,

@@ -24786,6 +24786,38 @@ class StaticArraySliceInitializerTests(unittest.TestCase):
         self.assertFalse(any(line.startswith('VAR B1') for line in c._QASM2QCXConverter__qcx_lines))
 
 
+class WholeToStaticArraySliceFoundationTests(unittest.TestCase):
+    converter = ScalarAngleFoundationTests.converter
+    program = staticmethod(ScalarAngleFoundationTests.program)
+
+    def info(self, converter, statement, iterators=None):
+        node = self.program(statement).statements[0]
+        return converter._QASM2QCXConverter__whole_to_static_array_slice_assignment_info(node, iterators)
+
+    def test_matching_types_and_slice_metadata(self):
+        for element in ('int', 'uint[4]', 'float[32]', 'bool', 'complex', 'angle[4]'):
+            with self.subTest(element=element):
+                c = self.converter(f'array[{element},4] a; array[{element},3] b;')
+                info = self.info(c, 'a[-1:-1:-3]=b;')
+                self.assertIsInstance(info, qasm2qcx._StaticArraySliceAssignment)
+                self.assertEqual(list(info.destination.indices), [-1, -2, -3])
+                self.assertEqual(list(info.source.indices), [0, 1, 2])
+                self.assertEqual(info.count, 3)
+                with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                    info.count = 0
+
+    def test_invalid_ranges_types_and_shadowing(self):
+        c = self.converter('array[int,4] a; array[int,3] b; array[int,5] c; array[uint,3] u; int scalar; int i;')
+        for statement in ('a[0:1]=b;', 'a[2:4]=b;', 'a[0:0:2]=b;', 'a[i:2]=b;',
+                          'a[-4:0]=c;', 'a[0:2]=u;', 'a[0:2]=scalar;', 'a[0:2]+=b;'):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(c, statement)
+        self.assertIsNone(self.info(c, 'a[0]=scalar;'))
+        for iterator in ('a', 'b'):
+            with self.subTest(iterator=iterator), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(c, 'a[0:2]=b;', {iterator})
+
+
 class StaticArraySliceAssignmentFoundationTests(unittest.TestCase):
     converter = ScalarAngleFoundationTests.converter
     program = staticmethod(ScalarAngleFoundationTests.program)
