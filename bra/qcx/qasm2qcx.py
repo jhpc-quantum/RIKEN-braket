@@ -314,6 +314,12 @@ class _StaticArraySliceInitializer:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeArraySliceInitializer:
+    source: _RuntimeArraySliceLoop
+    count: int
+
+
+@dataclasses.dataclass(frozen=True)
 class _StaticBitSelection:
     source_name: str
     indices: tuple[int, ...]
@@ -6739,8 +6745,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if left_signature != right_signature:
             raise InvalidArrayOperandException('Array slice assignment requires matching element types')
 
-    def __static_array_slice_initializer_info(
-            self, statement: ast.ClassicalDeclaration) -> _StaticArraySliceInitializer | None:
+    def __array_slice_initializer_source(
+            self, statement: ast.ClassicalDeclaration) -> tuple[ast.IndexExpression, str, ast.ArrayType] | None:
         initializer = statement.init_expression
         if not isinstance(initializer, ast.IndexExpression):
             return None
@@ -6753,6 +6759,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError('array slice initializer requires an array slice source')
         if source_name == name or self.__capitalize_variable_name(source_name) not in self.__array_element_types:
             raise NoVariableNameException(source_name)
+        return initializer, source_name, source_type
+
+    def __static_array_slice_initializer_info(
+            self, statement: ast.ClassicalDeclaration) -> _StaticArraySliceInitializer | None:
+        details = self.__array_slice_initializer_source(statement)
+        if details is None:
+            return None
+        initializer, source_name, source_type = details
+        name = statement.identifier.name
         source = self.__static_array_slice_loop_info(
             initializer, self.__array_slice_element_type(source_name, source_type))
         self.__check_array_slice_assignment_types(name, source_name)
@@ -6760,6 +6775,53 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if count != self.__array_source_sizes[name]:
             raise InvalidArrayOperandException('Array slice initializer requires matching lengths')
         return _StaticArraySliceInitializer(source, count)
+
+    def __runtime_array_slice_initializer_info(
+            self, statement: ast.ClassicalDeclaration) -> _RuntimeArraySliceInitializer | None:
+        details = self.__array_slice_initializer_source(statement)
+        if details is None:
+            return None
+        initializer, source_name, source_type = details
+        source = self.__runtime_array_slice_loop_info(
+            initializer, self.__array_slice_element_type(source_name, source_type))
+        if source is None:
+            return None
+        name = statement.identifier.name
+        self.__check_array_slice_assignment_types(name, source_name)
+        return _RuntimeArraySliceInitializer(source, self.__array_source_sizes[name])
+
+    def __emit_runtime_array_slice_initializer(
+            self, info: _RuntimeArraySliceInitializer, destination: str) -> None:
+        previous_state = (self.__expression_kind, self.__value, self.__value_type,
+                          self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        previous_declarations = self.__declared_temporary_variables.copy()
+        label = f'QASM2QCX_ARRAY_SLICE_INITIALIZER_{self.__array_index}'
+        self.__array_index += 1
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            positions, count = self.__capture_array_slice_positions(info.source, label)
+            # The destination has positive static size, and every selection
+            # position and the length must be checked before the first copy.
+            # Account for two possible temporary declarations and seven copy
+            # instructions before emitting any destination writes.
+            if len(self.__qcx_lines) + 9 > self.MAX_LOOP_OUTPUT_LINES:
+                raise InvalidArrayOperandException('Array slice initializer exceeds QCX output limit')
+            index = self.__add_new_temporary_variable(ValueType.INT)
+            physical = self.__add_new_temporary_variable(ValueType.INT)
+            loop = label + '_COPY'
+            self.__qcx_lines.extend([
+                f'ASSERT {count} == {info.count}', f'LET {index} := 0', f'@{loop}',
+                f'LET {physical} := {positions}:{index}',
+                f'LET {destination}:{index} := {info.source.source}:{physical}',
+                f'LET {index} += 1', f'JUMPIF {loop} {index} < {count}',
+            ])
+            self.__hoist_temporary_declarations(previous_declarations)
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous_state
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
 
     def __capture_array_slice_positions(
             self, selection: _RuntimeArraySliceLoop, label: str) -> tuple[str, str]:
@@ -12318,11 +12380,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         size = self.__array_source_sizes[statement.identifier.name]
         element_type = self.__source_value_type(statement.type.base_type)
         initializer = statement.init_expression
-        slice_initializer = self.__static_array_slice_initializer_info(statement)
+        slice_initializer = (self.__runtime_array_slice_initializer_info(statement)
+                             or self.__static_array_slice_initializer_info(statement))
         if initializer is not None:
-            if slice_initializer is not None:
+            if isinstance(slice_initializer, _StaticArraySliceInitializer):
                 if len(self.__qcx_lines) + slice_initializer.count + 1 > self.MAX_LOOP_OUTPUT_LINES:
                     raise InvalidArrayOperandException('Array slice initializer exceeds QCX output limit')
+            elif isinstance(slice_initializer, _RuntimeArraySliceInitializer):
+                pass  # Runtime range validation and output checks happen during emission.
             elif not isinstance(initializer, ast.ArrayLiteral):
                 raise UnsupportedOpenQASMError('classical array initializer other than an array literal')
             elif len(initializer.values) != size:
@@ -12337,6 +12402,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__declare_classical_variable(storage_type, variable_name, size)
         self.__array_element_types[variable_name] = element_type
         if initializer is None:
+            return
+        if isinstance(slice_initializer, _RuntimeArraySliceInitializer):
+            self.__emit_runtime_array_slice_initializer(slice_initializer, variable_name)
             return
         if slice_initializer is not None:
             source = slice_initializer.source
