@@ -63,6 +63,43 @@ class BasicGateDefinitionFoundationTests(unittest.TestCase):
                 self.converter(source)
 
 
+class BasicGateCallTests(unittest.TestCase):
+    prefix = 'OPENQASM 3; include "stdgates.inc"; '
+
+    def test_expansion_matches_inline_circuit(self):
+        defined = ('gate bell a,b { h a; cx a,b; } gate idle a {} '
+                   'gate rot a { U(pi/2,0,pi) a; inv @ x a; } '
+                   'qubit[2] q; bell q[0],q[1]; idle q[1]; rot q[0]; bell q[1],q[0];')
+        inline = 'qubit[2] q; h q[0]; cx q[0],q[1]; U(pi/2,0,pi) q[0]; inv @ x q[0]; h q[1]; cx q[1],q[0];'
+        self.assertEqual(convert(self.prefix + defined), convert(self.prefix + inline))
+
+    def test_calls_in_loops_and_empty_loops(self):
+        declarations = 'gate flip a { x a; } qubit[2] q; '
+        self.assertEqual(convert(self.prefix + declarations + 'for int i in [0:1] { flip q[i]; }'),
+                         convert(self.prefix + 'qubit[2] q; x q[0]; x q[1];'))
+        self.assertEqual(convert(self.prefix + declarations + 'for int i in [1:0] { flip q[i]; }'), ['QUBITS 2'])
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            convert(self.prefix + declarations + 'for int i in [1:0] { flip q; }')
+
+    def test_invalid_calls(self):
+        definition = 'gate pair a,b { cx a,b; } qubit[2] q; '
+        for call in ('pair q[0];', 'pair(1) q[0],q[1];', 'pair q[0],q[0];',
+                     'pair q[0],q[-2];', 'pair q,q;', 'inv @ pair q[0],q[1];'):
+            with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(self.prefix + definition + call)
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            convert(self.prefix + 'qubit[2] q; pair q[0],q[1]; gate pair a,b { cx a,b; }')
+        for call in ('pair q[0],q[0];', 'pair q[0],q[2];', 'inv @ pair q[0],q[1];'):
+            with self.subTest(skipped_call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(self.prefix + definition + f'for int i in [1:0] {{ {call} }}')
+
+    def test_expansion_limit(self):
+        source = self.prefix + 'gate pair a,b { h a; cx a,b; } qubit[2] q; pair q[0],q[1];'
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_GATE_DEFINITION_OUTPUT_LINES', 1), \
+                self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'expansion exceeds'):
+            convert(source)
+
+
 class ScalarAngleFoundationTests(unittest.TestCase):
     @staticmethod
     def program(source):
