@@ -21,6 +21,48 @@ def convert(source: str) -> list[str]:
     return qasm2qcx.convert(source)
 
 
+class BasicGateDefinitionFoundationTests(unittest.TestCase):
+    def converter(self, source):
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ' + source)
+        return qasm2qcx.QASM2QCXConverter(program)
+
+    def test_definitions_are_recorded_without_emitting_gates(self):
+        source = ('include "stdgates.inc"; gate bell a,b { h a; cx a,b; } '
+                  'gate idle a {} gate rotated a { U(pi/2,0,pi) a; inv @ x a; } qubit[2] q;')
+        c = self.converter(source)
+        definitions = c._QASM2QCXConverter__basic_gate_definitions
+        self.assertEqual(definitions['bell'].qubits, ('a', 'b'))
+        self.assertEqual([gate.name.name for gate in definitions['bell'].body], ['h', 'cx'])
+        self.assertEqual(definitions['idle'].body, ())
+        with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+            definitions['bell'].qubits = ()
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ' + source)
+        c.visit(program)
+        self.assertEqual(list(c), ['QUBITS 2'])
+
+    def test_rejects_unsupported_or_invalid_definitions(self):
+        for source in (
+                'gate g a { h a; }',
+                'gate g a { h a; } include "stdgates.inc";',
+                'include "stdgates.inc"; gate x a {}',
+                'gate x a {} include "stdgates.inc";',
+                'gate U a {}',
+                'gate g a {} gate g b {}',
+                'gate g a,a {}',
+                'gate g(theta) a {}',
+                'include "stdgates.inc"; gate g a { h missing; }',
+                'include "stdgates.inc"; gate g a { h a[0]; }',
+                'include "stdgates.inc"; gate g a { cx a,a; }',
+                'include "stdgates.inc"; gate g a { x a,a; }',
+                'gate g a { U(other,0,0) a; }',
+                'gate g a { U(true,0,0) a; }',
+                'gate g a { gphase(pi); }',
+                'gate g a { g a; }',
+                'gate g a {} gate h a { g a; }'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(source)
+
+
 class ScalarAngleFoundationTests(unittest.TestCase):
     @staticmethod
     def program(source):
