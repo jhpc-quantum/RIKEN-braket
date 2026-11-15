@@ -18,6 +18,13 @@ def main():
     expected = [0j] * 32
     expected[0] = 1 / math.sqrt(2)
     expected[1] = cmath.exp(1j * math.pi / 4) / math.sqrt(2)
+    document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+    marker = '<!-- user-gate-angle-parameters-example -->'
+    if document.count(marker) != 1:
+        raise RuntimeError('Expected exactly one user-gate angle parameter example')
+    example = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+    example = example.replace('OPENQASM 3.0;', '', 1).replace('include "stdgates.inc";', '', 1)
+    check_amplitudes(bra, example, expected)
     check_amplitudes(bra, '''gate phase_gate(theta) a { p(theta) a; }
         qubit[5] q; angle[8] value=pi/4; h q[0]; phase_gate(value) q[0];''', expected)
     state = [0j] * 32

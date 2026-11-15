@@ -7039,9 +7039,9 @@ families use the `#0` operand suffix to select zero-controls.
 
 ### Basic user-defined gates
 
-The converter supports non-parameterized gate definitions containing calls to
-supported built-in gates or previously defined non-parameterized gates on
-unindexed formal qubits. The relevant built-in gate
+The converter supports gate definitions containing calls to supported built-in
+gates or previously defined non-parameterized gates on unindexed formal qubits.
+An initial angle-parameter subset is described below. The relevant built-in gate
 must be available when the definition appears: include `stdgates.inc` before a
 definition that uses its gates. Built-in calls in the body may use supported
 modifiers and constant parameter expressions involving literals and the built-in
@@ -7083,10 +7083,41 @@ Each nested call binds its own formal qubits. Definitions must precede their
 use, and forward references and recursion are rejected. Nested expansion uses
 an explicit stack and shares the outer call's work and output limits.
 
-Parameterized definitions, loops and `gphase` in definitions,
+Loops and `gphase` in definitions,
 register broadcasting, and modifiers on user-defined calls remain unsupported.
 As elsewhere, runtime qubit indexing is unsupported; a statically expanded loop
 iterator may select a qubit. Invalid calls are checked even in empty loop bodies.
+
+### Angle parameters in user-defined phase gates
+
+A user-defined gate can declare formal parameters that are used directly as
+parameters of the supported phase gates `p`, `phase`, `u1`, `cp`, and `cphase`.
+The actual arguments must be angle-valued expressions; numeric-to-angle
+promotion at a user-gate call is not yet supported.
+
+<!-- user-gate-angle-parameters-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+gate phase_gate(theta) a { p(theta) a; }
+qubit[5] q;
+angle[8] value = pi / 4;
+h q[0];
+phase_gate(value) q[0];
+```
+
+Each actual argument is evaluated and captured once per reached call, including
+unused parameters. Its resolved width and sizedness are preserved in a private
+gate-local binding; an unsized actual angle uses the converter's native UINT
+width. Multiple parameters and repeated uses are supported. The existing
+angle-valued phase-gate path lowers each use, and the snapshots are released
+after expansion, including on errors. Parameter names may shadow caller names
+without changing the caller's qubit or iterator bindings.
+
+Formal parameters in arithmetic or other expressions, parameter forwarding to
+user-defined gates, and formal angle parameters on non-phase gates remain
+unsupported. A parameterized gate may call a previously defined
+non-parameterized gate under the existing nested-gate restrictions.
 
 ### Integer-power gate modifiers
 
@@ -10354,6 +10385,11 @@ without partial output. Each numerical execution has a timeout.
 against independent amplitudes, including reordered operands, controls, and `U`
 phase. It executes the documented example. Run with `--bra /path/to/bra`.
 
+`bra/test/qasm2qcx_user_gate_angle_parameters_numerical.py` checks scoped angle
+bindings, phase gates, multiple precisions, repeated calls, and skipped paths
+against independent amplitudes. It executes the documented example. Run with
+`--bra /path/to/bra`.
+
 `bra/test/qasm2qcx_basic_user_gates_numerical.py` checks basic gate expansion
 against independent amplitudes, including controlled operations and `U` phase.
 It executes the documented example. Run with `--bra /path/to/bra`.
@@ -11351,6 +11387,7 @@ python3 bra/test/qasm2qcx_u_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_inverse_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_control_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_basic_user_gates_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_user_gate_angle_parameters_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_nested_user_gates_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_negative_control_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_power_numerical.py --bra bra/bin/bra
