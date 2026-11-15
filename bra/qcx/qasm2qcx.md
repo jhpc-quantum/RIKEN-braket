@@ -7040,7 +7040,8 @@ families use the `#0` operand suffix to select zero-controls.
 ### Basic user-defined gates
 
 The converter supports non-parameterized gate definitions containing calls to
-supported built-in gates on unindexed formal qubits. The relevant built-in gate
+supported built-in gates or previously defined non-parameterized gates on
+unindexed formal qubits. The relevant built-in gate
 must be available when the definition appears: include `stdgates.inc` before a
 definition that uses its gates. Built-in calls in the body may use supported
 modifiers and constant parameter expressions involving literals and the built-in
@@ -7063,9 +7064,26 @@ the formal arguments and expands the body in order into existing QCX
 instructions; an empty body is identity. Statically indexed qubits and scalar
 qubit variables are supported. Expansion is bounded by
 `MAX_GATE_DEFINITION_OUTPUT_LINES` (currently 100,000) per call and
-`MAX_LOOP_OUTPUT_LINES` for generated output.
+`MAX_LOOP_OUTPUT_LINES` for generated output. Nested expansion additionally
+uses `MAX_GATE_DEFINITION_NESTING` (currently 128 active definitions) and
+`MAX_GATE_DEFINITION_EXPANSION_STEPS` (currently 100,000). The latter counts
+the root call and every expanded body operation, including calls to empty gates.
 
-Parameterized or nested definitions, loops and `gphase` in definitions,
+<!-- nested-user-gate-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+gate entangle a, b { h a; cx a, b; }
+gate outer b, a { entangle a, b; }
+qubit[5] q;
+outer q[1], q[0];
+```
+
+Each nested call binds its own formal qubits. Definitions must precede their
+use, and forward references and recursion are rejected. Nested expansion uses
+an explicit stack and shares the outer call's work and output limits.
+
+Parameterized definitions, loops and `gphase` in definitions,
 register broadcasting, and modifiers on user-defined calls remain unsupported.
 As elsewhere, runtime qubit indexing is unsupported; a statically expanded loop
 iterator may select a qubit. Invalid calls are checked even in empty loop bodies.
@@ -10332,6 +10350,10 @@ phase snapshot separation, temporary hoisting, cleanup preserving caller storage
 unsupported modifiers and durations, empty-loop validation, and CLI errors
 without partial output. Each numerical execution has a timeout.
 
+`bra/test/qasm2qcx_nested_user_gates_numerical.py` checks nested expansion
+against independent amplitudes, including reordered operands, controls, and `U`
+phase. It executes the documented example. Run with `--bra /path/to/bra`.
+
 `bra/test/qasm2qcx_basic_user_gates_numerical.py` checks basic gate expansion
 against independent amplitudes, including controlled operations and `U` phase.
 It executes the documented example. Run with `--bra /path/to/bra`.
@@ -11329,6 +11351,7 @@ python3 bra/test/qasm2qcx_u_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_inverse_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_control_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_basic_user_gates_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_nested_user_gates_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_negative_control_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_power_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_power_numerical.py --bra bra/bin/bra

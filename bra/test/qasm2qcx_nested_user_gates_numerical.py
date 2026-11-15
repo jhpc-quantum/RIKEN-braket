@@ -16,6 +16,13 @@ def main():
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     expected = [0j] * 32
     expected[0] = expected[3] = 1 / math.sqrt(2)
+    document = (pathlib.Path(__file__).resolve().parents[1] / 'qcx/qasm2qcx.md').read_text()
+    marker = '<!-- nested-user-gate-example -->'
+    if document.count(marker) != 1:
+        raise RuntimeError('Expected exactly one nested user-defined gate example')
+    example = document.split(marker, 1)[1].split('```qasm\n', 1)[1].split('```', 1)[0]
+    example = example.replace('OPENQASM 3.0;', '', 1).replace('include "stdgates.inc";', '', 1)
+    check_amplitudes(bra, example, expected)
     check_amplitudes(bra, '''gate entangle a,b { h a; cx a,b; }
         gate outer b,a { entangle a,b; } qubit[5] q; outer q[1],q[0];''', expected)
     state = [0j] * 32
