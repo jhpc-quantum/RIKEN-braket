@@ -159,6 +159,18 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
 class AngleGateParameterCallTests(unittest.TestCase):
     prefix = 'OPENQASM 3; include "stdgates.inc"; gate g(theta) a { p(theta) a; } '
 
+    def test_inverse_rotation_bit_contributions_follow_modifier_parity(self):
+        prefix = ('OPENQASM 3; include "stdgates.inc"; qubit[2] q; '
+                  'angle[3] a=pi/4; ')
+        for modifiers, sign in (('inv @ ', '+='), ('inv @ inv @ ', '-=')):
+            with self.subTest(modifiers=modifiers):
+                lines = convert(prefix + modifiers + 'rx(a) q[0];')
+                scales = [line for line in lines if '*= ' in line and ('0.125' in line or '0.25' in line or '0.5' in line)]
+                self.assertEqual(len(scales), 3)
+                self.assertTrue(all(('*= -' not in line) == (sign == '+=') for line in scales))
+        lines = convert(prefix + 'negctrl @ inv @ rz(a) q[0],q[1];')
+        self.assertEqual(sum(line.startswith('CEZ 0#0 1 ') for line in lines), 3)
+
     def test_angle_rotation_control_chains_preserve_order_and_intrinsic_control(self):
         source = ('OPENQASM 3; include "stdgates.inc"; '
                   'gate inner(t) a,b,c,d { negctrl @ ctrl @ crx(t) a,b,c,d; } '
@@ -171,7 +183,7 @@ class AngleGateParameterCallTests(unittest.TestCase):
 
     def test_controlled_angle_rotation_rejects_invalid_chains_even_when_skipped(self):
         prefix = 'OPENQASM 3; include "stdgates.inc"; qubit[3] q; angle[3] a=pi/4; '
-        for call in ('ctrl @ inv @ rx(a) q[0],q[1];', 'negctrl @ pow(2) @ rx(a) q[0],q[1];',
+        for call in ('negctrl @ pow(2) @ rx(a) q[0],q[1];',
                      'ctrl(0) @ rx(a) q[0],q[1];', 'ctrl @ rx(a) q[0],q[0];'):
             for body in (call, f'for int i in [1:0] {{ {call} }}'):
                 with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -205,7 +217,7 @@ class AngleGateParameterCallTests(unittest.TestCase):
 
     def test_controlled_angle_rotations_reject_duplicate_operands_and_modifiers(self):
         prefix = 'OPENQASM 3; include "stdgates.inc"; qubit[2] q; angle[3] a=pi/4; '
-        for call in ('crx(a) q[0],q[0];', 'inv @ cry(a) q[0],q[1];',
+        for call in ('crx(a) q[0],q[0];',
                      'pow(0) @ crz(a) q[0],q[1];'):
             for body in (call, f'for int i in [1:0] {{ {call} }}'):
                 with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -245,7 +257,7 @@ class AngleGateParameterCallTests(unittest.TestCase):
 
     def test_angle_rotation_modifiers_are_rejected_even_in_skipped_loops(self):
         prefix = 'OPENQASM 3; include "stdgates.inc"; qubit q; angle[3] a=pi/4; '
-        for statement in ('inv @ rx(a) q;', 'pow(0) @ ry(a) q;', 'ctrl @ rz(a) q,q;'):
+        for statement in ('pow(0) @ ry(a) q;', 'ctrl @ rz(a) q,q;'):
             for body in (statement, f'for int i in [1:0] {{ {statement} }}'):
                 with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
                     convert(prefix + body)

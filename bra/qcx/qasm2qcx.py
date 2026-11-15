@@ -3379,7 +3379,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if isinstance(statement, ast.QuantumGate) and statement.name.name not in self.angle_phase_gates:
             if statement.name.name not in self.angle_rotation_gates | self.angle_controlled_rotation_gates:
                 raise UnsupportedOpenQASMError('angle-valued parameter on a non-phase gate')
-            if any(modifier.modifier not in (ast.GateModifierName.ctrl, ast.GateModifierName.negctrl)
+            if any(modifier.modifier not in (ast.GateModifierName.ctrl, ast.GateModifierName.negctrl,
+                                             ast.GateModifierName.inv)
                    for modifier in statement.modifiers):
                 raise UnsupportedOpenQASMError('modifiers on angle-valued rotation gates')
         if len(arguments) != 1:
@@ -3408,7 +3409,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 operands = self.__condition_qubits(qubits[:added_controls], info.controls) + qubits[added_controls:]
                 for bit in range(angle_type.width):
                     skip = f'{prefix}_{index}_{bit}_SKIP'
-                    scale = -math.ldexp(1.0, bit - angle_type.width)
+                    scale = math.ldexp(1.0 if info.power < 0 else -1.0, bit - angle_type.width)
                     self.__check_gate_power_output(7, None)
                     self.__qcx_lines.extend([
                         f'LET {scratch} := {snapshot}', f'LET {scratch} &= {1 << bit}',
