@@ -847,6 +847,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     MAX_RUNTIME_BIT_RANGE_POSITIONS = 1000000
     MAX_GATE_POWER_OUTPUT_LINES = 100000
     MAX_GATE_DEFINITION_OUTPUT_LINES = 100000
+    MAX_GATE_DEFINITION_EXPANSION_STEPS = 100000
+    MAX_GATE_DEFINITION_NESTING = 128
     # Keep literal instruction metadata within bra's ANGLEBITS2PHASE limits.
     MAX_ANGLE_PHASE_MODIFIERS = 1024
     MAX_ANGLE_PHASE_LITERAL_CHARS = 4096
@@ -4236,11 +4238,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if not isinstance(child, ast.QuantumGate):
                 raise UnsupportedOpenQASMError(f'gate definition body {type(child).__name__}')
             gate_name = child.name.name
-            if (gate_name not in self.default_gates_qcx_map
+            nested = self.__basic_gate_definitions.get(gate_name)
+            if (nested is None and gate_name not in self.default_gates_qcx_map
                     and not (self.__gate_definition_stdgates_available and gate_name in self.stdgates_qcx_map)):
                 raise UnsupportedOpenQASMError(f'gate {gate_name} in gate definition')
             if child.duration is not None:
                 raise UnsupportedOpenQASMError('gate duration in gate definition')
+            if nested is not None and child.modifiers:
+                raise UnsupportedOpenQASMError('modifiers on user-defined gates')
             expressions = list(child.arguments) + [modifier.argument for modifier in child.modifiers
                                                    if modifier.argument is not None]
             for expression in expressions:
@@ -4250,9 +4255,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 value_type, _ = self.__loop_expression_info(argument)
                 if value_type in (ValueType.BIT, ValueType.BOOL, ValueType.COMPLEX):
                     raise WrongParameterTypeException(value_type)
-            info = self.__analyze_gate_modifiers(child.modifiers, allow_float=True)
-            parameters, qubits = self.gate_signatures[gate_name]
-            qubits += sum(count for _, count in info.controls)
+            if nested is not None:
+                parameters, qubits = 0, len(nested.qubits)
+            else:
+                info = self.__analyze_gate_modifiers(child.modifiers, allow_float=True)
+                parameters, qubits = self.gate_signatures[gate_name]
+                qubits += sum(count for _, count in info.controls)
             if len(child.arguments) != parameters or len(child.qubits) != qubits:
                 raise WrongGateArityException(gate_name, parameters, qubits,
                                               len(child.arguments), len(child.qubits))
@@ -4310,7 +4318,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise InvalidQubitOperandException('user-defined gate requires distinct qubit operands')
         return definition
 
-    def __emit_basic_gate_call(self, statement: ast.QuantumGate) -> None:
+    def __basic_gate_call_binding(
+            self, statement: ast.QuantumGate
+            ) -> tuple[_BasicGateDefinition, dict[str, ast.Identifier | ast.IndexedIdentifier]]:
         definition = self.__validate_basic_gate_call(statement)
         # Resolve all operands first so an invalid or aliased call emits nothing.
         physical = []
@@ -4321,10 +4331,35 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             physical.append(indices[0])
         if len(set(physical)) != len(physical):
             raise InvalidQubitOperandException('user-defined gate requires distinct qubit operands')
-        bindings = dict(zip(definition.qubits, statement.qubits))
+        return definition, dict(zip(definition.qubits, statement.qubits))
+
+    def __emit_basic_gate_call(self, statement: ast.QuantumGate) -> None:
+        definition, bindings = self.__basic_gate_call_binding(statement)
+        if self.MAX_GATE_DEFINITION_NESTING < 1 or self.MAX_GATE_DEFINITION_EXPANSION_STEPS < 1:
+            raise InvalidLoopRangeException('user-defined gate expansion exceeds work or nesting limit')
+        # Each frame has its own bindings. Count the root and every expanded
+        # operation, including calls to empty gates, even when no QCX is emitted.
+        stack = [(iter(definition.body), bindings)]
+        steps = 1
         output_start = len(self.__qcx_lines)
-        for operation in definition.body:
-            self.visit(dataclasses.replace(operation, qubits=[bindings[qubit.name] for qubit in operation.qubits]))
+        while stack:
+            operations, current_bindings = stack[-1]
+            operation = next(operations, None)
+            if operation is None:
+                stack.pop()
+                continue
+            steps += 1
+            if steps > self.MAX_GATE_DEFINITION_EXPANSION_STEPS:
+                raise InvalidLoopRangeException('user-defined gate expansion exceeds work limit')
+            expanded = dataclasses.replace(
+                operation, qubits=[current_bindings[qubit.name] for qubit in operation.qubits])
+            if operation.name.name in self.__basic_gate_definitions:
+                if len(stack) >= self.MAX_GATE_DEFINITION_NESTING:
+                    raise InvalidLoopRangeException('user-defined gate expansion exceeds nesting limit')
+                nested, nested_bindings = self.__basic_gate_call_binding(expanded)
+                stack.append((iter(nested.body), nested_bindings))
+                continue
+            self.visit(expanded)
             if (len(self.__qcx_lines) - output_start > self.MAX_GATE_DEFINITION_OUTPUT_LINES
                     or len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES):
                 raise InvalidLoopRangeException('user-defined gate expansion exceeds QCX output limit')
