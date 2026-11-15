@@ -154,6 +154,27 @@ class AngleGateParameterCallTests(unittest.TestCase):
                 with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
                     convert(prefix + body)
 
+    def test_angle_rotations_broadcast_and_skip_runtime_conversion(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; qubit[2] q; angle[3] a=pi/4; '
+                  'rx(a) q; for int i in [1:0] { ry(angle[3](1.0/0.0)) q; }')
+        lines = convert(source)
+        self.assertEqual(sum(line.startswith('EX ') for line in lines), 6)
+        self.assertFalse(any(line.startswith('EY ') for line in lines))
+
+    def test_angle_rotation_failure_releases_temporaries(self):
+        source = 'OPENQASM 3; include "stdgates.inc"; qubit q; angle[3] a=pi/4;'
+        program = qasm2qcx.openqasm3.parser.parse(source)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        call = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; rx(a) q;').statements[0]
+        with patch.object(converter, '_QASM2QCXConverter__qubit_operand_tuples',
+                          side_effect=RuntimeError('operand failure')), \
+                self.assertRaisesRegex(RuntimeError, 'operand failure'):
+            converter.visit(call)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
+
     def test_forwarded_parameters_preserve_frame_scopes_and_widths(self):
         source = ('OPENQASM 3; include "stdgates.inc"; '
                   'gate inner(phi,theta) q { p(phi) q; p(theta) q; } '
