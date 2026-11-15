@@ -144,6 +144,24 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
 class AngleGateParameterCallTests(unittest.TestCase):
     prefix = 'OPENQASM 3; include "stdgates.inc"; gate g(theta) a { p(theta) a; } '
 
+    def test_controlled_angle_rotations_lower_forwarded_expressions(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; '
+                  'gate inner(t,u) a,b { crx(t+u) a,b; cry(-t) a,b; crz(u) a,b; } '
+                  'gate outer(x,y) a,b { inner(x,y) a,b; } '
+                  'qubit[2] q; angle[3] a=pi/4; angle[5] b=pi/2; outer(a,b) q[0],q[1];')
+        lines = convert(source)
+        for mnemonic, count in (('CEX ', 5), ('CEY ', 3), ('CEZ ', 5)):
+            self.assertEqual(sum(line.startswith(mnemonic) for line in lines), count)
+        self.assertTrue(all(' 0 1 ' in line for line in lines if line.startswith(('CEX ', 'CEY ', 'CEZ '))))
+
+    def test_controlled_angle_rotations_reject_duplicate_operands_and_modifiers(self):
+        prefix = 'OPENQASM 3; include "stdgates.inc"; qubit[2] q; angle[3] a=pi/4; '
+        for call in ('crx(a) q[0],q[0];', 'inv @ cry(a) q[0],q[1];',
+                     'pow(0) @ crz(a) q[0],q[1];'):
+            for body in (call, f'for int i in [1:0] {{ {call} }}'):
+                with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert(prefix + body)
+
     def test_angle_rotations_lower_direct_and_forwarded_expressions(self):
         source = ('OPENQASM 3; include "stdgates.inc"; '
                   'gate inner(t) q { rx(t) q; ry(-t) q; rz(t+t) q; } '
