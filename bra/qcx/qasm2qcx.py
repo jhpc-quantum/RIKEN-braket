@@ -959,6 +959,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     angle_phase_gates = frozenset(('p', 'phase', 'u1', 'cp', 'cphase'))
     angle_rotation_gates = frozenset(('rx', 'ry', 'rz'))
+    angle_controlled_rotation_gates = frozenset(('crx', 'cry', 'crz'))
 
     def __init__(self, qasm_ast_root: ast.Program) -> None:
         self.__value: str | int | float | complex | None = None
@@ -4308,7 +4309,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if self.__is_gate_angle_additive_expression(argument, set(formal_parameters)):
                     if nested is not None or gate_name in self.angle_phase_gates:
                         continue
-                    if gate_name in self.angle_rotation_gates:
+                    if gate_name in self.angle_rotation_gates | self.angle_controlled_rotation_gates:
                         if child.modifiers:
                             raise UnsupportedOpenQASMError('modifiers on angle-valued rotation gates')
                         continue
