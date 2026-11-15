@@ -111,6 +111,51 @@ class NestedGateCallTests(unittest.TestCase):
                 self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'nesting limit'):
             convert(source)
 
+    def test_nested_calls_in_control_flow(self):
+        declarations = 'gate inner a { x a; } gate outer a { inner a; } qubit[2] q; '
+        self.assertEqual(convert(self.prefix + declarations + 'for int i in [0:1] { outer q[i]; }'),
+                         convert(self.prefix + 'qubit[2] q; x q[0]; x q[1];'))
+        self.assertEqual(convert(self.prefix + declarations + 'for int i in [1:0] { outer q[i]; }'), ['QUBITS 2'])
+        self.assertEqual(convert(self.prefix + declarations + 'if (true) { outer q[0]; }'),
+                         convert(self.prefix + 'qubit[2] q; if (true) { x q[0]; }'))
+
+    def test_limits_apply_across_nested_calls(self):
+        definitions = 'gate inner a { h a; x a; } gate outer a { inner a; inner a; } qubit q; outer q;'
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_GATE_DEFINITION_OUTPUT_LINES', 3), \
+                self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'output limit'):
+            convert(self.prefix + definitions)
+        empty = 'gate inner a {} gate outer a { inner a; inner a; } qubit q; outer q;'
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_GATE_DEFINITION_EXPANSION_STEPS', 3):
+            self.assertEqual(convert(self.prefix + empty), ['QUBITS 1'])
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_GATE_DEFINITION_EXPANSION_STEPS', 2), \
+                self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'work limit'):
+            convert(self.prefix + empty)
+
+    def test_deep_empty_chain_uses_explicit_stack(self):
+        definitions = ['gate g0 a {}']
+        definitions.extend(f'gate g{i} a {{ g{i-1} a; }}' for i in range(1, 150))
+        source = self.prefix + ' '.join(definitions) + ' qubit q; g149 q;'
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_GATE_DEFINITION_NESTING', 150):
+            self.assertEqual(convert(source), ['QUBITS 1'])
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_GATE_DEFINITION_NESTING', 149), \
+                self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'nesting limit'):
+            convert(source)
+
+    def test_failed_nested_expansion_preserves_definitions_and_temporaries(self):
+        source = ('include "stdgates.inc"; gate inner a { U(pi/2,0,pi) a; } '
+                  'gate outer a { inner a; } qubit q;')
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ' + source)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        definition = converter._QASM2QCXConverter__basic_gate_definitions['outer']
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        call = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; outer q;').statements[0]
+        with patch.object(converter, 'MAX_GATE_DEFINITION_OUTPUT_LINES', 0), \
+                self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'output limit'):
+            converter.visit(call)
+        self.assertEqual(definition.body[0].qubits[0].name, 'a')
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+
 
 class BasicGateCallTests(unittest.TestCase):
     prefix = 'OPENQASM 3; include "stdgates.inc"; '
