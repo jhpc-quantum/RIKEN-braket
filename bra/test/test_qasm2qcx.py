@@ -84,7 +84,7 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
 
     def test_rejects_unsupported_parts_of_parameter_expressions(self):
         for body in ('p(theta+other) a;', 'p(theta+1) a;', 'p(theta*pi) a;',
-                     'p(~theta) a;', 'rz(theta+theta) a;', 'p(theta+(phi/2)) a;'):
+                     'p(~theta) a;', 'rz(theta+1) a;', 'p(theta+(phi/2)) a;'):
             source = f'include "stdgates.inc"; gate g(theta,phi) a {{ {body} }}'
             with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(source)
@@ -95,11 +95,23 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
                 'gate g(theta) theta {}',
                 'gate g(pi) a {}',
                 'include "stdgates.inc"; gate g(theta) a { p(theta/2) a; }',
-                'include "stdgates.inc"; gate g(theta) a { rz(theta) a; }',
+                'include "stdgates.inc"; gate g(theta) a { inv @ rz(theta) a; }',
                 'include "stdgates.inc"; gate g(theta) a { pow(theta) @ p(pi) a; }',
                 'include "stdgates.inc"; gate g(theta) a { p(other) a; }'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(source)
+
+    def test_records_rotation_parameter_expressions(self):
+        source = ('include "stdgates.inc"; gate g(theta,phi) a '
+                  '{ rx(theta) a; ry(theta+phi) a; rz(-(theta-phi)) a; }')
+        c = self.converter(source)
+        self.assertEqual(len(c._QASM2QCXConverter__basic_gate_definitions['g'].body), 3)
+
+    def test_rejects_controlled_and_modified_angle_rotation_definitions(self):
+        for body in ('crx(theta) a,b;', 'cry(theta) a,b;', 'crz(theta) a,b;',
+                     'ctrl @ rx(theta) a,b;', 'inv @ ry(theta) a;', 'pow(2) @ rz(theta) a;'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(f'include "stdgates.inc"; gate g(theta) a,b {{ {body} }}')
 
     def test_parameterized_calls_are_emitted(self):
         source = ('OPENQASM 3; include "stdgates.inc"; gate g(theta) a { p(theta) a; } '
