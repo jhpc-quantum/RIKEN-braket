@@ -107,9 +107,16 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
         c = self.converter(source)
         self.assertEqual(len(c._QASM2QCXConverter__basic_gate_definitions['g'].body), 3)
 
-    def test_rejects_controlled_and_modified_angle_rotation_definitions(self):
-        for body in ('crx(theta) a,b;', 'cry(theta) a,b;', 'crz(theta) a,b;',
-                     'ctrl @ rx(theta) a,b;', 'inv @ ry(theta) a;', 'pow(2) @ rz(theta) a;'):
+    def test_records_controlled_rotation_parameter_expressions(self):
+        source = ('include "stdgates.inc"; gate g(theta,phi) a,b '
+                  '{ crx(theta) a,b; cry(theta+phi) a,b; crz(-(theta-phi)) a,b; }')
+        c = self.converter(source)
+        self.assertEqual(len(c._QASM2QCXConverter__basic_gate_definitions['g'].body), 3)
+
+    def test_rejects_invalid_and_modified_angle_rotation_definitions(self):
+        for body in ('crx(theta) a;', 'cry(theta) a,a;', 'crz(theta*theta) a,b;',
+                     'inv @ crx(theta) a,b;', 'ctrl @ rx(theta) a,b;',
+                     'inv @ ry(theta) a;', 'pow(2) @ rz(theta) a;'):
             with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(f'include "stdgates.inc"; gate g(theta) a,b {{ {body} }}')
 
@@ -136,6 +143,46 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
 
 class AngleGateParameterCallTests(unittest.TestCase):
     prefix = 'OPENQASM 3; include "stdgates.inc"; gate g(theta) a { p(theta) a; } '
+
+    def test_controlled_angle_rotations_lower_forwarded_expressions(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; '
+                  'gate inner(t,u) a,b { crx(t+u) a,b; cry(-t) a,b; crz(u) a,b; } '
+                  'gate outer(x,y) a,b { inner(x,y) a,b; } '
+                  'qubit[2] q; angle[3] a=pi/4; angle[5] b=pi/2; outer(a,b) q[0],q[1];')
+        lines = convert(source)
+        for mnemonic, count in (('CEX ', 5), ('CEY ', 3), ('CEZ ', 5)):
+            self.assertEqual(sum(line.startswith(mnemonic) for line in lines), count)
+        self.assertTrue(all(' 0 1 ' in line for line in lines if line.startswith(('CEX ', 'CEY ', 'CEZ '))))
+
+    def test_controlled_angle_rotations_reject_duplicate_operands_and_modifiers(self):
+        prefix = 'OPENQASM 3; include "stdgates.inc"; qubit[2] q; angle[3] a=pi/4; '
+        for call in ('crx(a) q[0],q[0];', 'inv @ cry(a) q[0],q[1];',
+                     'pow(0) @ crz(a) q[0],q[1];'):
+            for body in (call, f'for int i in [1:0] {{ {call} }}'):
+                with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert(prefix + body)
+
+    def test_controlled_angle_rotation_broadcast_and_skipped_branch(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; qubit[2] c; qubit[2] t; '
+                  'angle[3] a=pi/4; crx(a) c,t; '
+                  'for int i in [1:0] { cry(angle[3](1.0/0.0)) c,t; }')
+        lines = convert(source)
+        self.assertEqual(sum(line.startswith('CEX ') for line in lines), 6)
+        self.assertFalse(any(line.startswith('CEY ') for line in lines))
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            convert('OPENQASM 3; include "stdgates.inc"; qubit[2] c; qubit[3] t; '
+                    'angle[3] a=pi/4; crx(a) c,t;')
+
+    def test_controlled_rotation_failure_preserves_caller_temporaries(self):
+        source = 'OPENQASM 3; include "stdgates.inc"; qubit[2] q; angle[3] a=pi/4;'
+        program = qasm2qcx.openqasm3.parser.parse(source)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        call = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; crz(a) q[0],q[0];').statements[0]
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            converter.visit(call)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
 
     def test_angle_rotations_lower_direct_and_forwarded_expressions(self):
         source = ('OPENQASM 3; include "stdgates.inc"; '
