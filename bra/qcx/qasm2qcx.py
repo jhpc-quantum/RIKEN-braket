@@ -4230,6 +4230,21 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__value_kind == ValueKind.TEMPORARY:
             self.__release_temporary_variable(str(self.__value))
 
+    @staticmethod
+    def __is_gate_angle_additive_expression(expression: ast.Expression, parameters: set[str]) -> bool:
+        pending = [expression]
+        while pending:
+            node = pending.pop()
+            if isinstance(node, ast.Identifier) and node.name in parameters:
+                continue
+            if isinstance(node, ast.UnaryExpression) and node.op.name == '-':
+                pending.append(node.expression)
+            elif isinstance(node, ast.BinaryExpression) and node.op.name in ('+', '-'):
+                pending.extend((node.lhs, node.rhs))
+            else:
+                return False
+        return True
+
     def visit_QuantumGateDefinition(self, statement: ast.QuantumGateDefinition) -> None:
         if not self.__is_initialization_process:
             self.__defined_basic_gate_names.add(statement.name.name)
@@ -4265,8 +4280,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     raise UnsupportedOpenQASMError('nonlocal expression in gate definition')
             for argument in child.arguments:
                 names = self.__loop_bound_names(argument)
-                if (isinstance(argument, ast.Identifier) and argument.name in formal_parameters
-                        and nested is None and gate_name in self.angle_phase_gates):
+                if (nested is None and gate_name in self.angle_phase_gates
+                        and self.__is_gate_angle_additive_expression(argument, set(formal_parameters))):
                     continue
                 if names & set(formal_parameters):
                     raise UnsupportedOpenQASMError('gate parameter expression or forwarding')

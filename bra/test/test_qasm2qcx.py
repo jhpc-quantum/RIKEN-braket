@@ -77,6 +77,18 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
         with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
             definition.parameters = ()
 
+    def test_records_additive_parameter_expressions(self):
+        c = self.converter('include "stdgates.inc"; gate g(theta,phi) a,b '
+                           '{ p(theta+phi) a; cp(-(theta-(-phi))) a,b; }')
+        self.assertEqual(len(c._QASM2QCXConverter__basic_gate_definitions['g'].body), 2)
+
+    def test_rejects_unsupported_parts_of_parameter_expressions(self):
+        for body in ('p(theta+other) a;', 'p(theta+1) a;', 'p(theta*pi) a;',
+                     'p(~theta) a;', 'rz(theta+theta) a;', 'p(theta+(phi/2)) a;'):
+            source = f'include "stdgates.inc"; gate g(theta,phi) a {{ {body} }}'
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(source)
+
     def test_rejects_unsupported_formal_uses_and_duplicate_names(self):
         for source in (
                 'gate g(theta,theta) a {}',
