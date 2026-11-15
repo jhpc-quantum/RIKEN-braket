@@ -49,7 +49,7 @@ class BasicGateDefinitionFoundationTests(unittest.TestCase):
                 'gate U a {}',
                 'gate g a {} gate g b {}',
                 'gate g a,a {}',
-                'gate g(theta) a {}',
+                'gate g(theta,theta) a {}',
                 'include "stdgates.inc"; gate g a { h missing; }',
                 'include "stdgates.inc"; gate g a { h a[0]; }',
                 'include "stdgates.inc"; gate g a { cx a,a; }',
@@ -60,6 +60,42 @@ class BasicGateDefinitionFoundationTests(unittest.TestCase):
                 'gate g a { g a; }'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(source)
+
+
+class AngleGateParameterFoundationTests(unittest.TestCase):
+    def converter(self, source):
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ' + source)
+        return qasm2qcx.QASM2QCXConverter(program)
+
+    def test_records_formals_and_direct_phase_uses(self):
+        c = self.converter('include "stdgates.inc"; gate phases(theta,phi) a,b '
+                           '{ p(theta) a; cp(phi) a,b; p(theta) b; }')
+        definition = c._QASM2QCXConverter__basic_gate_definitions['phases']
+        self.assertEqual(definition.parameters, ('theta', 'phi'))
+        self.assertEqual(definition.qubits, ('a', 'b'))
+        self.assertEqual([gate.name.name for gate in definition.body], ['p', 'cp', 'p'])
+        with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+            definition.parameters = ()
+
+    def test_rejects_unsupported_formal_uses_and_duplicate_names(self):
+        for source in (
+                'gate g(theta,theta) a {}',
+                'gate g(theta) theta {}',
+                'gate g(pi) a {}',
+                'include "stdgates.inc"; gate g(theta) a { p(theta/2) a; }',
+                'include "stdgates.inc"; gate g(theta) a { rz(theta) a; }',
+                'include "stdgates.inc"; gate g(theta) a { pow(theta) @ p(pi) a; }',
+                'include "stdgates.inc"; gate g(theta) a { p(other) a; }',
+                'include "stdgates.inc"; gate inner(theta) a { p(theta) a; } '
+                'gate outer(phi) a { inner(phi) a; }'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(source)
+
+    def test_parameterized_calls_remain_disabled(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; gate g(theta) a { p(theta) a; } '
+                  'qubit q; angle[8] value=pi/4; g(value) q;')
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'parameterized user-defined gate call'):
+            convert(source)
 
 
 class NestedGateDefinitionFoundationTests(unittest.TestCase):

@@ -831,6 +831,7 @@ class _LoopContext:
 class _BasicGateDefinition:
     qubits: tuple[str, ...]
     body: tuple[ast.QuantumGate, ...]
+    parameters: tuple[str, ...] = ()
 
 
 class QASM2QCXConverter(visitor.QASMVisitor):
@@ -4229,11 +4230,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 or (self.__gate_definition_stdgates_available and name in self.stdgates_qcx_map)):
             raise DuplicateIdentifierException(name)
         self.__register_source_identifier(name)
-        if statement.arguments:
-            raise UnsupportedOpenQASMError('parameterized gate definition')
+        formal_parameters = tuple(argument.name for argument in statement.arguments)
         formal_qubits = tuple(qubit.name for qubit in statement.qubits)
-        if len(set(formal_qubits)) != len(formal_qubits):
-            raise DuplicateIdentifierException('gate qubit argument')
+        formal_names = formal_parameters + formal_qubits
+        if len(set(formal_names)) != len(formal_names):
+            raise DuplicateIdentifierException('gate parameter or qubit argument')
+        if set(formal_names) & {'pi', 'tau', 'euler'}:
+            raise DuplicateIdentifierException('built-in constant in gate arguments')
         for child in statement.body:
             if not isinstance(child, ast.QuantumGate):
                 raise UnsupportedOpenQASMError(f'gate definition body {type(child).__name__}')
@@ -4246,12 +4249,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise UnsupportedOpenQASMError('gate duration in gate definition')
             if nested is not None and child.modifiers:
                 raise UnsupportedOpenQASMError('modifiers on user-defined gates')
-            expressions = list(child.arguments) + [modifier.argument for modifier in child.modifiers
-                                                   if modifier.argument is not None]
-            for expression in expressions:
-                if self.__loop_bound_names(expression) - {'pi', 'tau', 'euler'}:
+            for modifier in child.modifiers:
+                if modifier.argument is not None and self.__loop_bound_names(modifier.argument) - {'pi', 'tau', 'euler'}:
                     raise UnsupportedOpenQASMError('nonlocal expression in gate definition')
             for argument in child.arguments:
+                names = self.__loop_bound_names(argument)
+                if (isinstance(argument, ast.Identifier) and argument.name in formal_parameters
+                        and nested is None and gate_name in self.angle_phase_gates):
+                    continue
+                if names & set(formal_parameters):
+                    raise UnsupportedOpenQASMError('gate parameter expression or forwarding')
+                if names - {'pi', 'tau', 'euler'}:
+                    raise UnsupportedOpenQASMError('nonlocal expression in gate definition')
                 value_type, _ = self.__loop_expression_info(argument)
                 if value_type in (ValueType.BIT, ValueType.BOOL, ValueType.COMPLEX):
                     raise WrongParameterTypeException(value_type)
@@ -4269,7 +4278,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     raise UnsupportedOpenQASMError('gate definition requires unindexed formal qubits')
             if len({qubit.name for qubit in child.qubits}) != len(child.qubits):
                 raise InvalidQubitOperandException('gate operation requires distinct qubit operands')
-        self.__basic_gate_definitions[name] = _BasicGateDefinition(formal_qubits, tuple(statement.body))
+        self.__basic_gate_definitions[name] = _BasicGateDefinition(formal_qubits, tuple(statement.body), formal_parameters)
 
     def __validate_basic_gate_call(
             self, statement: ast.QuantumGate,
@@ -4278,6 +4287,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if not self.__is_initialization_process and name not in self.__defined_basic_gate_names:
             raise UnsupportedOpenQASMError(f'gate {name} used before definition')
         definition = self.__basic_gate_definitions[name]
+        if definition.parameters:
+            raise UnsupportedOpenQASMError('parameterized user-defined gate call')
         if statement.modifiers:
             raise UnsupportedOpenQASMError('modifiers on user-defined gates')
         if statement.duration is not None:
