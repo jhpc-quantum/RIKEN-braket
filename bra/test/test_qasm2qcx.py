@@ -171,6 +171,21 @@ class AngleGateParameterCallTests(unittest.TestCase):
         lines = convert(prefix + 'negctrl @ inv @ rz(a) q[0],q[1];')
         self.assertEqual(sum(line.startswith('CEZ 0#0 1 ') for line in lines), 3)
 
+    def test_inverse_angle_rotation_skips_and_cleans_up(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; qubit[2] q; angle[3] a=pi/4; '
+                  'for int i in [1:0] { inv @ rx(angle[3](1.0/0.0)) q[0]; }')
+        lines = convert(source)
+        self.assertFalse(any(line.startswith('EX ') for line in lines))
+        program = qasm2qcx.openqasm3.parser.parse(
+            'OPENQASM 3; include "stdgates.inc"; qubit[2] q; angle[3] a=pi/4;')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        call = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; inv @ crx(a) q[0],q[0];').statements[0]
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            converter.visit(call)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+
     def test_angle_rotation_control_chains_preserve_order_and_intrinsic_control(self):
         source = ('OPENQASM 3; include "stdgates.inc"; '
                   'gate inner(t) a,b,c,d { negctrl @ ctrl @ crx(t) a,b,c,d; } '

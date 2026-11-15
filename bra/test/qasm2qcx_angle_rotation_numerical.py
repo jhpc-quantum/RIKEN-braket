@@ -22,6 +22,10 @@ def main():
             state = apply_gate(state, gate, (angle,), (0,))
             check_amplitudes(bra, f'''qubit[5] q; angle[3] a={value};
                 h q[0]; {gate}(a) q[0];''', state)
+            inverse = apply_gate(apply_gate([1] + [0j] * 31, 'h', (), (0,)),
+                                 gate, (angle,), (0,), inverse=True)
+            check_amplitudes(bra, f'''qubit[5] q; angle[3] a={value};
+                h q[0]; inv @ {gate}(a) q[0];''', inverse)
     state = [0j] * 32
     state[0] = 1
     for gate, angle in (('rx', math.pi / 4), ('ry', 7 * math.pi / 4),
@@ -79,6 +83,24 @@ def main():
             check_amplitudes(bra, f'''qubit[7] q; angle[3] a=7*pi/4;
                 {preparation} h q[3];
                 negctrl @ ctrl @ {gate}(a) q[0],q[1],q[2],q[3];''', expected)
+        state = [0j] * 128
+        state[0] = 1
+        for qubit in (0, 1, 2, 3):
+            state = apply_gate(state, 'h', (), (qubit,))
+        transformed = apply_gate(state, base, (7 * math.pi / 4,), (3,), inverse=True)
+        expected = [transformed[index] if index & 7 == 6 else value
+                    for index, value in enumerate(state)]
+        check_amplitudes(bra, f'''gate inner(theta) a,b,c,d {{
+            negctrl @ inv @ ctrl @ {gate}(theta) a,b,c,d; }}
+            gate outer(value) a,b,c,d {{ inner(value) a,b,c,d; }}
+            qubit[7] q; angle[3] a=7*pi/4; h q[0]; h q[1]; h q[2]; h q[3];
+            outer(a) q[0],q[1],q[2],q[3];''', expected)
+        forward = apply_gate(state, base, (7 * math.pi / 4,), (3,))
+        expected = [forward[index] if index & 7 == 6 else value
+                    for index, value in enumerate(state)]
+        check_amplitudes(bra, f'''qubit[7] q; angle[3] a=7*pi/4;
+            h q[0]; h q[1]; h q[2]; h q[3];
+            inv @ negctrl @ inv @ ctrl @ {gate}(a) q[0],q[1],q[2],q[3];''', expected)
 
 
 if __name__ == '__main__':
