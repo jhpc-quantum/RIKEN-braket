@@ -91,11 +91,28 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(source)
 
-    def test_parameterized_calls_remain_disabled(self):
+    def test_parameterized_calls_are_emitted(self):
         source = ('OPENQASM 3; include "stdgates.inc"; gate g(theta) a { p(theta) a; } '
                   'qubit q; angle[8] value=pi/4; g(value) q;')
-        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'parameterized user-defined gate call'):
-            convert(source)
+        self.assertTrue(any(line.startswith('R ') for line in convert(source)))
+
+
+class AngleGateParameterCallTests(unittest.TestCase):
+    prefix = 'OPENQASM 3; include "stdgates.inc"; gate g(theta) a { p(theta) a; } '
+
+    def test_requires_angle_arguments_and_matching_arity(self):
+        declarations = 'qubit q; angle[8] value=pi/4; '
+        for call in ('g q;', 'g(1.0) q;', 'g(value,value) q;'):
+            with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(self.prefix + declarations + call)
+        self.assertTrue(any(line.startswith('R ') for line in convert(self.prefix + declarations + 'g(value) q;')))
+
+    def test_parameter_name_can_match_caller_qubit_or_iterator(self):
+        source = self.prefix + 'qubit theta; angle[8] value=pi/4; g(value) theta;'
+        self.assertTrue(any(line.startswith('R ') for line in convert(source)))
+        source = ('OPENQASM 3; include "stdgates.inc"; gate g(i) a { p(i) a; } '
+                  'qubit[2] q; angle[8] value=pi/4; for int i in [0:1] { g(value) q[i]; }')
+        self.assertTrue(any(line.startswith('R ') for line in convert(source)))
 
 
 class NestedGateDefinitionFoundationTests(unittest.TestCase):

@@ -1029,6 +1029,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__boolean_expression_index: int = 0
         self.__evaluate_constant: bool = True
         self.__loop_bindings: list[dict[str, int | _RuntimeIteratorBinding]] = []
+        self.__gate_angle_bindings: list[dict[str, _RuntimeIteratorBinding]] = []
         self.__loop_contexts: list[_LoopContext] = []
         self.__loop_index = 0
         self.__expanded_loop_depth = 0
@@ -1195,6 +1196,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def visit_Identifier(self, expression: ast.Identifier) -> None:
         if self.__expression_kind is None:
             return
+
+        for scope in reversed(self.__gate_angle_bindings):
+            if expression.name in scope:
+                binding = scope[expression.name]
+                if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                    raise NoConstantExpressionException
+                self.__value, self.__value_type, self.__value_kind = binding.storage, ValueType.ANGLE, ValueKind.LVALUE
+                return
 
         for scope in reversed(self.__loop_bindings):
             if expression.name in scope:
@@ -4249,6 +4258,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise UnsupportedOpenQASMError('gate duration in gate definition')
             if nested is not None and child.modifiers:
                 raise UnsupportedOpenQASMError('modifiers on user-defined gates')
+            if nested is not None and nested.parameters:
+                raise UnsupportedOpenQASMError('parameter forwarding to user-defined gates')
             for modifier in child.modifiers:
                 if modifier.argument is not None and self.__loop_bound_names(modifier.argument) - {'pi', 'tau', 'euler'}:
                     raise UnsupportedOpenQASMError('nonlocal expression in gate definition')
@@ -4287,15 +4298,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if not self.__is_initialization_process and name not in self.__defined_basic_gate_names:
             raise UnsupportedOpenQASMError(f'gate {name} used before definition')
         definition = self.__basic_gate_definitions[name]
-        if definition.parameters:
-            raise UnsupportedOpenQASMError('parameterized user-defined gate call')
         if statement.modifiers:
             raise UnsupportedOpenQASMError('modifiers on user-defined gates')
         if statement.duration is not None:
             raise UnsupportedOpenQASMError('duration on user-defined gate')
-        if statement.arguments or len(statement.qubits) != len(definition.qubits):
-            raise WrongGateArityException(name, 0, len(definition.qubits),
+        if len(statement.arguments) != len(definition.parameters) or len(statement.qubits) != len(definition.qubits):
+            raise WrongGateArityException(name, len(definition.parameters), len(definition.qubits),
                                           len(statement.arguments), len(statement.qubits))
+        for argument in statement.arguments:
+            value_type, _ = self.__loop_expression_info(argument, iterators)
+            if value_type != ValueType.ANGLE:
+                raise UnsupportedOpenQASMError('user-defined gate parameters require angle-valued arguments')
         active = set(iterators or ()) | {key for scope in self.__loop_bindings for key in scope}
         for operand in statement.qubits:
             operand_name = self.__operand_name(operand)
@@ -4335,14 +4348,19 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         definition = self.__validate_basic_gate_call(statement)
         # Resolve all operands first so an invalid or aliased call emits nothing.
         physical = []
+        resolved = []
         for operand in statement.qubits:
-            indices, is_register = self.__flattened_qubit_operand(operand)
+            indices, is_register = self.__qubit_operand_indices(operand)
             if is_register or len(indices) != 1:
                 raise UnsupportedOpenQASMError('register broadcasting on user-defined gates')
-            physical.append(indices[0])
+            physical.append(self.__to_qubit_index(self.__operand_name(operand), indices[0]))
+            # Do not re-evaluate a caller's loop index while a gate parameter
+            # with the same name is in scope during body expansion.
+            resolved.append(dataclasses.replace(operand, indices=[[ast.IntegerLiteral(indices[0])]])
+                            if isinstance(operand, ast.IndexedIdentifier) else operand)
         if len(set(physical)) != len(physical):
             raise InvalidQubitOperandException('user-defined gate requires distinct qubit operands')
-        return definition, dict(zip(definition.qubits, statement.qubits))
+        return definition, dict(zip(definition.qubits, resolved))
 
     def __emit_basic_gate_call(self, statement: ast.QuantumGate) -> None:
         definition, bindings = self.__basic_gate_call_binding(statement)
@@ -4350,11 +4368,24 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise InvalidLoopRangeException('user-defined gate expansion exceeds work or nesting limit')
         # Each frame has its own bindings. Count the root and every expanded
         # operation, including calls to empty gates, even when no QCX is emitted.
-        stack = [(iter(definition.body), bindings)]
-        steps = 1
         output_start = len(self.__qcx_lines)
+        with contextlib.ExitStack() as captures:
+            parameters = {}
+            for name, argument in zip(definition.parameters, statement.arguments):
+                snapshot, angle_type = captures.enter_context(self.__captured_angle_bits(argument))
+                parameters[name] = _RuntimeIteratorBinding(snapshot, ValueType.ANGLE, angle_type=angle_type)
+            self.__expand_basic_gate_call(definition, bindings, parameters, output_start)
+
+    def __expand_basic_gate_call(
+            self, definition: _BasicGateDefinition, bindings: dict[str, ast.Identifier | ast.IndexedIdentifier],
+            parameters: dict[str, _RuntimeIteratorBinding], output_start: int) -> None:
+        stack = [(iter(definition.body), bindings, parameters)]
+        steps = 1
+        if (len(self.__qcx_lines) - output_start > self.MAX_GATE_DEFINITION_OUTPUT_LINES
+                or len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES):
+            raise InvalidLoopRangeException('user-defined gate expansion exceeds QCX output limit')
         while stack:
-            operations, current_bindings = stack[-1]
+            operations, current_bindings, current_parameters = stack[-1]
             operation = next(operations, None)
             if operation is None:
                 stack.pop()
@@ -4368,9 +4399,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if len(stack) >= self.MAX_GATE_DEFINITION_NESTING:
                     raise InvalidLoopRangeException('user-defined gate expansion exceeds nesting limit')
                 nested, nested_bindings = self.__basic_gate_call_binding(expanded)
-                stack.append((iter(nested.body), nested_bindings))
+                stack.append((iter(nested.body), nested_bindings, {}))
                 continue
-            self.visit(expanded)
+            self.__gate_angle_bindings.append(current_parameters)
+            try:
+                self.visit(expanded)
+            finally:
+                self.__gate_angle_bindings.pop()
             if (len(self.__qcx_lines) - output_start > self.MAX_GATE_DEFINITION_OUTPUT_LINES
                     or len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES):
                 raise InvalidLoopRangeException('user-defined gate expansion exceeds QCX output limit')
@@ -5484,6 +5519,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, expression: ast.Identifier, iterators: set[str] | dict[str, ValueType] | None
             ) -> tuple[ValueType, bool]:
         name = expression.name
+        if any(name in scope for scope in reversed(self.__gate_angle_bindings)):
+            return ValueType.ANGLE, True
         if iterators is not None and name in iterators:
             value_type = iterators[name] if isinstance(iterators, dict) else ValueType.INT
             # Non-INT collection iterators always refer to runtime element
@@ -9650,6 +9687,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if isinstance(source_type, ast.ArrayType) and isinstance(source_type.base_type, ast.AngleType):
                 return True
         if isinstance(expression, ast.Identifier):
+            if any(expression.name in scope for scope in reversed(self.__gate_angle_bindings)):
+                return True
             if iterators is not None and expression.name in iterators:
                 return isinstance(iterators, dict) and iterators[expression.name] == ValueType.ANGLE
             for scope in reversed(self.__loop_bindings):
@@ -11274,6 +11313,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
              self.__value_kind, self.__evaluate_constant) = previous
 
     def __identifier_angle_type(self, name: str) -> _AngleType | None:
+        for scope in reversed(self.__gate_angle_bindings):
+            if name in scope:
+                return scope[name].angle_type
         for scope in reversed(self.__loop_bindings):
             if name in scope:
                 binding = scope[name]
