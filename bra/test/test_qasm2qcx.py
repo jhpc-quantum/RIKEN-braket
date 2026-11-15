@@ -95,7 +95,7 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
                 'gate g(theta) theta {}',
                 'gate g(pi) a {}',
                 'include "stdgates.inc"; gate g(theta) a { p(theta/2) a; }',
-                'include "stdgates.inc"; gate g(theta) a { inv @ rz(theta) a; }',
+                'include "stdgates.inc"; gate g(theta) a { pow(2) @ rz(theta) a; }',
                 'include "stdgates.inc"; gate g(theta) a { pow(theta) @ p(pi) a; }',
                 'include "stdgates.inc"; gate g(theta) a { p(other) a; }'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -120,12 +120,18 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
         c = self.converter(source)
         self.assertEqual(len(c._QASM2QCXConverter__basic_gate_definitions['g'].body), 3)
 
+    def test_records_inverse_modifiers_on_angle_rotations(self):
+        source = ('include "stdgates.inc"; gate g(theta,phi) a,b,c '
+                  '{ inv @ rx(theta) a; inv @ inv @ cry(theta+phi) a,b; '
+                  'negctrl @ inv @ crz(-theta) a,b,c; }')
+        c = self.converter(source)
+        self.assertEqual(len(c._QASM2QCXConverter__basic_gate_definitions['g'].body), 3)
+
     def test_rejects_invalid_and_modified_angle_rotation_definitions(self):
         for body in ('crx(theta) a;', 'cry(theta) a,a;', 'crz(theta*theta) a,b;',
-                     'inv @ crx(theta) a,b;', 'ctrl @ inv @ rx(theta) a,b;',
                      'ctrl(0) @ rx(theta) a,b;', 'ctrl(2) @ rx(theta) a,b;',
                      'negctrl @ crx(theta) a,b;',
-                     'inv @ ry(theta) a;', 'pow(2) @ rz(theta) a;'):
+                     'pow(2) @ rz(theta) a;', 'ctrl @ inv @ pow(2) @ rx(theta) a,b;'):
             with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(f'include "stdgates.inc"; gate g(theta) a,b {{ {body} }}')
 
