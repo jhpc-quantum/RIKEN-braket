@@ -161,6 +161,24 @@ class AngleGateParameterCallTests(unittest.TestCase):
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
         self.assertEqual(converter._QASM2QCXConverter__gate_angle_bindings, [])
 
+    def test_forwarding_respects_nested_and_output_limits(self):
+        prefix = ('OPENQASM 3; include "stdgates.inc"; '
+                  'gate inner(x) q { p(x) q; } gate outer(x) q { inner(x+x) q; } '
+                  'qubit q; angle[3] a=pi/4; ')
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_GATE_DEFINITION_NESTING', 1), \
+                self.assertRaises(qasm2qcx.InvalidLoopRangeException):
+            convert(prefix + 'outer(a) q;')
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_GATE_DEFINITION_OUTPUT_LINES', 1), \
+                self.assertRaises(qasm2qcx.InvalidLoopRangeException):
+            convert(prefix + 'outer(a) q;')
+
+    def test_forwarded_gate_call_in_skipped_branch_is_validated(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; '
+                  'gate inner(x) q { p(x) q; } gate outer(x) q { inner(-x) q; } '
+                  'qubit q; float value=1.0; if (false) { outer(value) q; }')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            convert(source)
+
     def test_additive_expressions_use_captured_angles_and_promoted_width(self):
         source = ('OPENQASM 3; include "stdgates.inc"; '
                   'gate g(theta,phi) q { p(-(theta-phi)) q; } '

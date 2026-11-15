@@ -49,6 +49,22 @@ def main():
         p(theta+phi) a; cp(-theta) a,b; p(theta-phi) b; }
         qubit[5] q; angle[3] a=7*pi/4; angle[5] b=pi/2; h q[0]; h q[1];
         combined(a,b) q[0],q[1]; a=pi/2; combined(a,b) q[0],q[1];''', state)
+    state = [0j] * 32
+    state[0] = 1
+    for gate, parameters, qubits in (
+            ('h', (), (0,)), ('h', (), (1,)),
+            ('p', (math.pi / 4,), (0,)), ('cp', (math.pi / 2,), (0, 1)),
+            ('p', (math.pi / 4,), (1,)),
+            ('p', (3 * math.pi / 4,), (0,)), ('cp', (math.pi / 2,), (0, 1)),
+            ('p', (7 * math.pi / 4,), (1,))):
+        state = apply_gate(state, gate, parameters, qubits)
+    check_amplitudes(bra, '''gate inner(theta,phi) a,b {
+        p(theta) a; cp(phi) a,b; }
+        gate middle(phi,theta) a,b { inner(theta+phi,theta) a,b; p(-phi) b; }
+        gate outer(x,y) a,b { middle(x,y) a,b; }
+        qubit[5] q; angle[3] x=7*pi/4; angle[5] y=pi/2;
+        h q[0]; h q[1]; outer(x,y) q[0],q[1];
+        x=pi/4; outer(x,y) q[0],q[1];''', state)
     idle = [0j] * 32
     idle[0] = 1
     check_amplitudes(bra, '''gate g(theta) a { p(theta) a; } qubit[5] q;
