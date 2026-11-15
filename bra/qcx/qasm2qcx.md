@@ -7090,8 +7090,11 @@ iterator may select a qubit. Invalid calls are checked even in empty loop bodies
 
 ### Angle parameters in user-defined phase gates
 
-A user-defined gate can declare formal parameters that are used directly as
-parameters of the supported phase gates `p`, `phase`, `u1`, `cp`, and `cphase`.
+A user-defined gate can declare formal parameters that are used as parameters
+of the supported phase gates `p`, `phase`, `u1`, `cp`, and `cphase`.
+Each phase-gate argument can be a formal parameter or a nested expression using
+formal parameters with addition, subtraction, and unary negation. For example,
+`p(theta + phi) a;` and `cp(-(theta - phi)) a, b;` are supported.
 The actual arguments must be angle-valued expressions; numeric-to-angle
 promotion at a user-gate call is not yet supported.
 
@@ -7114,7 +7117,13 @@ angle-valued phase-gate path lowers each use, and the snapshots are released
 after expansion, including on errors. Parameter names may shadow caller names
 without changing the caller's qubit or iterator bindings.
 
-Formal parameters in arithmetic or other expressions, parameter forwarding to
+Additive expressions use the existing scalar angle rules: operands of different
+widths are widened to the wider width, and results wrap modulo one turn. The
+expression operands in this subset must all be formal angle parameters;
+literals, built-in constants, and other operations cannot be mixed into them.
+Definitions are validated even when they are never called.
+
+Other expressions involving formal parameters, parameter forwarding to
 user-defined gates, and formal angle parameters on non-phase gates remain
 unsupported. A parameterized gate may call a previously defined
 non-parameterized gate under the existing nested-gate restrictions.
@@ -10386,7 +10395,7 @@ against independent amplitudes, including reordered operands, controls, and `U`
 phase. It executes the documented example. Run with `--bra /path/to/bra`.
 
 `bra/test/qasm2qcx_user_gate_angle_parameters_numerical.py` checks scoped angle
-bindings, phase gates, multiple precisions, repeated calls, and skipped paths
+bindings, additive expressions, phase gates, multiple precisions, repeated calls, and skipped paths
 against independent amplitudes. It executes the documented example. Run with
 `--bra /path/to/bra`.
 

@@ -77,6 +77,18 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
         with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
             definition.parameters = ()
 
+    def test_records_additive_parameter_expressions(self):
+        c = self.converter('include "stdgates.inc"; gate g(theta,phi) a,b '
+                           '{ p(theta+phi) a; cp(-(theta-(-phi))) a,b; }')
+        self.assertEqual(len(c._QASM2QCXConverter__basic_gate_definitions['g'].body), 2)
+
+    def test_rejects_unsupported_parts_of_parameter_expressions(self):
+        for body in ('p(theta+other) a;', 'p(theta+1) a;', 'p(theta*pi) a;',
+                     'p(~theta) a;', 'rz(theta+theta) a;', 'p(theta+(phi/2)) a;'):
+            source = f'include "stdgates.inc"; gate g(theta,phi) a {{ {body} }}'
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(source)
+
     def test_rejects_unsupported_formal_uses_and_duplicate_names(self):
         for source in (
                 'gate g(theta,theta) a {}',
@@ -99,6 +111,32 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
 
 class AngleGateParameterCallTests(unittest.TestCase):
     prefix = 'OPENQASM 3; include "stdgates.inc"; gate g(theta) a { p(theta) a; } '
+
+    def test_additive_expressions_use_captured_angles_and_promoted_width(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; '
+                  'gate g(theta,phi) q { p(-(theta-phi)) q; } '
+                  'qubit q; angle[3] a=pi/4; angle[5] b=pi/2; g(a,b) q;')
+        lines = convert(source)
+        self.assertEqual(sum(line.startswith('R ') for line in lines), 5)
+        self.assertTrue(any('<<= 2' in line for line in lines))
+        self.assertTrue(any('-=' in line for line in lines))
+        self.assertTrue(any('&= 31' in line for line in lines))
+        self.assertEqual(sum(line.endswith(':= A1') for line in lines), 1)
+        self.assertEqual(sum(line.endswith(':= B1') for line in lines), 1)
+
+    def test_additive_expression_can_use_parameter_matching_caller_iterator(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; '
+                  'gate g(i) a { p(i+i) a; } qubit[2] q; angle[3] value=pi/4; '
+                  'for int i in [0:1] { g(value) q[i]; }')
+        lines = convert(source)
+        self.assertEqual(sum(line.startswith('R ') for line in lines), 6)
+
+    def test_additive_expression_in_skipped_call_still_checks_actuals(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; '
+                  'gate g(theta) a { p(theta+theta) a; } qubit q; '
+                  'float value=1.0; if (false) { g(value) q; }')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            convert(source)
 
     def test_requires_angle_arguments_and_matching_arity(self):
         declarations = 'qubit q; angle[8] value=pi/4; '
