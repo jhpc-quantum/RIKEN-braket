@@ -137,6 +137,23 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
 class AngleGateParameterCallTests(unittest.TestCase):
     prefix = 'OPENQASM 3; include "stdgates.inc"; gate g(theta) a { p(theta) a; } '
 
+    def test_angle_rotations_lower_direct_and_forwarded_expressions(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; '
+                  'gate inner(t) q { rx(t) q; ry(-t) q; rz(t+t) q; } '
+                  'gate outer(a) q { inner(a) q; } qubit q; angle[3] value=pi/4; '
+                  'outer(value) q; rx(value) q;')
+        lines = convert(source)
+        for mnemonic, count in (('EX ', 6), ('EY ', 3), ('EZ ', 3)):
+            self.assertEqual(sum(line.startswith(mnemonic) for line in lines), count)
+        self.assertTrue(any(':= :PI' in line for line in lines))
+
+    def test_angle_rotation_modifiers_are_rejected_even_in_skipped_loops(self):
+        prefix = 'OPENQASM 3; include "stdgates.inc"; qubit q; angle[3] a=pi/4; '
+        for statement in ('inv @ rx(a) q;', 'pow(0) @ ry(a) q;', 'ctrl @ rz(a) q,q;'):
+            for body in (statement, f'for int i in [1:0] {{ {statement} }}'):
+                with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert(prefix + body)
+
     def test_forwarded_parameters_preserve_frame_scopes_and_widths(self):
         source = ('OPENQASM 3; include "stdgates.inc"; '
                   'gate inner(phi,theta) q { p(phi) q; p(theta) q; } '
@@ -596,7 +613,7 @@ class ScalarAngleFoundationTests(unittest.TestCase):
         for target in ('int', 'uint', 'float', 'complex', 'bool', 'bit'):
             with self.subTest(target=target), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(f'angle[4] a; {target} out = a;')
-        for gate in ('rx(a) q;', 'U(a, 0, 0) q;'):
+        for gate in ('U(a, 0, 0) q;',):
             with self.subTest(gate=gate), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter('include "stdgates.inc"; qubit q; angle[4] a; ' + gate)
 
@@ -687,7 +704,7 @@ class ScalarAngleIntegrationTests(unittest.TestCase):
                   'out = a;', 'out = angle[4](0.1);', 'out = float(a);',
                   'out = a + a;', 'a = angle[1 - 1](0.1);', 'a = angle[MISSING](0.1);',
                   'a = angle[4](MISSING);', 'if (a) { out = 0.0; }',
-                  'rx(a) q;', 'pow(2) @ rx(a) q;', 'a = measure q;')
+                  'pow(2) @ rx(a) q;', 'a = measure q;')
         for wrapper in ('for int i in [1:0] {{ {} }}', 'while (false) {{ {} }}'):
             for body in bodies:
                 with self.subTest(wrapper=wrapper, body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -795,7 +812,7 @@ class ConstantAnglePhaseGateTests(unittest.TestCase):
             self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
 
     def test_unsupported_angle_gates_and_modifiers_are_not_silently_skipped(self):
-        for call in ('rx(A) q[0];', 'U(A, 0, 0) q[0];',
+        for call in ('U(A, 0, 0) q[0];',
                      'pow(0) @ rx(A) q[0];', 'pow(A) @ p(A) q[0];'):
             for wrapper in ('{}', 'for int i in [1:0] {{ {} }}', 'while (false) {{ {} }}'):
                 with self.subTest(call=call, wrapper=wrapper), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
@@ -899,7 +916,7 @@ class RuntimeAnglePhaseGateTests(unittest.TestCase):
             self.converter(self.prefix + wrapper.format('p(angle[4](1.0 / 0.0)) q;'))
             for body in ('p(angle[4](MISSING)) q;', 'p(angle[4](true)) q;',
                          'p(angle[1 - 1](0.1)) q;', 'p(angle[i](0.1)) q;',
-                         'rx(a) q[0];', 'cp(a) q[0], q[0];'):
+                         'cp(a) q[0], q[0];'):
                 with self.subTest(wrapper=wrapper, body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
                     self.converter(self.prefix + 'angle[4] a; ' + wrapper.format(body))
 
@@ -24182,7 +24199,7 @@ class AngleArrayLoopIntegrationTests(unittest.TestCase):
                   'result = value * value;', 'result = value + uint[4](1);',
                   'bits = bit[3](value);', 'number = value[0];',
                   'for int i in [0:value] {}', 'for angle[4] next in value {}',
-                  'rx(value) q;', 'pow(value) @ p(result) q;')
+                  'pow(value) @ p(result) q;')
         for body in bodies:
             for wrapper in ('for int outer in [1:0] {{ {} }}', 'if (false) {{ {} }}',
                             'while (false) {{ {} }}'):

@@ -3257,6 +3257,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         angle_parameter = self.__angle_phase_parameter(statement)
         if angle_parameter is not None:
+            if qasm_gate_name in self.angle_rotation_gates:
+                self.__emit_angle_rotation_gate(statement, angle_parameter, qcx_gate_name)
+                return
             if isinstance(info, _OrderedGateModifierInfo):
                 self.__emit_parameterized_phase_gate(statement, info, qcx_gate_name)
                 return
@@ -3373,7 +3376,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if not angle_arguments:
             return None
         if isinstance(statement, ast.QuantumGate) and statement.name.name not in self.angle_phase_gates:
-            raise UnsupportedOpenQASMError('angle-valued parameter on a non-phase gate')
+            if statement.name.name not in self.angle_rotation_gates:
+                raise UnsupportedOpenQASMError('angle-valued parameter on a non-phase gate')
+            if statement.modifiers:
+                raise UnsupportedOpenQASMError('modifiers on angle-valued rotation gates')
         if len(arguments) != 1:
             raise UnsupportedOpenQASMError('angle-valued phase gate requires one parameter')
         # Fractional powers operate on the whole exact angle, never on the
@@ -3382,6 +3388,26 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if isinstance(info, _OrderedGateModifierInfo):
             self.__angle_phase_descriptors(info)
         return angle_arguments[0]
+
+    def __emit_angle_rotation_gate(
+            self, statement: ast.QuantumGate, expression: ast.Expression, mnemonic: str) -> None:
+        # Each set bit contributes an angle in [0, 2*pi). EX/EY/EZ use
+        # exp(i*parameter*Pauli), so the corresponding parameter is
+        # -pi * 2**(bit-width). Preserve the bra REAL precision of :PI.
+        with self.__captured_angle_bits(expression) as (snapshot, angle_type):
+            scratch = self.__add_new_temporary_variable(ValueType.UINT)
+            parameter = self.__add_new_temporary_variable(ValueType.FLOAT)
+            prefix = self.__gate_power_label() + '_ANGLE_ROTATION'
+            for index, qubits in enumerate(self.__qubit_operand_tuples(statement.qubits)):
+                for bit in range(angle_type.width):
+                    skip = f'{prefix}_{index}_{bit}_SKIP'
+                    scale = -math.ldexp(1.0, bit - angle_type.width)
+                    self.__check_gate_power_output(7, None)
+                    self.__qcx_lines.extend([
+                        f'LET {scratch} := {snapshot}', f'LET {scratch} &= {1 << bit}',
+                        f'JUMPIF {skip} {scratch} == 0', f'LET {parameter} := :PI',
+                        f'LET {parameter} *= {scale!r}',
+                        f'{mnemonic} {" ".join(qubits)} {parameter}', f'@{skip}'])
 
     @classmethod
     def __angle_phase_descriptors(cls, info: _OrderedGateModifierInfo) -> tuple[str, ...]:
