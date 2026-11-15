@@ -112,6 +112,25 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
 class AngleGateParameterCallTests(unittest.TestCase):
     prefix = 'OPENQASM 3; include "stdgates.inc"; gate g(theta) a { p(theta) a; } '
 
+    def test_additive_expressions_use_captured_angles_and_promoted_width(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; '
+                  'gate g(theta,phi) q { p(-(theta-phi)) q; } '
+                  'qubit q; angle[3] a=pi/4; angle[5] b=pi/2; g(a,b) q;')
+        lines = convert(source)
+        self.assertEqual(sum(line.startswith('R ') for line in lines), 5)
+        self.assertTrue(any('<<= 2' in line for line in lines))
+        self.assertTrue(any('-=' in line for line in lines))
+        self.assertTrue(any('&= 31' in line for line in lines))
+        self.assertEqual(sum(line.endswith(':= A1') for line in lines), 1)
+        self.assertEqual(sum(line.endswith(':= B1') for line in lines), 1)
+
+    def test_additive_expression_can_use_parameter_matching_caller_iterator(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; '
+                  'gate g(i) a { p(i+i) a; } qubit[2] q; angle[3] value=pi/4; '
+                  'for int i in [0:1] { g(value) q[i]; }')
+        lines = convert(source)
+        self.assertEqual(sum(line.startswith('R ') for line in lines), 6)
+
     def test_requires_angle_arguments_and_matching_arity(self):
         declarations = 'qubit q; angle[8] value=pi/4; '
         for call in ('g q;', 'g(1.0) q;', 'g(value,value) q;'):
