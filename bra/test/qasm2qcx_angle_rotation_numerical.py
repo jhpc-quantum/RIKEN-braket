@@ -61,6 +61,24 @@ def main():
         state = apply_gate(state, 'crx', (math.pi / 2,), (control, target))
     check_amplitudes(bra, '''qubit[2] c; qubit[2] t; qubit spare;
         angle[3] a=pi/2; h c; crx(a) c,t;''', state)
+    for gate, base in (('crx', 'rx'), ('cry', 'ry'), ('crz', 'rz')):
+        for basis in (*range(8), None):
+            state = [0j] * 128
+            state[0 if basis is None else basis] = 1
+            if basis is None:
+                for qubit in (0, 1, 2):
+                    state = apply_gate(state, 'h', (), (qubit,))
+                preparation = 'h q[0]; h q[1]; h q[2];'
+            else:
+                preparation = ' '.join(f'x q[{qubit}];' for qubit in (0, 1, 2)
+                                       if basis & (1 << qubit))
+            state = apply_gate(state, 'h', (), (3,))
+            transformed = apply_gate(state, base, (7 * math.pi / 4,), (3,))
+            expected = [transformed[index] if index & 7 == 6 else value
+                        for index, value in enumerate(state)]
+            check_amplitudes(bra, f'''qubit[7] q; angle[3] a=7*pi/4;
+                {preparation} h q[3];
+                negctrl @ ctrl @ {gate}(a) q[0],q[1],q[2],q[3];''', expected)
 
 
 if __name__ == '__main__':
