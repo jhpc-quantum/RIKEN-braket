@@ -129,7 +129,8 @@ The converter currently covers:
 - scalar angle `rotl`, `rotr`, and `popcount`, preserving rotation widths and
   returning native UINT population counts;
 - scalar angle `sin`, `cos`, and `tan`, returning floating-point values;
-- unmodified `rx`, `ry`, `rz`, `crx`, `cry`, and `crz` with angle-valued parameters;
+- `rx`, `ry`, `rz`, `crx`, `cry`, and `crz` with angle-valued parameters
+  and optional `ctrl`/`negctrl` modifiers;
 - explicit same-width casts between scalar angles and bit-register expressions,
   preserving their exact stored bit patterns;
 - static bit indices, ranges, and sets on sized scalar angles and angle-array
@@ -6742,16 +6743,17 @@ errors rather than silently omitted.
 
 OpenQASM rotation angles are converted to the half-turn convention used by
 the QCX `EX`, `EY`, `EZ`, `CEX`, `CEY`, and `CEZ` operations.
-Unmodified `rx`, `ry`, `rz`, `crx`, `cry`, and `crz` also accept angle-valued
-expressions. For an
+The `rx`, `ry`, `rz`, `crx`, `cry`, and `crz` gates also accept angle-valued
+expressions, with optional `ctrl` and `negctrl` modifier chains. For an
 `angle[n]` with stored bits `k`, the rotation uses the representative
 `2*pi*k/2**n` in `[0, 2*pi)`. Each set bit contributes a QCX rotation using
 bra's `:PI` and an exact power-of-two scale. The argument is captured once
 and reused for register broadcasting. Contributions retain the complete
 rotation matrix, including its global phase; backend floating-point precision
-still applies. Controlled rotations require distinct control and target qubits,
-and their active-branch phase is preserved. Modifiers on angle-valued rotations
-are not yet supported.
+still applies. All control and target qubits must be distinct, and the
+active-branch phase is preserved. Added controls precede intrinsic controls;
+negative controls use the QCX `#0` operand suffix. `inv` and `pow` modifiers
+on angle-valued rotations are not yet supported.
 With a non-angle radian parameter, OpenQASM `gphase(angle)` is emitted as
 `PHASE angle`. Fixed-point angle parameters use the binary contributions
 described under [angle-valued global phase](#angle-valued-global-phase).
@@ -7103,7 +7105,8 @@ iterator may select a qubit. Invalid calls are checked even in empty loop bodies
 
 A user-defined gate can declare formal parameters that are used as parameters
 of the supported phase gates `p`, `phase`, `u1`, `cp`, and `cphase`, and the
-unmodified rotation gates `rx`, `ry`, `rz`, `crx`, `cry`, and `crz`.
+rotation gates `rx`, `ry`, `rz`, `crx`, `cry`, and `crz`, including control-only
+modifier chains.
 Each such gate argument can be a formal parameter or a nested expression using
 formal parameters with addition, subtraction, and unary negation. For example,
 `p(theta + phi) a;` and `cp(-(theta - phi)) a, b;` are supported.
@@ -9661,7 +9664,7 @@ The current prototype does not reliably support:
   iteration over angle-valued ranges/sets,
   narrowing angle-array iterators,
   numeric casts from angles, angle-valued gates outside
-  `p`/`phase`/`u1`/`cp`/`cphase`/`gphase` and unmodified
+  `p`/`phase`/`u1`/`cp`/`cphase`/`gphase` and
   `rx`/`ry`/`rz`/`crx`/`cry`/`crz`; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
 
@@ -10422,7 +10425,7 @@ against independent amplitudes, including reordered operands, controls, and `U`
 phase. It executes the documented example. Run with `--bra /path/to/bra`.
 
 `bra/test/qasm2qcx_angle_rotation_numerical.py` compares angle-valued rotations
-against independent matrices, including controlled rotations, control
+against independent matrices, including mixed control polarities, control
 superpositions, broadcasting, angles above pi, wraparound, and nested user-gate
 forwarding. Run with `--bra /path/to/bra`.
 

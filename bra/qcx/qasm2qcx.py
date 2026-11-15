@@ -3259,7 +3259,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         angle_parameter = self.__angle_phase_parameter(statement)
         if angle_parameter is not None:
             if qasm_gate_name in self.angle_rotation_gates | self.angle_controlled_rotation_gates:
-                self.__emit_angle_rotation_gate(statement, angle_parameter, qcx_gate_name)
+                self.__emit_angle_rotation_gate(statement, angle_parameter, qcx_gate_name, info)
                 return
             if isinstance(info, _OrderedGateModifierInfo):
                 self.__emit_parameterized_phase_gate(statement, info, qcx_gate_name)
@@ -3379,7 +3379,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if isinstance(statement, ast.QuantumGate) and statement.name.name not in self.angle_phase_gates:
             if statement.name.name not in self.angle_rotation_gates | self.angle_controlled_rotation_gates:
                 raise UnsupportedOpenQASMError('angle-valued parameter on a non-phase gate')
-            if statement.modifiers:
+            if any(modifier.modifier not in (ast.GateModifierName.ctrl, ast.GateModifierName.negctrl)
+                   for modifier in statement.modifiers):
                 raise UnsupportedOpenQASMError('modifiers on angle-valued rotation gates')
         if len(arguments) != 1:
             raise UnsupportedOpenQASMError('angle-valued phase gate requires one parameter')
@@ -3391,7 +3392,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return angle_arguments[0]
 
     def __emit_angle_rotation_gate(
-            self, statement: ast.QuantumGate, expression: ast.Expression, mnemonic: str) -> None:
+            self, statement: ast.QuantumGate, expression: ast.Expression, mnemonic: str,
+            info: _GateModifierInfo | _OrderedGateModifierInfo) -> None:
         # Each set bit contributes an angle in [0, 2*pi). EX/EY/EZ use
         # exp(i*parameter*Pauli), so the corresponding parameter is
         # -pi * 2**(bit-width). Preserve the bra REAL precision of :PI.
@@ -3399,8 +3401,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             scratch = self.__add_new_temporary_variable(ValueType.UINT)
             parameter = self.__add_new_temporary_variable(ValueType.FLOAT)
             prefix = self.__gate_power_label() + '_ANGLE_ROTATION'
+            added_controls = sum(count for _, count in info.controls)
+            gate = self.__controlled_gate_name(mnemonic, added_controls) if added_controls else mnemonic
             for index, qubits in enumerate(self.__qubit_operand_tuples(
-                    statement.qubits, distinct=statement.name.name in self.angle_controlled_rotation_gates)):
+                    statement.qubits, distinct=len(statement.qubits) > 1)):
+                operands = self.__condition_qubits(qubits[:added_controls], info.controls) + qubits[added_controls:]
                 for bit in range(angle_type.width):
                     skip = f'{prefix}_{index}_{bit}_SKIP'
                     scale = -math.ldexp(1.0, bit - angle_type.width)
@@ -3409,7 +3414,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                         f'LET {scratch} := {snapshot}', f'LET {scratch} &= {1 << bit}',
                         f'JUMPIF {skip} {scratch} == 0', f'LET {parameter} := :PI',
                         f'LET {parameter} *= {scale!r}',
-                        f'{mnemonic} {" ".join(qubits)} {parameter}', f'@{skip}'])
+                        f'{gate} {" ".join(operands)} {parameter}', f'@{skip}'])
 
     @classmethod
     def __angle_phase_descriptors(cls, info: _OrderedGateModifierInfo) -> tuple[str, ...]:
@@ -4311,7 +4316,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     if nested is not None or gate_name in self.angle_phase_gates:
                         continue
                     if gate_name in self.angle_rotation_gates | self.angle_controlled_rotation_gates:
-                        if child.modifiers:
+                        if any(modifier.modifier not in (ast.GateModifierName.ctrl, ast.GateModifierName.negctrl)
+                               for modifier in child.modifiers):
                             raise UnsupportedOpenQASMError('modifiers on angle-valued rotation gates')
                         continue
                 if nested is not None:
