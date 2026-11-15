@@ -153,6 +153,24 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
 class AngleGateParameterCallTests(unittest.TestCase):
     prefix = 'OPENQASM 3; include "stdgates.inc"; gate g(theta) a { p(theta) a; } '
 
+    def test_angle_rotation_control_chains_preserve_order_and_intrinsic_control(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; '
+                  'gate inner(t) a,b,c,d { negctrl @ ctrl @ crx(t) a,b,c,d; } '
+                  'gate outer(t) a,b,c,d { inner(t) a,b,c,d; } '
+                  'qubit[4] q; angle[3] value=pi/4; outer(value) q[0],q[1],q[2],q[3];')
+        lines = convert(source)
+        gates = [line for line in lines if line.startswith('C3EX ')]
+        self.assertEqual(len(gates), 3)
+        self.assertTrue(all(' 0#0 1 2 3 ' in line for line in gates))
+
+    def test_controlled_angle_rotation_rejects_invalid_chains_even_when_skipped(self):
+        prefix = 'OPENQASM 3; include "stdgates.inc"; qubit[3] q; angle[3] a=pi/4; '
+        for call in ('ctrl @ inv @ rx(a) q[0],q[1];', 'negctrl @ pow(2) @ rx(a) q[0],q[1];',
+                     'ctrl(0) @ rx(a) q[0],q[1];', 'ctrl @ rx(a) q[0],q[0];'):
+            for body in (call, f'for int i in [1:0] {{ {call} }}'):
+                with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert(prefix + body)
+
     def test_controlled_angle_rotations_lower_forwarded_expressions(self):
         source = ('OPENQASM 3; include "stdgates.inc"; '
                   'gate inner(t,u) a,b { crx(t+u) a,b; cry(-t) a,b; crz(u) a,b; } '
