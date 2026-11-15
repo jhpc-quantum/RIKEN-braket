@@ -4273,16 +4273,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise UnsupportedOpenQASMError('gate duration in gate definition')
             if nested is not None and child.modifiers:
                 raise UnsupportedOpenQASMError('modifiers on user-defined gates')
-            if nested is not None and nested.parameters:
-                raise UnsupportedOpenQASMError('parameter forwarding to user-defined gates')
             for modifier in child.modifiers:
                 if modifier.argument is not None and self.__loop_bound_names(modifier.argument) - {'pi', 'tau', 'euler'}:
                     raise UnsupportedOpenQASMError('nonlocal expression in gate definition')
             for argument in child.arguments:
                 names = self.__loop_bound_names(argument)
-                if (nested is None and gate_name in self.angle_phase_gates
+                if ((nested is not None or gate_name in self.angle_phase_gates)
                         and self.__is_gate_angle_additive_expression(argument, set(formal_parameters))):
                     continue
+                if nested is not None:
+                    raise UnsupportedOpenQASMError('user-defined gate forwarding requires additive formal angle expressions')
                 if names & set(formal_parameters):
                     raise UnsupportedOpenQASMError('gate parameter expression or forwarding')
                 if names - {'pi', 'tau', 'euler'}:
@@ -4291,7 +4291,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if value_type in (ValueType.BIT, ValueType.BOOL, ValueType.COMPLEX):
                     raise WrongParameterTypeException(value_type)
             if nested is not None:
-                parameters, qubits = 0, len(nested.qubits)
+                parameters, qubits = len(nested.parameters), len(nested.qubits)
             else:
                 info = self.__analyze_gate_modifiers(child.modifiers, allow_float=True)
                 parameters, qubits = self.gate_signatures[gate_name]

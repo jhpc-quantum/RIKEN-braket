@@ -97,9 +97,7 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
                 'include "stdgates.inc"; gate g(theta) a { p(theta/2) a; }',
                 'include "stdgates.inc"; gate g(theta) a { rz(theta) a; }',
                 'include "stdgates.inc"; gate g(theta) a { pow(theta) @ p(pi) a; }',
-                'include "stdgates.inc"; gate g(theta) a { p(other) a; }',
-                'include "stdgates.inc"; gate inner(theta) a { p(theta) a; } '
-                'gate outer(phi) a { inner(phi) a; }'):
+                'include "stdgates.inc"; gate g(theta) a { p(other) a; }'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(source)
 
@@ -107,6 +105,21 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
         source = ('OPENQASM 3; include "stdgates.inc"; gate g(theta) a { p(theta) a; } '
                   'qubit q; angle[8] value=pi/4; g(value) q;')
         self.assertTrue(any(line.startswith('R ') for line in convert(source)))
+
+    def test_definitions_accept_forwarded_formals_and_additive_expressions(self):
+        source = ('include "stdgates.inc"; gate inner(x,y) a { p(x) a; p(y) a; } '
+                  'gate outer(phi,delta) a { inner(phi,-(phi-delta)) a; } '
+                  'gate third(t,u) a { outer(u,t) a; }')
+        c = self.converter(source)
+        self.assertEqual(c._QASM2QCXConverter__basic_gate_definitions['outer'].parameters, ('phi', 'delta'))
+
+    def test_invalid_forwarded_arguments_are_rejected_in_unused_definitions(self):
+        prefix = 'include "stdgates.inc"; gate inner(x,y) a { p(x) a; p(y) a; } '
+        for call in ('inner(phi) a;', 'inner(phi,phi,phi) a;', 'inner(phi,other) a;',
+                     'inner(phi,phi*phi) a;', 'inner(phi,1) a;', 'inner(phi,pi) a;',
+                     'inv @ inner(phi,phi) a;'):
+            with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(prefix + f'gate outer(phi) a {{ {call} }}')
 
 
 class AngleGateParameterCallTests(unittest.TestCase):
