@@ -131,6 +131,13 @@ class AngleGateParameterCallTests(unittest.TestCase):
         lines = convert(source)
         self.assertEqual(sum(line.startswith('R ') for line in lines), 6)
 
+    def test_additive_expression_in_skipped_call_still_checks_actuals(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; '
+                  'gate g(theta) a { p(theta+theta) a; } qubit q; '
+                  'float value=1.0; if (false) { g(value) q; }')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            convert(source)
+
     def test_requires_angle_arguments_and_matching_arity(self):
         declarations = 'qubit q; angle[8] value=pi/4; '
         for call in ('g q;', 'g(1.0) q;', 'g(value,value) q;'):
