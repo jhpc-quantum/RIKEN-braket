@@ -129,6 +129,7 @@ The converter currently covers:
 - scalar angle `rotl`, `rotr`, and `popcount`, preserving rotation widths and
   returning native UINT population counts;
 - scalar angle `sin`, `cos`, and `tan`, returning floating-point values;
+- unmodified `rx`, `ry`, and `rz` with angle-valued parameters;
 - explicit same-width casts between scalar angles and bit-register expressions,
   preserving their exact stored bit patterns;
 - static bit indices, ranges, and sets on sized scalar angles and angle-array
@@ -6160,7 +6161,7 @@ explicit singleton indexing follow the shared rules below. Reads retain the
 array's element angle width and sizedness, including through nested expressions.
 Elements support existing scalar angle arithmetic, comparisons, bitwise
 operations, shifts, `rotl`/`rotr`/`popcount`, trigonometric functions, and supported
-casts. They can supply parameters to the supported angle-valued phase gates;
+casts. They can supply parameters to the supported angle-valued phase and rotation gates;
 trigonometric results can supply ordinary floating-point gate parameters.
 Elements cannot receive measurements or implicitly become numeric values.
 
@@ -6741,6 +6742,14 @@ errors rather than silently omitted.
 
 OpenQASM rotation angles are converted to the half-turn convention used by
 the QCX `EX`, `EY`, `EZ`, `CEX`, `CEY`, and `CEZ` operations.
+Unmodified `rx`, `ry`, and `rz` also accept angle-valued expressions. For an
+`angle[n]` with stored bits `k`, the rotation uses the representative
+`2*pi*k/2**n` in `[0, 2*pi)`. Each set bit contributes a QCX rotation using
+bra's `:PI` and an exact power-of-two scale. The argument is captured once
+and reused for register broadcasting. Contributions retain the complete
+rotation matrix, including its global phase; backend floating-point precision
+still applies. Controlled rotations and modifiers on angle-valued rotations
+are not yet supported.
 With a non-angle radian parameter, OpenQASM `gphase(angle)` is emitted as
 `PHASE angle`. Fixed-point angle parameters use the binary contributions
 described under [angle-valued global phase](#angle-valued-global-phase).
@@ -7088,11 +7097,12 @@ register broadcasting, and modifiers on user-defined calls remain unsupported.
 As elsewhere, runtime qubit indexing is unsupported; a statically expanded loop
 iterator may select a qubit. Invalid calls are checked even in empty loop bodies.
 
-### Angle parameters in user-defined phase gates
+### Angle parameters in user-defined gates
 
 A user-defined gate can declare formal parameters that are used as parameters
-of the supported phase gates `p`, `phase`, `u1`, `cp`, and `cphase`.
-Each phase-gate argument can be a formal parameter or a nested expression using
+of the supported phase gates `p`, `phase`, `u1`, `cp`, and `cphase`, and the
+unmodified rotation gates `rx`, `ry`, and `rz`.
+Each such gate argument can be a formal parameter or a nested expression using
 formal parameters with addition, subtraction, and unary negation. For example,
 `p(theta + phi) a;` and `cp(-(theta - phi)) a, b;` are supported.
 The actual arguments must be angle-valued expressions; numeric-to-angle
@@ -7113,7 +7123,7 @@ Each actual argument is evaluated and captured once per reached call, including
 unused parameters. Its resolved width and sizedness are preserved in a private
 gate-local binding; an unsized actual angle uses the converter's native UINT
 width. Multiple parameters and repeated uses are supported. The existing
-angle-valued phase-gate path lowers each use, and the snapshots are released
+appropriate angle-valued gate path lowers each use, and the snapshots are released
 after expansion, including on errors. Parameter names may shadow caller names
 without changing the caller's qubit or iterator bindings.
 
@@ -7140,7 +7150,7 @@ above; literals and built-in constants are not supported as nested user-gate
 arguments.
 
 Other expressions involving formal parameters and formal angle parameters on
-non-phase built-in gates remain unsupported.
+other built-in gates remain unsupported.
 
 ### Integer-power gate modifiers
 
@@ -9649,7 +9659,7 @@ The current prototype does not reliably support:
   iteration over angle-valued ranges/sets,
   narrowing angle-array iterators,
   numeric casts from angles, angle-valued gates outside
-  `p`/`phase`/`u1`/`cp`/`cphase`/`gphase`; or
+  `p`/`phase`/`u1`/`cp`/`cphase`/`gphase` and unmodified `rx`/`ry`/`rz`; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
 
 Integer limitations additionally include `uint[n]` widths above native `UINT`,
@@ -10407,6 +10417,10 @@ without partial output. Each numerical execution has a timeout.
 `bra/test/qasm2qcx_nested_user_gates_numerical.py` checks nested expansion
 against independent amplitudes, including reordered operands, controls, and `U`
 phase. It executes the documented example. Run with `--bra /path/to/bra`.
+
+`bra/test/qasm2qcx_angle_rotation_numerical.py` compares angle-valued rotations
+against independent matrices, including angles above pi, wraparound, and
+nested user-gate forwarding. Run with `--bra /path/to/bra`.
 
 `bra/test/qasm2qcx_user_gate_angle_parameters_numerical.py` checks scoped angle
 bindings, nested forwarding, additive expressions, phase gates, multiple
@@ -11407,6 +11421,7 @@ python3 bra/test/qasm2qcx_runtime_bit_range_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_bit_range_measurement_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_constant_scalar_bit_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_rotation_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_angle_rotation_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_u_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_inverse_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_control_numerical.py --bra bra/bin/bra
