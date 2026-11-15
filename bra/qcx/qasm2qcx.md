@@ -7040,7 +7040,7 @@ families use the `#0` operand suffix to select zero-controls.
 ### Basic user-defined gates
 
 The converter supports gate definitions containing calls to supported built-in
-gates or previously defined non-parameterized gates on unindexed formal qubits.
+gates or previously defined user gates on unindexed formal qubits.
 An initial angle-parameter subset is described below. The relevant built-in gate
 must be available when the definition appears: include `stdgates.inc` before a
 definition that uses its gates. Built-in calls in the body may use supported
@@ -7123,10 +7123,24 @@ expression operands in this subset must all be formal angle parameters;
 literals, built-in constants, and other operations cannot be mixed into them.
 Definitions are validated even when they are never called.
 
-Other expressions involving formal parameters, parameter forwarding to
-user-defined gates, and formal angle parameters on non-phase gates remain
-unsupported. A parameterized gate may call a previously defined
-non-parameterized gate under the existing nested-gate restrictions.
+A gate may forward its formal parameters or additive expressions of those
+parameters to a previously defined user gate:
+
+```qasm
+gate inner(theta) q { p(theta) q; }
+gate outer(phi, delta) q { inner(phi + delta) q; }
+```
+
+Nested arguments are evaluated in the caller's parameter scope and captured
+for the callee's expansion frame. Each frame has its own bindings, even when
+parameter names are reused; captured values are released on completion or
+error. The existing nested expansion limits also apply. Forwarded arguments
+in this subset must consist of formal parameters and the additive operators
+above; literals and built-in constants are not supported as nested user-gate
+arguments.
+
+Other expressions involving formal parameters and formal angle parameters on
+non-phase built-in gates remain unsupported.
 
 ### Integer-power gate modifiers
 
@@ -10395,7 +10409,8 @@ against independent amplitudes, including reordered operands, controls, and `U`
 phase. It executes the documented example. Run with `--bra /path/to/bra`.
 
 `bra/test/qasm2qcx_user_gate_angle_parameters_numerical.py` checks scoped angle
-bindings, additive expressions, phase gates, multiple precisions, repeated calls, and skipped paths
+bindings, nested forwarding, additive expressions, phase gates, multiple
+precisions, repeated calls, and skipped paths
 against independent amplitudes. It executes the documented example. Run with
 `--bra /path/to/bra`.
 

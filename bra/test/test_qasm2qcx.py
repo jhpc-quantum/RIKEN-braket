@@ -97,9 +97,7 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
                 'include "stdgates.inc"; gate g(theta) a { p(theta/2) a; }',
                 'include "stdgates.inc"; gate g(theta) a { rz(theta) a; }',
                 'include "stdgates.inc"; gate g(theta) a { pow(theta) @ p(pi) a; }',
-                'include "stdgates.inc"; gate g(theta) a { p(other) a; }',
-                'include "stdgates.inc"; gate inner(theta) a { p(theta) a; } '
-                'gate outer(phi) a { inner(phi) a; }'):
+                'include "stdgates.inc"; gate g(theta) a { p(other) a; }'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(source)
 
@@ -108,9 +106,78 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
                   'qubit q; angle[8] value=pi/4; g(value) q;')
         self.assertTrue(any(line.startswith('R ') for line in convert(source)))
 
+    def test_definitions_accept_forwarded_formals_and_additive_expressions(self):
+        source = ('include "stdgates.inc"; gate inner(x,y) a { p(x) a; p(y) a; } '
+                  'gate outer(phi,delta) a { inner(phi,-(phi-delta)) a; } '
+                  'gate third(t,u) a { outer(u,t) a; }')
+        c = self.converter(source)
+        self.assertEqual(c._QASM2QCXConverter__basic_gate_definitions['outer'].parameters, ('phi', 'delta'))
+
+    def test_invalid_forwarded_arguments_are_rejected_in_unused_definitions(self):
+        prefix = 'include "stdgates.inc"; gate inner(x,y) a { p(x) a; p(y) a; } '
+        for call in ('inner(phi) a;', 'inner(phi,phi,phi) a;', 'inner(phi,other) a;',
+                     'inner(phi,phi*phi) a;', 'inner(phi,1) a;', 'inner(phi,pi) a;',
+                     'inv @ inner(phi,phi) a;'):
+            with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter(prefix + f'gate outer(phi) a {{ {call} }}')
+
 
 class AngleGateParameterCallTests(unittest.TestCase):
     prefix = 'OPENQASM 3; include "stdgates.inc"; gate g(theta) a { p(theta) a; } '
+
+    def test_forwarded_parameters_preserve_frame_scopes_and_widths(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; '
+                  'gate inner(phi,theta) q { p(phi) q; p(theta) q; } '
+                  'gate middle(theta,phi) q { inner(phi,theta+phi) q; p(theta) q; } '
+                  'gate outer(x,y) q { middle(x,y) q; middle(y,x) q; } '
+                  'qubit q; angle[3] a=pi/4; angle[5] b=pi/2; outer(a,b) q;')
+        lines = convert(source)
+        self.assertEqual(sum(line.startswith('R ') for line in lines), 26)
+        self.assertTrue(any('<<= 2' in line for line in lines))
+
+    def test_forwarding_capture_failure_releases_nested_frames(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; '
+                  'gate inner(x,y) q { p(x) q; p(y) q; } '
+                  'gate outer(a,b) q { inner(a,b) q; } '
+                  'qubit q; angle[3] a=pi/4; angle[4] b=pi/2;')
+        program = qasm2qcx.openqasm3.parser.parse(source)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        capture = converter._QASM2QCXConverter__captured_angle_bits
+        calls = 0
+        @qasm2qcx.contextlib.contextmanager
+        def fail_nested(expression):
+            nonlocal calls
+            with capture(expression) as result:
+                calls += 1
+                if calls == 4:
+                    raise RuntimeError('nested capture failed')
+                yield result
+        call = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; outer(a,b) q;').statements[0]
+        with patch.object(converter, '_QASM2QCXConverter__captured_angle_bits', side_effect=fail_nested), \
+                self.assertRaisesRegex(RuntimeError, 'nested capture failed'):
+            converter.visit(call)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(converter._QASM2QCXConverter__gate_angle_bindings, [])
+
+    def test_forwarding_respects_nested_and_output_limits(self):
+        prefix = ('OPENQASM 3; include "stdgates.inc"; '
+                  'gate inner(x) q { p(x) q; } gate outer(x) q { inner(x+x) q; } '
+                  'qubit q; angle[3] a=pi/4; ')
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_GATE_DEFINITION_NESTING', 1), \
+                self.assertRaises(qasm2qcx.InvalidLoopRangeException):
+            convert(prefix + 'outer(a) q;')
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_GATE_DEFINITION_OUTPUT_LINES', 1), \
+                self.assertRaises(qasm2qcx.InvalidLoopRangeException):
+            convert(prefix + 'outer(a) q;')
+
+    def test_forwarded_gate_call_in_skipped_branch_is_validated(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; '
+                  'gate inner(x) q { p(x) q; } gate outer(x) q { inner(-x) q; } '
+                  'qubit q; float value=1.0; if (false) { outer(value) q; }')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            convert(source)
 
     def test_additive_expressions_use_captured_angles_and_promoted_width(self):
         source = ('OPENQASM 3; include "stdgates.inc"; '
