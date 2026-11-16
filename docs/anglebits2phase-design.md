@@ -31,11 +31,11 @@ floating  := [+-]?([0-9]+\.[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?
 exponent  := integer | floating
 ```
 
-**Planned extension for #611:** `HALF` and `NEG_HALF` select the positive
+**Extension for #611:** `HALF` and `NEG_HALF` select the positive
 and negative half-angle initial phase, respectively. The optional selector
 must occur once at most, before every `INV` or `POW`; it is not a modifier and
 does not count toward the modifier limit. A missing selector retains the
-existing full-angle behavior. These selector tokens are not implemented yet.
+existing full-angle behavior.
 For example:
 
 ```text
@@ -87,7 +87,7 @@ factor in this evaluator equals the corresponding integer.
 
 On a reached invocation, require `1 <= width <= native UINT bits` and
 `0 <= bits < 2^width`. Begin with the exact turn fraction `bits / 2^width`.
-Under the planned `HALF` or `NEG_HALF` selector, begin instead with
+Under the `HALF` or `NEG_HALF` selector, begin instead with
 `bits / 2^(width+1)` or `-bits / 2^(width+1)` turns, respectively. `width`
 still describes the input bits and may equal native UINT width; the extra
 denominator bit exists only in exact internal arithmetic. Select and

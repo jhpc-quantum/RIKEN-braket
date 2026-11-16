@@ -74,6 +74,11 @@ def cases(digits, min_exponent):
               ('POW', f'{5 ** 1075 * 10 - 1}e-1076'),
               ('POW', '1.00000000000000011102230246251565404236316680908203125'),
               ('POW', '1.00000000000000033306690738754696212708950042724609375')]
+    for width in (1, 2, 31, 32):
+        for bits in (0, 1, (1 << width) - 1):
+            for selector in ('HALF', 'NEG_HALF'):
+                for chain in ((), ('POW', '2', 'POW', '0.5'), ('INV', 'POW', '0.5')):
+                    yield bits, width, (selector,) + chain
     for width in range(1, 33):
         modulus = 1 << width
         for bits in sorted({0, 1, modulus // 2 - 1, modulus // 2, modulus // 2 + 1, modulus - 1}):
@@ -137,7 +142,11 @@ def check(executable):
     expected = []
     for bits, width, chain in samples:
         try:
-            phase = evaluate_turns(bits, width, decode_chain(chain), Limits(uint_width=32))
+            if chain and chain[0] in ('HALF', 'NEG_HALF'):
+                modifiers = (('INV',) if chain[0] == 'NEG_HALF' else ()) + chain[1:]
+                phase = evaluate_turns(bits, width + 1, decode_chain(modifiers), Limits(uint_width=33))
+            else:
+                phase = evaluate_turns(bits, width, decode_chain(chain), Limits(uint_width=32))
             expected.append(rounded_result(phase * tau, digits, min_exponent))
         except ValueError:
             expected.append(None)
