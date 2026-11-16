@@ -130,7 +130,7 @@ The converter currently covers:
   returning native UINT population counts;
 - scalar angle `sin`, `cos`, and `tan`, returning floating-point values;
 - `rx`, `ry`, `rz`, `crx`, `cry`, and `crz` with angle-valued parameters
-  and optional `inv`/`ctrl`/`negctrl` and integer `pow` modifiers;
+  and optional `inv`/`ctrl`/`negctrl`, integer `pow`, and constant floating `pow` modifiers;
 - explicit same-width casts between scalar angles and bit-register expressions,
   preserving their exact stored bit patterns;
 - static bit indices, ranges, and sets on sized scalar angles and angle-array
@@ -6744,10 +6744,10 @@ errors rather than silently omitted.
 OpenQASM rotation angles are converted to the half-turn convention used by
 the QCX `EX`, `EY`, `EZ`, `CEX`, `CEY`, and `CEZ` operations.
 The `rx`, `ry`, `rz`, `crx`, `cry`, and `crz` gates also accept angle-valued
-expressions, with optional `inv`, `ctrl`, `negctrl`, and integer `pow`
+expressions, with optional `inv`, `ctrl`, `negctrl`, and `pow`
 modifier chains. For an
 `angle[n]` with stored bits `k`, the rotation uses the representative
-`2*pi*k/2**n` in `[0, 2*pi)`. Each set bit contributes a QCX rotation using
+`2*pi*k/2**n` in `[0, 2*pi)`. In integer-only chains, each set bit contributes a QCX rotation using
 bra's `:PI` and an exact power-of-two scale. The argument is captured once
 and reused for register broadcasting. Contributions retain the complete
 rotation matrix, including its global phase; backend floating-point precision
@@ -6761,8 +6761,17 @@ Integer powers preserve the rotation matrix's `4*pi` period, including
 the sign from a `2*pi` turn. The converter retains that turn bit without a
 wider native UINT, including for angles at native width. Runtime `int` and
 `uint` factors are captured and multiplied modulo the rotation period with
-unsigned shift-and-add, retaining carries into the turn bit. Floating-point
-`pow` modifiers on angle-valued rotations are not yet supported.
+unsigned shift-and-add, retaining carries into the turn bit.
+
+Finite compile-time floating-point powers select the spectral path, even for
+`0.0` or `2.0`. The captured angle bits are evaluated twice with bra's
+`ANGLEBITS2PHASE` `NEG_HALF` and `HALF` selectors, one for each rotation
+eigenphase. Each evaluator applies the complete modifier chain in evaluation
+order and selects the principal phase exactly before each power. The resulting
+phases are applied separately, retaining global and controlled relative phase.
+This requires a bra version with the half-angle selectors. Integer factors in
+the same chain remain exact; runtime floating exponents and chains mixing a
+floating power with a runtime integer exponent remain unsupported.
 With a non-angle radian parameter, OpenQASM `gphase(angle)` is emitted as
 `PHASE angle`. Fixed-point angle parameters use the binary contributions
 described under [angle-valued global phase](#angle-valued-global-phase).
@@ -7115,7 +7124,7 @@ iterator may select a qubit. Invalid calls are checked even in empty loop bodies
 A user-defined gate can declare formal parameters that are used as parameters
 of the supported phase gates `p`, `phase`, `u1`, `cp`, and `cphase`, and the
 rotation gates `rx`, `ry`, `rz`, `crx`, `cry`, and `crz`, including inverse,
-control, and constant integer power modifier chains.
+control, and constant integer or floating-point power modifier chains.
 Each such gate argument can be a formal parameter or a nested expression using
 formal parameters with addition, subtraction, and unary negation. For example,
 `p(theta + phi) a;` and `cp(-(theta - phi)) a, b;` are supported.
@@ -10435,7 +10444,7 @@ phase. It executes the documented example. Run with `--bra /path/to/bra`.
 
 `bra/test/qasm2qcx_angle_rotation_numerical.py` compares angle-valued rotations
 against independent matrices, including inverse rotations, constant and runtime
-integer powers, native-width angles, mixed control polarities, control superpositions,
+integer powers, floating powers, native-width angles, mixed control polarities, control superpositions,
 broadcasting, angles above pi, wraparound, and nested user-gate forwarding.
 Run with `--bra /path/to/bra`.
 
