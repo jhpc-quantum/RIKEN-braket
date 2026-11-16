@@ -4558,11 +4558,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __emit_basic_gate_call(self, statement: ast.QuantumGate) -> None:
         definition = self.__validate_basic_gate_call(statement)
-        if any(isinstance(operand, ast.IndexedIdentifier)
-               and (isinstance(operand.indices[0], ast.DiscreteSet)
-                    or isinstance(operand.indices[0][0], ast.RangeDefinition))
-               for operand in statement.qubits):
-            raise UnsupportedOpenQASMError('register selection on user-defined gates')
         if self.MAX_GATE_DEFINITION_NESTING < 1 or self.MAX_GATE_DEFINITION_EXPANSION_STEPS < 1:
             raise InvalidLoopRangeException('user-defined gate expansion exceeds work or nesting limit')
         operands = [self.__qubit_operand_indices(operand) for operand in statement.qubits]
@@ -4579,7 +4574,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 selected = indices[index] if is_register else indices[0]
                 physical.append(self.__to_qubit_index(self.__operand_name(operand), selected))
                 if is_register:
-                    resolved.append(ast.IndexedIdentifier(operand, [[ast.IntegerLiteral(selected)]]))
+                    name = operand.name if isinstance(operand, ast.IndexedIdentifier) else operand
+                    resolved.append(ast.IndexedIdentifier(name, [[ast.IntegerLiteral(selected)]]))
                 elif isinstance(operand, ast.IndexedIdentifier):
                     resolved.append(dataclasses.replace(operand, indices=[[ast.IntegerLiteral(selected)]]))
                 else:

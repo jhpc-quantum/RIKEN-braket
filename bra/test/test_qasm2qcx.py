@@ -656,6 +656,23 @@ class NestedGateCallTests(unittest.TestCase):
 class BasicGateCallTests(unittest.TestCase):
     prefix = 'OPENQASM 3; include "stdgates.inc"; '
 
+    def test_static_selection_broadcast_matches_scalar_calls(self):
+        defined = ('gate flip a { x a; } gate pair a,b { cx a,b; } '
+                   'qubit[4] q; qubit[2] r; qubit t; '
+                   'flip q[3:-1:1]; flip q[{3,0}]; flip q[1:1]; '
+                   'pair q[{3,1}],r; pair t,q[2:3];')
+        inline = ('qubit[4] q; qubit[2] r; qubit t; '
+                  'x q[3]; x q[2]; x q[1]; x q[3]; x q[0]; x q[1]; '
+                  'cx q[3],r[0]; cx q[1],r[1]; cx t,q[2]; cx t,q[3];')
+        self.assertEqual(convert(self.prefix + defined), convert(self.prefix + inline))
+
+    def test_selected_nested_broadcast_captures_argument_once(self):
+        source = ('gate inner(t) a { p(t) a; } gate outer(t) a { inner(t) a; } '
+                  'qubit[4] q; angle[3] a=pi/4; outer(a) q[{3,1}];')
+        lines = convert(self.prefix + source)
+        self.assertEqual(sum(line.endswith(':= A1') for line in lines), 1)
+        self.assertEqual(sum(line.startswith('R ') for line in lines), 6)
+
     def test_skipped_static_qubit_selections_are_validated(self):
         definition = ('gate pair a,b { cx a,b; } qubit[4] q; qubit[2] r; qubit t; ')
         for call in ('pair q[0:1],r;', 'pair q[{3,1}],r;', 'pair t,q[3:-1:2];',
@@ -782,9 +799,9 @@ class BasicGateCallTests(unittest.TestCase):
         self.assertEqual(convert(self.prefix + definition + 'int stop=1; for int i in [0:stop] { flip q[0]; }'),
                          convert(self.prefix + 'qubit[2] q; int stop=1; for int i in [0:stop] { x q[0]; }'))
 
-    def test_register_selections_and_invalid_names_are_rejected(self):
+    def test_invalid_register_selections_and_names_are_rejected(self):
         definition = 'gate flip a { x a; } qubit[2] q; '
-        for call in ('flip q[0:0];', 'flip q[{0}];', 'flip missing;', 'flip q[2];', 'flip q[true];'):
+        for call in ('flip q[0:2];', 'flip q[{2}];', 'flip missing;', 'flip q[2];', 'flip q[true];'):
             with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert(self.prefix + definition + call)
         with self.assertRaises(qasm2qcx.QASM2QCXError):
