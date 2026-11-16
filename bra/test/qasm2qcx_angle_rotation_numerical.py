@@ -47,6 +47,19 @@ def main():
     state = apply_gate(state, 'crz', (2 * math.pi,), (0, 1))
     check_amplitudes(bra, f'''qubit[5] q; angle[{width}] a=pi; h q[0];
         pow(2) @ crz(a) q[0],q[1];''', state)
+    for exponent in (-3, 0, 2, 5):
+        state = [0j] * 32
+        state[0] = 1
+        state = apply_gate(state, 'h', (), (0,))
+        state = apply_gate(state, 'crx', ((exponent % 16) * math.pi / 4,), (0, 1))
+        check_amplitudes(bra, f'''qubit[5] q; angle[3] a=pi/4; int k={exponent};
+            h q[0]; pow(k) @ crx(a) q[0],q[1];''', state)
+    state = [0j] * 32
+    state[0] = 1
+    state = apply_gate(state, 'h', (), (0,))
+    state = apply_gate(state, 'crz', (2 * math.pi,), (0, 1))
+    check_amplitudes(bra, f'''qubit[5] q; angle[{width}] a=pi; int k=2;
+        h q[0]; pow(k) @ crz(a) q[0],q[1];''', state)
     state = [0j] * 64
     state[0] = 1
     for qubit in (0, 1, 2):

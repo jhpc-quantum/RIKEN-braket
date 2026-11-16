@@ -189,11 +189,11 @@ class AngleGateParameterCallTests(unittest.TestCase):
             with self.subTest(exponent=exponent), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert(prefix + f'for int i in [1:0] {{ pow({exponent}) @ rx(a) q; }}')
 
-    def test_runtime_angle_rotation_power_is_gated_until_lowered(self):
+    def test_runtime_angle_rotation_power_is_lowered(self):
         source = ('OPENQASM 3; include "stdgates.inc"; qubit q; angle[3] a=pi; '
                   'int k=2; pow(k) @ rx(a) q;')
-        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
-            convert(source)
+        lines = convert(source)
+        self.assertTrue(any(line.startswith('EX ') for line in lines))
 
     def test_rotation_power_limits_and_failure_cleanup(self):
         prefix = ('OPENQASM 3; include "stdgates.inc"; qubit[2] q; angle[3] a=pi/4; ')

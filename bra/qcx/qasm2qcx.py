@@ -3259,9 +3259,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         angle_parameter = self.__angle_phase_parameter(statement)
         if angle_parameter is not None:
             if qasm_gate_name in self.angle_rotation_gates | self.angle_controlled_rotation_gates:
-                if runtime is not None:
-                    raise UnsupportedOpenQASMError('runtime integer power on angle-valued rotation gates')
-                self.__emit_angle_rotation_gate(statement, angle_parameter, qcx_gate_name, info)
+                self.__emit_angle_rotation_gate(statement, angle_parameter, qcx_gate_name, info, runtime)
                 return
             if isinstance(info, _OrderedGateModifierInfo):
                 self.__emit_parameterized_phase_gate(statement, info, qcx_gate_name)
@@ -3398,7 +3396,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __emit_angle_rotation_gate(
             self, statement: ast.QuantumGate, expression: ast.Expression, mnemonic: str,
-            info: _GateModifierInfo | _OrderedGateModifierInfo) -> None:
+            info: _GateModifierInfo, runtime: _RuntimeGatePower | None) -> None:
         # Rotation matrices have a 4*pi period. For each input bit, reduce
         # its powered contribution modulo 2**(width+1), keeping the extra
         # turn bit even when width equals native UINT width. Decompose that
@@ -3412,6 +3410,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__check_gate_power_output(0, output_start)
             added_controls = sum(count for _, count in info.controls)
             gate = self.__controlled_gate_name(mnemonic, added_controls) if added_controls else mnemonic
+            if runtime is not None:
+                self.__emit_runtime_angle_rotation_power(
+                    statement, snapshot, angle_type, info, runtime, gate, scratch, parameter, prefix, output_start)
+                return
             for index, qubits in enumerate(self.__qubit_operand_tuples(
                     statement.qubits, distinct=len(statement.qubits) > 1)):
                 operands = self.__condition_qubits(qubits[:added_controls], info.controls) + qubits[added_controls:]
@@ -3432,6 +3434,63 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                                                     f'LET {parameter} *= {scale!r}',
                                                     f'{gate} {" ".join(operands)} {parameter}'])
                     self.__qcx_lines.append(f'@{skip}')
+
+    def __emit_runtime_angle_rotation_power(
+            self, statement: ast.QuantumGate, snapshot: str, angle_type: _AngleType,
+            info: _GateModifierInfo, runtime: _RuntimeGatePower, gate: str, scratch: str,
+            parameter: str, prefix: str, output_start: int | None) -> None:
+        # A product modulo 2**(n+1) is stored as n low bits and one turn bit.
+        # The turn bit is the parity of all partial products at position n,
+        # including the previous turn times the factor's low bit. This avoids
+        # requiring a native UINT wider than n when n is the native width.
+        width = angle_type.width
+        turn = self.__add_new_temporary_variable(ValueType.UINT)
+        original = self.__add_new_temporary_variable(ValueType.UINT)
+        factor_bit = self.__add_new_temporary_variable(ValueType.UINT)
+        self.__qcx_lines.append(f'LET {turn} := 0')
+        constant = abs(info.power)
+        factors = [(str(constant & self.QCX_UINT_MAX), (constant >> width) & 1)]
+        factors.extend((factor, None) for factor in runtime.magnitudes)
+        for factor_index, (factor, constant_high) in enumerate(factors):
+            self.__check_gate_power_output(3, output_start)
+            self.__qcx_lines.extend([f'LET {original} := {snapshot}',
+                                    f'LET {turn} &= {factor}', f'LET {turn} &= 1'])
+            for bit in range(width):
+                other = width - bit
+                if other >= self.QCX_UINT_WIDTH and constant_high is None:
+                    continue
+                if other >= self.QCX_UINT_WIDTH and not constant_high:
+                    continue
+                skip = f'{prefix}_MUL_{factor_index}_{bit}_SKIP'
+                lines = [f'LET {scratch} := {original}', f'LET {scratch} &= {1 << bit}',
+                         f'JUMPIF {skip} {scratch} == 0']
+                if other < self.QCX_UINT_WIDTH:
+                    lines.extend([f'LET {factor_bit} := {factor}', f'LET {factor_bit} &= {1 << other}',
+                                  f'JUMPIF {skip} {factor_bit} == 0'])
+                lines.extend([f'LET {turn} ^= 1', f'@{skip}'])
+                self.__check_gate_power_output(len(lines), output_start)
+                self.__qcx_lines.extend(lines)
+            self.__check_gate_power_output(2, output_start)
+            self.__qcx_lines.extend([f'LET {snapshot} *= {factor}', f'LET {snapshot} &= {angle_type.mask}'])
+        for index, qubits in enumerate(self.__qubit_operand_tuples(
+                statement.qubits, distinct=len(statement.qubits) > 1)):
+            added = sum(count for _, count in info.controls)
+            operands = self.__condition_qubits(qubits[:added], info.controls) + qubits[added:]
+            for bit in range(width + 1):
+                skip = f'{prefix}_{index}_{bit}_SKIP'
+                source = turn if bit == width else snapshot
+                mask = 1 if bit == width else 1 << bit
+                scale = math.ldexp(1.0 if info.power < 0 else -1.0, bit - width)
+                lines = [f'LET {scratch} := {source}', f'LET {scratch} &= {mask}',
+                         f'JUMPIF {skip} {scratch} == 0', f'LET {parameter} := :PI',
+                         f'LET {parameter} *= {scale!r}']
+                if runtime.signed_exponent is not None:
+                    sign_ready = f'{prefix}_{index}_{bit}_SIGN_READY'
+                    lines.extend([f'JUMPIF {sign_ready} {runtime.signed_exponent} == 0',
+                                  f'LET {parameter} *= -1.0', f'@{sign_ready}'])
+                lines.extend([f'{gate} {" ".join(operands)} {parameter}', f'@{skip}'])
+                self.__check_gate_power_output(len(lines), output_start)
+                self.__qcx_lines.extend(lines)
 
     @classmethod
     def __angle_phase_descriptors(cls, info: _OrderedGateModifierInfo) -> tuple[str, ...]:
