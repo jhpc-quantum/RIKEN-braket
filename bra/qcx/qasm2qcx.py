@@ -3259,7 +3259,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         angle_parameter = self.__angle_phase_parameter(statement)
         if angle_parameter is not None:
             if qasm_gate_name in self.angle_rotation_gates | self.angle_controlled_rotation_gates:
-                self.__emit_angle_rotation_gate(statement, angle_parameter, qcx_gate_name, info, runtime)
+                if isinstance(info, _OrderedGateModifierInfo):
+                    self.__emit_floating_rotation_gate(statement, info, qcx_gate_name)
+                else:
+                    self.__emit_angle_rotation_gate(statement, angle_parameter, qcx_gate_name, info, runtime)
                 return
             if isinstance(info, _OrderedGateModifierInfo):
                 self.__emit_parameterized_phase_gate(statement, info, qcx_gate_name)
@@ -3381,7 +3384,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise UnsupportedOpenQASMError('angle-valued parameter on a non-phase gate')
             for modifier in statement.modifiers:
                 if modifier.modifier == ast.GateModifierName.pow:
-                    self.__power_modifier_exponent(modifier, iterators, allow_runtime=True)
+                    self.__power_modifier_exponent(modifier, iterators, allow_runtime=True, allow_float=True)
                 elif modifier.modifier not in (ast.GateModifierName.ctrl, ast.GateModifierName.negctrl,
                                                ast.GateModifierName.inv):
                     raise UnsupportedOpenQASMError('modifiers on angle-valued rotation gates')
@@ -3993,6 +3996,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     @contextlib.contextmanager
     def __powered_rotation_angles(
             self, expression: ast.Expression, info: _OrderedGateModifierInfo) -> Iterator[tuple[str, str]]:
+        if (self.__expression_mentions_angle(expression)
+                and self.__angle_operand_info(expression)[0] == ValueType.ANGLE):
+            descriptors = self.__angle_phase_descriptors(info)
+            with self.__captured_angle_bits(expression) as (snapshot, angle_type):
+                plus = self.__add_new_temporary_variable(ValueType.FLOAT)
+                minus = self.__add_new_temporary_variable(ValueType.FLOAT)
+                for destination, selector in ((plus, 'NEG_HALF'), (minus, 'HALF')):
+                    self.__qcx_lines.append(
+                        f'APPLY {destination} <- ANGLEBITS2PHASE {snapshot} {angle_type.width} '
+                        f'{selector} {" ".join(descriptors)}')
+                yield plus, minus
+            return
         factors = self.__phase_power_factors(info)
         # The shared context snapshots and checks theta before it is halved,
         # preserving the source and the caller's expression/temporary state.

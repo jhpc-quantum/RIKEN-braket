@@ -44,6 +44,9 @@ def main():
     state = [0j] * 32
     state[0] = 1
     state = apply_gate(state, 'h', (), (0,))
+    expected = [1j * amplitude for amplitude in state]
+    check_amplitudes(bra, '''qubit[5] q; angle[3] a=pi; h q[0];
+        pow(0.5) @ pow(2) @ rx(a) q[0];''', expected)
     state = apply_gate(state, 'crz', (2 * math.pi,), (0, 1))
     check_amplitudes(bra, f'''qubit[5] q; angle[{width}] a=pi; h q[0];
         pow(2) @ crz(a) q[0],q[1];''', state)
