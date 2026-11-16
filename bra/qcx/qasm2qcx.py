@@ -4483,6 +4483,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if value_type != ValueType.ANGLE:
                 raise UnsupportedOpenQASMError('user-defined gate parameters require angle-valued arguments')
         active = set(iterators or ()) | {key for scope in self.__loop_bindings for key in scope}
+        register_sizes = set()
         for operand in statement.qubits:
             operand_name = self.__operand_name(operand)
             declared = (self.__quantum_registers if self.__is_initialization_process
@@ -4491,7 +4492,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise InvalidQubitOperandException(f'{operand_name} is not a declared qubit operand')
             if isinstance(operand, ast.Identifier):
                 if operand_name in self.__sized_quantum_registers:
-                    raise UnsupportedOpenQASMError('register broadcasting on user-defined gates')
+                    register_sizes.add(self.__quantum_registers[operand_name])
             elif (len(operand.indices) != 1 or not isinstance(operand.indices[0], list)
                   or len(operand.indices[0]) != 1
                   or isinstance(operand.indices[0][0], (ast.RangeDefinition, ast.DiscreteSet))):
@@ -4506,13 +4507,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                         or any(isinstance(scope.get(name), _RuntimeIteratorBinding)
                                for scope in self.__loop_bindings for name in names)):
                     raise UnsupportedOpenQASMError('runtime qubit index on user-defined gate')
+        if len(register_sizes) > 1:
+            raise WrongBroadcastingException
         if (not self.__is_initialization_process
                 and all(isinstance(operand, ast.Identifier)
                         or self.__is_literal_qubit_selector(operand.indices[0][0])
                         for operand in statement.qubits)):
-            physical = [self.__flattened_qubit_operand(operand)[0][0] for operand in statement.qubits]
-            if len(set(physical)) != len(physical):
-                raise InvalidQubitOperandException('user-defined gate requires distinct qubit operands')
+            for _ in self.__qubit_operand_tuples(statement.qubits, distinct=True):
+                pass
         return definition
 
     def __basic_gate_call_binding(
@@ -4536,9 +4538,31 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return definition, dict(zip(definition.qubits, resolved))
 
     def __emit_basic_gate_call(self, statement: ast.QuantumGate) -> None:
-        definition, bindings = self.__basic_gate_call_binding(statement)
+        definition = self.__validate_basic_gate_call(statement)
         if self.MAX_GATE_DEFINITION_NESTING < 1 or self.MAX_GATE_DEFINITION_EXPANSION_STEPS < 1:
             raise InvalidLoopRangeException('user-defined gate expansion exceeds work or nesting limit')
+        operands = [self.__qubit_operand_indices(operand) for operand in statement.qubits]
+        sizes = {len(indices) for indices, is_register in operands if is_register}
+        if len(sizes) > 1:
+            raise WrongBroadcastingException
+        count = next(iter(sizes)) if sizes else 1
+        if count > self.MAX_GATE_DEFINITION_EXPANSION_STEPS:
+            raise InvalidLoopRangeException('user-defined gate expansion exceeds work limit')
+        all_bindings = []
+        for index in range(count):
+            resolved, physical = [], []
+            for operand, (indices, is_register) in zip(statement.qubits, operands):
+                selected = indices[index] if is_register else indices[0]
+                physical.append(self.__to_qubit_index(self.__operand_name(operand), selected))
+                if is_register:
+                    resolved.append(ast.IndexedIdentifier(operand, [[ast.IntegerLiteral(selected)]]))
+                elif isinstance(operand, ast.IndexedIdentifier):
+                    resolved.append(dataclasses.replace(operand, indices=[[ast.IntegerLiteral(selected)]]))
+                else:
+                    resolved.append(operand)
+            if len(set(physical)) != len(physical):
+                raise InvalidQubitOperandException('user-defined gate requires distinct qubit operands')
+            all_bindings.append(dict(zip(definition.qubits, resolved)))
         # Each frame has its own bindings. Count the root and every expanded
         # operation, including calls to empty gates, even when no QCX is emitted.
         output_start = len(self.__qcx_lines)
@@ -4547,13 +4571,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             for name, argument in zip(definition.parameters, statement.arguments):
                 snapshot, angle_type = captures.enter_context(self.__captured_angle_bits(argument))
                 parameters[name] = _RuntimeIteratorBinding(snapshot, ValueType.ANGLE, angle_type=angle_type)
-            self.__expand_basic_gate_call(definition, bindings, parameters, output_start)
+            steps = 0
+            for bindings in all_bindings:
+                steps = self.__expand_basic_gate_call(definition, bindings, parameters, output_start, steps)
 
     def __expand_basic_gate_call(
             self, definition: _BasicGateDefinition, bindings: dict[str, ast.Identifier | ast.IndexedIdentifier],
-            parameters: dict[str, _RuntimeIteratorBinding], output_start: int) -> None:
+            parameters: dict[str, _RuntimeIteratorBinding], output_start: int, steps: int = 0) -> int:
         stack = [(iter(definition.body), bindings, parameters, None)]
-        steps = 1
+        steps += 1
+        if steps > self.MAX_GATE_DEFINITION_EXPANSION_STEPS:
+            raise InvalidLoopRangeException('user-defined gate expansion exceeds work limit')
         if (len(self.__qcx_lines) - output_start > self.MAX_GATE_DEFINITION_OUTPUT_LINES
                 or len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES):
             raise InvalidLoopRangeException('user-defined gate expansion exceeds QCX output limit')
@@ -4595,6 +4623,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             for _, _, _, captures in reversed(stack):
                 if captures is not None:
                     captures.close()
+        return steps
 
     def visit_QuantumMeasurementStatement(
             self, statement: ast.QuantumMeasurementStatement) -> None:
