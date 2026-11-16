@@ -130,7 +130,7 @@ The converter currently covers:
   returning native UINT population counts;
 - scalar angle `sin`, `cos`, and `tan`, returning floating-point values;
 - `rx`, `ry`, `rz`, `crx`, `cry`, and `crz` with angle-valued parameters
-  and optional `inv`/`ctrl`/`negctrl` and constant integer `pow` modifiers;
+  and optional `inv`/`ctrl`/`negctrl` and integer `pow` modifiers;
 - explicit same-width casts between scalar angles and bit-register expressions,
   preserving their exact stored bit patterns;
 - static bit indices, ranges, and sets on sized scalar angles and angle-array
@@ -6744,7 +6744,7 @@ errors rather than silently omitted.
 OpenQASM rotation angles are converted to the half-turn convention used by
 the QCX `EX`, `EY`, `EZ`, `CEX`, `CEY`, and `CEZ` operations.
 The `rx`, `ry`, `rz`, `crx`, `cry`, and `crz` gates also accept angle-valued
-expressions, with optional `inv`, `ctrl`, `negctrl`, and constant integer `pow`
+expressions, with optional `inv`, `ctrl`, `negctrl`, and integer `pow`
 modifier chains. For an
 `angle[n]` with stored bits `k`, the rotation uses the representative
 `2*pi*k/2**n` in `[0, 2*pi)`. Each set bit contributes a QCX rotation using
@@ -6757,10 +6757,12 @@ negative controls use the QCX `#0` operand suffix. An odd number of `inv`
 modifiers reverses each rotation contribution's sign; an even number leaves
 it unchanged. This takes the adjoint of the rotation without negating the
 stored angle modulo one turn, which can introduce an extra matrix sign.
-Constant integer powers preserve the rotation matrix's `4*pi` period, including
+Integer powers preserve the rotation matrix's `4*pi` period, including
 the sign from a `2*pi` turn. The converter retains that turn bit without a
-wider native UINT, including for angles at native width. Runtime integer and
-floating-point `pow` modifiers on angle-valued rotations are not yet supported.
+wider native UINT, including for angles at native width. Runtime `int` and
+`uint` factors are captured and multiplied modulo the rotation period with
+unsigned shift-and-add, retaining carries into the turn bit. Floating-point
+`pow` modifiers on angle-valued rotations are not yet supported.
 With a non-angle radian parameter, OpenQASM `gphase(angle)` is emitted as
 `PHASE angle`. Fixed-point angle parameters use the binary contributions
 described under [angle-valued global phase](#angle-valued-global-phase).
@@ -10432,8 +10434,8 @@ against independent amplitudes, including reordered operands, controls, and `U`
 phase. It executes the documented example. Run with `--bra /path/to/bra`.
 
 `bra/test/qasm2qcx_angle_rotation_numerical.py` compares angle-valued rotations
-against independent matrices, including inverse rotations, constant integer
-powers, native-width angles, mixed control polarities, control superpositions,
+against independent matrices, including inverse rotations, constant and runtime
+integer powers, native-width angles, mixed control polarities, control superpositions,
 broadcasting, angles above pi, wraparound, and nested user-gate forwarding.
 Run with `--bra /path/to/bra`.
 
