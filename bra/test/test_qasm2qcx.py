@@ -656,6 +656,34 @@ class NestedGateCallTests(unittest.TestCase):
 class BasicGateCallTests(unittest.TestCase):
     prefix = 'OPENQASM 3; include "stdgates.inc"; '
 
+    def test_broadcast_matches_scalar_calls(self):
+        defined = ('gate flip a { x a; } gate pair a,b { cx a,b; } '
+                   'qubit[2] q; qubit[2] r; qubit target; flip q; pair q,r; pair target,r;')
+        inline = ('qubit[2] q; qubit[2] r; qubit target; '
+                  'x q[0]; x q[1]; cx q[0],r[0]; cx q[1],r[1]; '
+                  'cx target,r[0]; cx target,r[1];')
+        self.assertEqual(convert(self.prefix + defined), convert(self.prefix + inline))
+
+    def test_parameterized_nested_broadcast_captures_angle_once(self):
+        source = ('gate inner(t) a { p(t) a; } gate outer(t) a { inner(t) a; } '
+                  'qubit[2] q; angle[3] value=pi/4; outer(value) q;')
+        lines = convert(self.prefix + source)
+        self.assertEqual(sum(line.endswith(':= VALUE31') for line in lines), 1)
+        self.assertEqual(sum(line.startswith('R ') for line in lines), 6)
+
+    def test_broadcast_work_and_output_limits_are_shared(self):
+        empty = self.prefix + 'gate idle a {} qubit[2] q; idle q;'
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_GATE_DEFINITION_EXPANSION_STEPS', 1), \
+                self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'work limit'):
+            convert(empty)
+        source = self.prefix + 'gate flip a { x a; } qubit[2] q; flip q;'
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_GATE_DEFINITION_EXPANSION_STEPS', 3), \
+                self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'work limit'):
+            convert(source)
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_GATE_DEFINITION_OUTPUT_LINES', 1), \
+                self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'output limit'):
+            convert(source)
+
     def test_expansion_matches_inline_circuit(self):
         defined = ('gate bell a,b { h a; cx a,b; } gate idle a {} '
                    'gate rot a { U(pi/2,0,pi) a; inv @ x a; } '
