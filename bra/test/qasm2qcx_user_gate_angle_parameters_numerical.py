@@ -63,6 +63,17 @@ def main():
         h q; outer(a) q,r; a=pi/2; outer(a) q,r;''', state)
     state = [0j] * 32
     state[0] = 1
+    for qubit in (3, 1, 0):
+        state = apply_gate(state, 'h', (), (qubit,))
+    for control, target in ((3, 4), (1, 2), (0, 2)):
+        state = apply_gate(state, 'p', (math.pi / 4,), (control,))
+        state = apply_gate(state, 'cx', (), (control, target))
+    check_amplitudes(bra, '''gate inner(theta) a,b { p(theta) a; cx a,b; }
+        gate outer(theta) a,b { inner(theta) a,b; }
+        qubit[5] q; angle[3] a=pi/4; h q[3]; h q[1]; h q[0];
+        outer(a) q[{3,1}],q[4:-2:2]; outer(a) q[0:0],q[{2}];''', state)
+    state = [0j] * 32
+    state[0] = 1
     for gate, parameters, qubits in (
             ('h', (), (0,)), ('h', (), (1,)),
             ('p', (math.pi / 4,), (0,)), ('cp', (math.pi / 2,), (0, 1)),

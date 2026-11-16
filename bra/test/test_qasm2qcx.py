@@ -673,6 +673,28 @@ class BasicGateCallTests(unittest.TestCase):
         self.assertEqual(sum(line.endswith(':= A1') for line in lines), 1)
         self.assertEqual(sum(line.startswith('R ') for line in lines), 6)
 
+    def test_static_selection_with_unrolled_iterator(self):
+        source = ('gate flip a { x a; } qubit[3] q; '
+                  'for int i in [0:1] { flip q[i:i+1]; }')
+        inline = 'qubit[3] q; x q[0]; x q[1]; x q[1]; x q[2];'
+        self.assertEqual(convert(self.prefix + source), convert(self.prefix + inline))
+
+    def test_selected_broadcast_rejects_runtime_indices_and_preserves_temporaries(self):
+        prefix = ('OPENQASM 3; include "stdgates.inc"; gate pair(t) a,b { cp(t) a,b; } '
+                  'qubit[4] q; angle[3] a=pi/4; int n=1; ')
+        for call in ('pair(a) q[n:n+1],q[2:3];', 'pair(a) q[{0,n}],q[2:3];'):
+            with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(prefix + call)
+        program = qasm2qcx.openqasm3.parser.parse(prefix)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        call = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; pair(a) q[{0,1}],q[2:3];').statements[0]
+        with patch.object(converter, 'MAX_GATE_DEFINITION_OUTPUT_LINES', 0), \
+                self.assertRaises(qasm2qcx.InvalidLoopRangeException):
+            converter.visit(call)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+
     def test_skipped_static_qubit_selections_are_validated(self):
         definition = ('gate pair a,b { cx a,b; } qubit[4] q; qubit[2] r; qubit t; ')
         for call in ('pair q[0:1],r;', 'pair q[{3,1}],r;', 'pair t,q[3:-1:2];',
