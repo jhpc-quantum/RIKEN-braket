@@ -220,6 +220,22 @@ class AngleGateParameterCallTests(unittest.TestCase):
                 with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
                     convert(prefix + body)
 
+    def test_floating_angle_rotation_limits_and_cleanup(self):
+        prefix = ('OPENQASM 3; include "stdgates.inc"; qubit[2] q; angle[3] a=pi/4; ')
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_ANGLE_PHASE_MODIFIERS', 1), \
+                self.assertRaises(qasm2qcx.QASM2QCXError):
+            convert(prefix + 'pow(0.5) @ inv @ rx(a) q[0];')
+        lines = convert(prefix + 'for int i in [1:0] { pow(0.5) @ rx(angle[3](1.0/0.0)) q[0]; }')
+        self.assertFalse(any('<- ANGLEBITS2PHASE ' in line for line in lines))
+        program = qasm2qcx.openqasm3.parser.parse(prefix)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        call = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; pow(0.5) @ crx(a) q[0],q[0];').statements[0]
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            converter.visit(call)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+
     def test_runtime_rotation_power_limits_and_cleanup(self):
         prefix = ('OPENQASM 3; include "stdgates.inc"; qubit[2] q; angle[3] a=pi; '
                   'int k=-2; uint u=3; ')

@@ -2,12 +2,14 @@
 """Check angle-valued rotations against independent matrices."""
 
 import argparse
+import cmath
 import ctypes
 import math
 import pathlib
 import resource
 
 from qasm2qcx_inverse_numerical import apply_gate, check_amplitudes
+from anglebits2phase_reference import decode_chain, evaluate_turns
 
 
 def main():
@@ -150,6 +152,25 @@ def main():
         state = apply_gate(state, 'crx', (math.pi / 2,), (control, target))
     check_amplitudes(bra, '''qubit[2] c; qubit[2] t; qubit spare;
         angle[3] a=pi/2; h c; crx(a) c,t;''', state)
+    chain = decode_chain(('POW', '2', 'POW', '0.5'))
+    for width, bits in ((4, 7), (4, 8), (4, 9), (width, (1 << (width - 1)) + 1)):
+        plus = evaluate_turns(bits, width, chain, half_sign=-1)
+        minus = evaluate_turns(bits, width, chain, half_sign=1)
+        eigenplus, eigenminus = cmath.exp(2j * math.pi * float(plus)), cmath.exp(2j * math.pi * float(minus))
+        for gate, pauli in (('crx', 'x'), ('cry', 'y'), ('crz', 'z')):
+            state = [0j] * 64
+            state[0] = 1
+            for qubit in (0, 1, 2):
+                state = apply_gate(state, 'h', (), (qubit,))
+            transformed = apply_gate(state, pauli, (), (2,))
+            expected = [((eigenplus + eigenminus) * value + (eigenplus - eigenminus) * transformed[index]) / 2
+                        if index & 3 == 2 else value for index, value in enumerate(state)]
+            bit_string = format(bits, f'0{width}b')
+            check_amplitudes(bra, f'''gate inner(t) a,b,c {{
+                pow(0.5) @ pow(2) @ negctrl @ {gate}(t) a,b,c; }}
+                gate outer(t) a,b,c {{ inner(t) a,b,c; }}
+                qubit[6] q; angle[{width}] v=angle[{width}]("{bit_string}");
+                h q[0]; h q[1]; h q[2]; outer(v) q[0],q[1],q[2];''', expected)
     for gate, base in (('crx', 'rx'), ('cry', 'ry'), ('crz', 'rz')):
         for basis in (*range(8), None):
             state = [0j] * 128
