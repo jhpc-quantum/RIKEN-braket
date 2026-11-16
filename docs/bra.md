@@ -255,8 +255,8 @@ general expressions are operands; use temporary variables for intermediate
 results. Destinations are mutable classical variables or indexed elements,
 not literals, casts, or built-in constants.
 
-`ANGLEBITS2PHASE` additionally accepts an optional literal `INV`/`POW` chain
-after its two typed operands. These descriptors are instruction metadata;
+`ANGLEBITS2PHASE` additionally accepts an optional literal half-angle selector
+and `INV`/`POW` chain after its two typed operands. These are instruction metadata;
 their grammar and precision rules are described below.
 
 #### Initial signatures and operand typing
@@ -509,7 +509,7 @@ inputs, and preservation of floating-point controls.
 angle and returns its principal phase in radians:
 
 ```text
-APPLY RESULT <- ANGLEBITS2PHASE BITS WIDTH [INV | POW exponent]...
+APPLY RESULT <- ANGLEBITS2PHASE BITS WIDTH [HALF | NEG_HALF] [INV | POW exponent]...
 ```
 
 `BITS` must be a `UINT` in `[0, 2^WIDTH)` and `WIDTH` an `INT` in
@@ -517,6 +517,21 @@ APPLY RESULT <- ANGLEBITS2PHASE BITS WIDTH [INV | POW exponent]...
 elements and explicit casts, are accepted for these two inputs. An empty
 descriptor chain returns the initial principal phase. No ANGLE storage type
 is introduced.
+
+Without a selector, the initial phase is `BITS / 2^WIDTH` turns. A leading
+`HALF` or `NEG_HALF` instead selects `BITS / 2^(WIDTH+1)` or its negative,
+respectively. The input width limit remains native UINT width; the additional
+denominator bit is handled internally. The selector must appear at most once,
+before any `INV` or `POW`. It is case-insensitive and does not count toward
+the modifier limit. For example, with `BITS = 3` and `WIDTH = 2`:
+
+```text
+APPLY PLUS <- ANGLEBITS2PHASE BITS WIDTH HALF POW 2 POW 0.5
+APPLY MINUS <- ANGLEBITS2PHASE BITS WIDTH NEG_HALF POW 2 POW 0.5
+```
+
+The results are `-pi/4` and `pi/4`. Each selected phase is processed through
+the complete chain independently, including principal-branch selection.
 
 Descriptors act **left to right**. `INV` negates the phase; `POW exponent`
 selects the current principal phase and multiplies it by the exponent. Exact
@@ -543,7 +558,7 @@ allowed, including signed zero for a nonzero negative phase; subsequent gate
 arithmetic still follows the existing floating-point environment. Build
 options and floating-point control modes are unchanged.
 
-Limits are 1,024 descriptors, 4,096 characters per exponent literal including
+Limits are 1,024 modifiers, 4,096 characters per exponent literal including
 its sign, and 65,536 bits in each reduced exact numerator or denominator.
 Every descriptor is validated at instruction construction, even after a zero
 factor and in skipped calls. Operand values and intermediate arithmetic sizes
