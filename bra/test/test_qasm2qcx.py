@@ -195,6 +195,27 @@ class AngleGateParameterCallTests(unittest.TestCase):
         lines = convert(source)
         self.assertTrue(any(line.startswith('EX ') for line in lines))
 
+    def test_runtime_rotation_power_limits_and_cleanup(self):
+        prefix = ('OPENQASM 3; include "stdgates.inc"; qubit[2] q; angle[3] a=pi; '
+                  'int k=-2; uint u=3; ')
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_GATE_POWER_OUTPUT_LINES', 10), \
+                self.assertRaises(qasm2qcx.QASM2QCXError):
+            convert(prefix + 'pow(k) @ pow(u) @ rx(a) q[0];')
+        program = qasm2qcx.openqasm3.parser.parse(prefix)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        call = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; pow(k) @ crx(a) q[0],q[0];').statements[0]
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            converter.visit(call)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+
+    def test_runtime_rotation_power_broadcast_is_lowered(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; qubit[2] c; qubit[2] t; '
+                  'angle[3] a=pi/4; int k=-2; pow(k) @ crx(a) c,t;')
+        lines = convert(source)
+        self.assertEqual(sum(line.startswith('CEX ') for line in lines), 8)
+
     def test_rotation_power_limits_and_failure_cleanup(self):
         prefix = ('OPENQASM 3; include "stdgates.inc"; qubit[2] q; angle[3] a=pi/4; ')
         with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_GATE_POWER_OUTPUT_LINES', 3), \

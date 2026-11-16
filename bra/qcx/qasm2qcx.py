@@ -3440,38 +3440,58 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             info: _GateModifierInfo, runtime: _RuntimeGatePower, gate: str, scratch: str,
             parameter: str, prefix: str, output_start: int | None) -> None:
         # A product modulo 2**(n+1) is stored as n low bits and one turn bit.
-        # The turn bit is the parity of all partial products at position n,
-        # including the previous turn times the factor's low bit. This avoids
-        # requiring a native UINT wider than n when n is the native width.
+        # Shift-and-add tracks both the carry from each low-part addition and
+        # the shifted partial product's turn bit, including at native width.
         width = angle_type.width
         turn = self.__add_new_temporary_variable(ValueType.UINT)
         original = self.__add_new_temporary_variable(ValueType.UINT)
         factor_bit = self.__add_new_temporary_variable(ValueType.UINT)
+        accumulator = self.__add_new_temporary_variable(ValueType.UINT)
+        shifted = self.__add_new_temporary_variable(ValueType.UINT)
+        previous = self.__add_new_temporary_variable(ValueType.UINT)
         self.__qcx_lines.append(f'LET {turn} := 0')
         constant = abs(info.power)
         factors = [(str(constant & self.QCX_UINT_MAX), (constant >> width) & 1)]
         factors.extend((factor, None) for factor in runtime.magnitudes)
         for factor_index, (factor, constant_high) in enumerate(factors):
-            self.__check_gate_power_output(3, output_start)
+            self.__check_gate_power_output(4, output_start)
             self.__qcx_lines.extend([f'LET {original} := {snapshot}',
-                                    f'LET {turn} &= {factor}', f'LET {turn} &= 1'])
+                                    f'LET {turn} &= {factor}', f'LET {turn} &= 1',
+                                    f'LET {accumulator} := 0'])
             for bit in range(width):
-                other = width - bit
-                if other >= self.QCX_UINT_WIDTH and constant_high is None:
-                    continue
-                if other >= self.QCX_UINT_WIDTH and not constant_high:
-                    continue
                 skip = f'{prefix}_MUL_{factor_index}_{bit}_SKIP'
-                lines = [f'LET {scratch} := {original}', f'LET {scratch} &= {1 << bit}',
-                         f'JUMPIF {skip} {scratch} == 0']
-                if other < self.QCX_UINT_WIDTH:
-                    lines.extend([f'LET {factor_bit} := {factor}', f'LET {factor_bit} &= {1 << other}',
-                                  f'JUMPIF {skip} {factor_bit} == 0'])
-                lines.extend([f'LET {turn} ^= 1', f'@{skip}'])
+                no_carry = f'{prefix}_MUL_{factor_index}_{bit}_NO_CARRY'
+                lines = [f'LET {factor_bit} := {factor}', f'LET {factor_bit} &= {1 << bit}',
+                         f'JUMPIF {skip} {factor_bit} == 0', f'LET {shifted} := {original}']
+                if bit:
+                    lines.append(f'LET {shifted} <<= {bit}')
+                lines.extend([f'LET {shifted} &= {angle_type.mask}', f'LET {previous} := {accumulator}',
+                              f'LET {accumulator} += {shifted}'])
+                if width == self.QCX_UINT_WIDTH:
+                    lines.append(f'JUMPIF {no_carry} {accumulator} >= {previous}')
+                else:
+                    lines.append(f'JUMPIF {no_carry} {accumulator} <= {angle_type.mask}')
+                lines.extend([f'LET {turn} ^= 1', f'@{no_carry}',
+                              f'LET {accumulator} &= {angle_type.mask}'])
+                if bit:
+                    lines.extend([f'LET {scratch} := {original}', f'LET {scratch} >>= {width - bit}',
+                                  f'LET {scratch} &= 1', f'LET {turn} ^= {scratch}'])
+                lines.append(f'@{skip}')
                 self.__check_gate_power_output(len(lines), output_start)
                 self.__qcx_lines.extend(lines)
-            self.__check_gate_power_output(2, output_start)
-            self.__qcx_lines.extend([f'LET {snapshot} *= {factor}', f'LET {snapshot} &= {angle_type.mask}'])
+            if width < self.QCX_UINT_WIDTH or constant_high:
+                skip = f'{prefix}_MUL_{factor_index}_HIGH_SKIP'
+                lines = []
+                if width < self.QCX_UINT_WIDTH:
+                    lines.extend([f'LET {factor_bit} := {factor}', f'LET {factor_bit} &= {1 << width}',
+                                  f'JUMPIF {skip} {factor_bit} == 0'])
+                lines.extend([f'LET {scratch} := {original}', f'LET {scratch} &= 1', f'LET {turn} ^= {scratch}'])
+                if width < self.QCX_UINT_WIDTH:
+                    lines.append(f'@{skip}')
+                self.__check_gate_power_output(len(lines), output_start)
+                self.__qcx_lines.extend(lines)
+            self.__check_gate_power_output(1, output_start)
+            self.__qcx_lines.append(f'LET {snapshot} := {accumulator}')
         for index, qubits in enumerate(self.__qubit_operand_tuples(
                 statement.qubits, distinct=len(statement.qubits) > 1)):
             added = sum(count for _, count in info.controls)

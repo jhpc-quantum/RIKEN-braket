@@ -60,6 +60,42 @@ def main():
     state = apply_gate(state, 'crz', (2 * math.pi,), (0, 1))
     check_amplitudes(bra, f'''qubit[5] q; angle[{width}] a=pi; int k=2;
         h q[0]; pow(k) @ crz(a) q[0],q[1];''', state)
+    state = [0j] * 32
+    state[0] = 1
+    state = apply_gate(state, 'h', (), (0,))
+    state = apply_gate(state, 'crx', (9 * math.pi / 4,), (0, 1))
+    check_amplitudes(bra, f'''qubit[5] q; angle[{width}] a=7*pi/4;
+        uint k={(1 << width) - 1}; h q[0]; pow(k) @ crx(a) q[0],q[1];''', state)
+    int_width = ctypes.sizeof(ctypes.c_int) * 8
+    int_max = (1 << (int_width - 1)) - 1
+    angle = -math.ldexp(2 * math.pi, int_width - 1 - width)
+    state = [0j] * 32
+    state[0] = 1
+    state = apply_gate(state, 'h', (), (0,))
+    state = apply_gate(state, 'cry', (angle,), (0, 1))
+    check_amplitudes(bra, f'''qubit[5] q; angle[{width}] a=2*pi/{1 << width}.0;
+        int k=-{int_max}-1; h q[0]; pow(k) @ cry(a) q[0],q[1];''', state)
+    # Each factor fits UINT, but their product exceeds native UINT width.
+    first = (1 << (width // 2)) - 1
+    second = (1 << (width // 2)) + 3
+    powered_angle = ((first * second) % 16) * math.pi / 4
+    state = [0j] * 32
+    state[0] = 1
+    state = apply_gate(state, 'h', (), (0,))
+    state = apply_gate(state, 'crz', (powered_angle,), (0, 1))
+    check_amplitudes(bra, f'''qubit[5] q; angle[3] a=pi/4;
+        uint first={first}; uint second={second}; h q[0];
+        pow(first) @ pow(second) @ crz(a) q[0],q[1];''', state)
+    state = [0j] * 64
+    state[0] = 1
+    for qubit in (0, 1, 2):
+        state = apply_gate(state, 'h', (), (qubit,))
+    rotated = apply_gate(state, 'rx', (3 * math.pi / 2,), (2,))
+    expected = [rotated[index] if index & 3 == 2 else value
+                for index, value in enumerate(state)]
+    check_amplitudes(bra, '''qubit[6] q; angle[3] a=pi/4; int k=-3; uint u=2;
+        h q[0]; h q[1]; h q[2];
+        negctrl @ inv @ pow(k) @ pow(u) @ crx(a) q[0],q[1],q[2];''', expected)
     state = [0j] * 64
     state[0] = 1
     for qubit in (0, 1, 2):
