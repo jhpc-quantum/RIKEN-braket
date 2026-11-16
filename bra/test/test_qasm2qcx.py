@@ -186,6 +186,22 @@ class AngleGateParameterCallTests(unittest.TestCase):
                 with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
                     convert(prefix + call)
 
+    def test_rotation_power_limits_and_failure_cleanup(self):
+        prefix = ('OPENQASM 3; include "stdgates.inc"; qubit[2] q; angle[3] a=pi/4; ')
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_GATE_POWER_OUTPUT_LINES', 3), \
+                self.assertRaises(qasm2qcx.QASM2QCXError):
+            convert(prefix + 'pow(3) @ rx(a) q[0];')
+        lines = convert(prefix + 'for int i in [1:0] { pow(2) @ rx(angle[3](1.0/0.0)) q[0]; }')
+        self.assertFalse(any(line.startswith('EX ') for line in lines))
+        program = qasm2qcx.openqasm3.parser.parse(prefix)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        call = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; pow(2) @ crx(a) q[0],q[0];').statements[0]
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            converter.visit(call)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+
     def test_inverse_rotation_bit_contributions_follow_modifier_parity(self):
         prefix = ('OPENQASM 3; include "stdgates.inc"; qubit[2] q; '
                   'angle[3] a=pi/4; ')
