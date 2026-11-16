@@ -66,6 +66,7 @@ PRINTLN R
     # Literal descriptors are instruction metadata: reject malformed chains
     # while loading even if the instruction will be skipped.
     for suffix in ('INV extra', 'POW', 'POW N', 'POW 0 POW NaN', 'POW 1e9999',
+                   'HALF HALF', 'HALF NEG_HALF', 'INV HALF', 'POW 2 NEG_HALF',
                    'POW ' + '0' * 4097, 'INV ' * 1025):
         instruction = 'APPLY R <- ANGLEBITS2PHASE missing missing ' + suffix
         result = run(setup + f'JUMP DONE\n{instruction}\n@DONE\n')
@@ -91,6 +92,18 @@ PRINTLN R
     for actual, expected in zip(map(float, result.stdout.splitlines()), (math.pi / 2, -math.pi / 2, 0)):
         if not math.isclose(actual, expected, rel_tol=1e-5, abs_tol=1e-7):
             raise RuntimeError(f'ANGLEBITS2PHASE CLI phase: {actual} != {expected}')
+
+    result = run(setup + '''
+apply r <- anglebits2phase :UINT:3 :INT:2 half pow 2 pow 0.5
+PRINTLN R
+APPLY R <- ANGLEBITS2PHASE :UINT:3 :INT:2 NEG_HALF POW 2 POW 0.5
+PRINTLN R
+''')
+    if result.returncode or len(result.stdout.splitlines()) != 2:
+        raise RuntimeError(f'half-angle CLI failed: {result}')
+    for actual, expected in zip(map(float, result.stdout.splitlines()), (-math.pi / 4, math.pi / 4)):
+        if not math.isclose(actual, expected, rel_tol=1e-5, abs_tol=1e-7):
+            raise RuntimeError(f'half-angle CLI phase: {actual} != {expected}')
 
     document = (pathlib.Path(__file__).parents[2] / 'docs' / 'bra.md').read_text()
     examples = re.findall(r'<!-- anglebits2phase-example -->\s*```text\n(.*?)\n```', document, flags=re.DOTALL)

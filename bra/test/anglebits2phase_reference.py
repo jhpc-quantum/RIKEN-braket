@@ -122,14 +122,17 @@ def principal_turn(value: Fraction) -> Fraction:
 
 
 def evaluate_turns(bits: int, width: int, chain: tuple[Modifier, ...] = (),
-                   limits: Limits = DEFAULT_LIMITS) -> Fraction:
+                   limits: Limits = DEFAULT_LIMITS, *, half_sign: int = 0) -> Fraction:
     # Descriptor construction is static; runtime operand checks come later.
     validate_chain(chain, limits)
     if type(width) is not int or not 1 <= width <= limits.uint_width:
         raise PhaseDomainError('width must fit native UINT storage')
     if type(bits) is not int or not 0 <= bits < 1 << width:
         raise PhaseDomainError('angle bits must fit width')
-    phase = principal_turn(Fraction(bits, 1 << width))
+    if half_sign not in (-1, 0, 1):
+        raise PhaseDomainError('invalid half-angle sign')
+    phase = Fraction(bits * (-1 if half_sign < 0 else 1), 1 << (width + (half_sign != 0)))
+    phase = principal_turn(phase)
     check_exact_size(phase, limits)
     for modifier in chain:
         phase = -phase if modifier.kind == 'INV' else principal_turn(phase) * modifier.exponent
