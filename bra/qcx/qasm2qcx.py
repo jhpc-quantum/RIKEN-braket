@@ -4317,10 +4317,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     if nested is not None or gate_name in self.angle_phase_gates:
                         continue
                     if gate_name in self.angle_rotation_gates | self.angle_controlled_rotation_gates:
-                        if any(modifier.modifier not in (ast.GateModifierName.ctrl, ast.GateModifierName.negctrl,
-                                                         ast.GateModifierName.inv)
-                               for modifier in child.modifiers):
-                            raise UnsupportedOpenQASMError('modifiers on angle-valued rotation gates')
+                        for modifier in child.modifiers:
+                            if modifier.modifier == ast.GateModifierName.pow:
+                                self.__power_modifier_exponent(modifier)
+                            elif modifier.modifier not in (ast.GateModifierName.ctrl, ast.GateModifierName.negctrl,
+                                                           ast.GateModifierName.inv):
+                                raise UnsupportedOpenQASMError('modifiers on angle-valued rotation gates')
                         continue
                 if nested is not None:
                     raise UnsupportedOpenQASMError('user-defined gate forwarding requires additive formal angle expressions')
