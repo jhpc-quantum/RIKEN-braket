@@ -4414,7 +4414,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     if gate_name in self.angle_rotation_gates | self.angle_controlled_rotation_gates:
                         for modifier in child.modifiers:
                             if modifier.modifier == ast.GateModifierName.pow:
-                                self.__power_modifier_exponent(modifier)
+                                self.__power_modifier_exponent(modifier, allow_float=True)
                             elif modifier.modifier not in (ast.GateModifierName.ctrl, ast.GateModifierName.negctrl,
                                                            ast.GateModifierName.inv):
                                 raise UnsupportedOpenQASMError('modifiers on angle-valued rotation gates')
@@ -4432,6 +4432,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 parameters, qubits = len(nested.parameters), len(nested.qubits)
             else:
                 info = self.__analyze_gate_modifiers(child.modifiers, allow_float=True)
+                if (gate_name in self.angle_rotation_gates | self.angle_controlled_rotation_gates
+                        and any(self.__is_gate_angle_additive_expression(argument, set(formal_parameters))
+                                for argument in child.arguments)
+                        and isinstance(info, _OrderedGateModifierInfo)):
+                    self.__angle_phase_descriptors(info)
                 parameters, qubits = self.gate_signatures[gate_name]
                 qubits += sum(count for _, count in info.controls)
             if len(child.arguments) != parameters or len(child.qubits) != qubits:
