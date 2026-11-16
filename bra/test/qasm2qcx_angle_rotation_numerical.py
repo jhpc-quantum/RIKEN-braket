@@ -26,6 +26,12 @@ def main():
                                  gate, (angle,), (0,), inverse=True)
             check_amplitudes(bra, f'''qubit[5] q; angle[3] a={value};
                 h q[0]; inv @ {gate}(a) q[0];''', inverse)
+        state = [0j] * 32
+        state[0] = 1
+        state = apply_gate(state, 'h', (), (0,))
+        state = apply_gate(state, 'c' + gate, (2 * math.pi,), (0, 1))
+        check_amplitudes(bra, f'''qubit[5] q; angle[3] a=pi; h q[0];
+            pow(2) @ c{gate}(a) q[0],q[1];''', state)
     state = [0j] * 32
     state[0] = 1
     for gate, angle in (('rx', math.pi / 4), ('ry', 7 * math.pi / 4),

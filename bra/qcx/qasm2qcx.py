@@ -3379,10 +3379,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if isinstance(statement, ast.QuantumGate) and statement.name.name not in self.angle_phase_gates:
             if statement.name.name not in self.angle_rotation_gates | self.angle_controlled_rotation_gates:
                 raise UnsupportedOpenQASMError('angle-valued parameter on a non-phase gate')
-            if any(modifier.modifier not in (ast.GateModifierName.ctrl, ast.GateModifierName.negctrl,
-                                             ast.GateModifierName.inv)
-                   for modifier in statement.modifiers):
-                raise UnsupportedOpenQASMError('modifiers on angle-valued rotation gates')
+            for modifier in statement.modifiers:
+                if modifier.modifier == ast.GateModifierName.pow:
+                    self.__power_modifier_exponent(modifier, iterators)
+                elif modifier.modifier not in (ast.GateModifierName.ctrl, ast.GateModifierName.negctrl,
+                                               ast.GateModifierName.inv):
+                    raise UnsupportedOpenQASMError('modifiers on angle-valued rotation gates')
         if len(arguments) != 1:
             raise UnsupportedOpenQASMError('angle-valued phase gate requires one parameter')
         # Fractional powers operate on the whole exact angle, never on the
@@ -3395,27 +3397,39 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_angle_rotation_gate(
             self, statement: ast.QuantumGate, expression: ast.Expression, mnemonic: str,
             info: _GateModifierInfo | _OrderedGateModifierInfo) -> None:
-        # Each set bit contributes an angle in [0, 2*pi). EX/EY/EZ use
-        # exp(i*parameter*Pauli), so the corresponding parameter is
-        # -pi * 2**(bit-width). Preserve the bra REAL precision of :PI.
+        # Rotation matrices have a 4*pi period. For each input bit, reduce
+        # its powered contribution modulo 2**(width+1), keeping the extra
+        # turn bit even when width equals native UINT width. Decompose that
+        # compile-time residue into exactly representable power-of-two scales.
+        output_start = len(self.__qcx_lines) if any(
+            modifier.modifier == ast.GateModifierName.pow for modifier in statement.modifiers) else None
         with self.__captured_angle_bits(expression) as (snapshot, angle_type):
             scratch = self.__add_new_temporary_variable(ValueType.UINT)
             parameter = self.__add_new_temporary_variable(ValueType.FLOAT)
             prefix = self.__gate_power_label() + '_ANGLE_ROTATION'
+            self.__check_gate_power_output(0, output_start)
             added_controls = sum(count for _, count in info.controls)
             gate = self.__controlled_gate_name(mnemonic, added_controls) if added_controls else mnemonic
             for index, qubits in enumerate(self.__qubit_operand_tuples(
                     statement.qubits, distinct=len(statement.qubits) > 1)):
                 operands = self.__condition_qubits(qubits[:added_controls], info.controls) + qubits[added_controls:]
+                multiplier = abs(info.power) & ((1 << (angle_type.width + 1)) - 1)
                 for bit in range(angle_type.width):
+                    residue = (multiplier << bit) & ((1 << (angle_type.width + 1)) - 1)
+                    if not residue:
+                        continue
                     skip = f'{prefix}_{index}_{bit}_SKIP'
-                    scale = math.ldexp(1.0 if info.power < 0 else -1.0, bit - angle_type.width)
-                    self.__check_gate_power_output(7, None)
+                    self.__check_gate_power_output(4 + 3 * residue.bit_count(), output_start)
                     self.__qcx_lines.extend([
                         f'LET {scratch} := {snapshot}', f'LET {scratch} &= {1 << bit}',
-                        f'JUMPIF {skip} {scratch} == 0', f'LET {parameter} := :PI',
-                        f'LET {parameter} *= {scale!r}',
-                        f'{gate} {" ".join(operands)} {parameter}', f'@{skip}'])
+                        f'JUMPIF {skip} {scratch} == 0'])
+                    for position in range(angle_type.width + 1):
+                        if residue & (1 << position):
+                            scale = math.ldexp(1.0 if info.power < 0 else -1.0, position - angle_type.width)
+                            self.__qcx_lines.extend([f'LET {parameter} := :PI',
+                                                    f'LET {parameter} *= {scale!r}',
+                                                    f'{gate} {" ".join(operands)} {parameter}'])
+                    self.__qcx_lines.append(f'@{skip}')
 
     @classmethod
     def __angle_phase_descriptors(cls, info: _OrderedGateModifierInfo) -> tuple[str, ...]:
