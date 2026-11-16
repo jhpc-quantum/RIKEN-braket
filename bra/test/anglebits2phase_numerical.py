@@ -74,6 +74,20 @@ def cases(digits, min_exponent):
               ('POW', f'{5 ** 1075 * 10 - 1}e-1076'),
               ('POW', '1.00000000000000011102230246251565404236316680908203125'),
               ('POW', '1.00000000000000033306690738754696212708950042724609375')]
+    for width in (1, 2, 3, 31, 32):
+        for bits in sorted({0, 1, (1 << (width - 1)) - 1, 1 << (width - 1),
+                            (1 << (width - 1)) + 1, (1 << width) - 1}):
+            if bits >= 1 << width:
+                continue
+            for selector in ('HALF', 'NEG_HALF'):
+                for chain in ((), ('POW', '2', 'POW', '0.5'), ('INV', 'POW', '0.5'),
+                              ('POW', '2', 'INV', 'POW', '0.5'), ('INV', 'INV')):
+                    yield bits, width, (selector,) + chain
+    for chain in (('HALF', 'HALF'), ('HALF', 'NEG_HALF'), ('INV', 'HALF'),
+                  ('POW', '2', 'NEG_HALF'), ('HALF', 'POW'), ('NEG_HALF', 'BAD')):
+        yield 1, 2, chain
+    for bits, width in ((0, 0), (0, 33), (2, 1)):
+        yield bits, width, ('HALF', 'POW', '0')
     for width in range(1, 33):
         modulus = 1 << width
         for bits in sorted({0, 1, modulus // 2 - 1, modulus // 2, modulus // 2 + 1, modulus - 1}):
@@ -104,6 +118,8 @@ def cases(digits, min_exponent):
         yield 1, 1, chain + ('INV',)
         yield 1, 1, chain + ('POW', '1.7976931348623157e308')
     yield 1, 1, ('INV',) * 1024
+    yield 1, 1, ('HALF',) + ('INV',) * 1024
+    yield 1, 1, ('NEG_HALF',) + ('INV',) * 1025
     yield 1, 1, ('POW', '9' * 4096)
     # The denominator reaches exactly the allowed size, then exceeds it.
     # Check the inclusive 65536-bit bound, and no later-zero shortcut.
@@ -137,7 +153,11 @@ def check(executable):
     expected = []
     for bits, width, chain in samples:
         try:
-            phase = evaluate_turns(bits, width, decode_chain(chain), Limits(uint_width=32))
+            if chain and chain[0] in ('HALF', 'NEG_HALF'):
+                phase = evaluate_turns(bits, width, decode_chain(chain[1:]), Limits(uint_width=32),
+                                       half_sign=1 if chain[0] == 'HALF' else -1)
+            else:
+                phase = evaluate_turns(bits, width, decode_chain(chain), Limits(uint_width=32))
             expected.append(rounded_result(phase * tau, digits, min_exponent))
         except ValueError:
             expected.append(None)

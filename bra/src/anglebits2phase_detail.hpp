@@ -160,6 +160,8 @@ namespace bra
 
   struct anglebits2phase_chain
   {
+    // 0 selects the original full angle; +/-1 select signed half angles.
+    int initial_half_sign = 0;
     // INV is multiplication by -1 followed by canonicalization. Keeping each
     // descriptor separate preserves the branch before every subsequent POW.
     std::vector<anglebits2phase_detail::dyadic> factors;
@@ -169,7 +171,14 @@ namespace bra
   {
     using namespace anglebits2phase_detail;
     auto chain = std::make_shared< ::bra::anglebits2phase_chain >();
-    for (auto position = std::size_t{0u}; position < descriptors.size(); ++position)
+    auto position = std::size_t{0u};
+    if (position < descriptors.size())
+    {
+      auto const selector = uppercase(descriptors[position]);
+      if (selector == "HALF" or selector == "NEG_HALF")
+      { chain->initial_half_sign = selector == "HALF" ? 1 : -1; ++position; }
+    }
+    for (; position < descriptors.size(); ++position)
     {
       if (chain->factors.size() >= max_modifiers)
         throw std::length_error{"ANGLEBITS2PHASE chain exceeds 1024 modifiers"};

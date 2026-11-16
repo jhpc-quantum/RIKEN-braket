@@ -335,7 +335,8 @@ namespace bra
       throw std::domain_error{"ANGLEBITS2PHASE bits exceed the specified width"};
     if (limits::radix != 2 or not limits::is_iec559)
       throw std::domain_error{"ANGLEBITS2PHASE requires IEC 559 binary REAL storage"};
-    auto phase = dyadic{integer{bits}, static_cast<unsigned>(width)};
+    auto phase = dyadic{integer{bits}, static_cast<unsigned>(width) + (chain.initial_half_sign != 0 ? 1u : 0u)};
+    if (chain.initial_half_sign < 0) phase.numerator = -phase.numerator;
     principal(phase);
     for (auto const& factor: chain.factors)
     {

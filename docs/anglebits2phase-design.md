@@ -24,12 +24,28 @@ No public ANGLE, rational, string, or modifier-chain storage type is added.
 The descriptor grammar is:
 
 ```text
-chain     := (INV | POW exponent)*
+chain     := [HALF | NEG_HALF] (INV | POW exponent)*
 integer   := [+-]?[0-9]+
 floating  := [+-]?([0-9]+\.[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?
            | [+-]?[0-9]+[eE][+-]?[0-9]+
 exponent  := integer | floating
 ```
+
+**Extension for #611:** `HALF` and `NEG_HALF` select the positive
+and negative half-angle initial phase, respectively. The optional selector
+must occur once at most, before every `INV` or `POW`; it is not a modifier and
+does not count toward the modifier limit. A missing selector retains the
+existing full-angle behavior.
+For example:
+
+```text
+APPLY PLUS <- ANGLEBITS2PHASE BITS WIDTH HALF POW 0.5
+APPLY MINUS <- ANGLEBITS2PHASE BITS WIDTH NEG_HALF POW 0.5
+```
+
+Repeated selectors, selectors after a modifier, and unknown selector tokens
+are invalid at descriptor construction, including in skipped calls. Keywords
+remain case-insensitive. The selector adds no runtime operand or overload.
 
 `INV` has no operand. `POW` consumes one literal, not a variable, cast,
 built-in constant symbol, expression, or array reference. An empty chain
@@ -71,6 +87,11 @@ factor in this evaluator equals the corresponding integer.
 
 On a reached invocation, require `1 <= width <= native UINT bits` and
 `0 <= bits < 2^width`. Begin with the exact turn fraction `bits / 2^width`.
+Under the `HALF` or `NEG_HALF` selector, begin instead with
+`bits / 2^(width+1)` or `-bits / 2^(width+1)` turns, respectively. `width`
+still describes the input bits and may equal native UINT width; the extra
+denominator bit exists only in exact internal arithmetic. Select and
+canonicalize this initial phase before applying the first modifier.
 Represent all intermediate values as exact dyadic rationals. Do not reconstruct
 them from complex `EXP`/`ARG` results, compare rounded radians to PI, use an
 epsilon window, or requantize into the source angle width.
@@ -86,6 +107,12 @@ intermediate integer parts; it does not flatten or reorder operations. The
 final result also uses the principal representative. In particular, both
 representations of the negative-real endpoint select the positive half-turn.
 Exact zero is canonical positive zero.
+
+For `width = 2` and `bits = 3`, `HALF` starts at `3/8` turn and
+`NEG_HALF` starts at `-3/8` turn. With `POW 2 POW 0.5`, their final
+principal phases are `-1/8` and `1/8` turn, respectively. Both eigenphases
+must be evaluated independently through the complete chain: simply negating
+the other final phase is not generally correct at a branch endpoint.
 
 For a source representing exactly half a turn:
 
