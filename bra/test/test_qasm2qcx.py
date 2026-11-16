@@ -178,13 +178,22 @@ class AngleGateParameterCallTests(unittest.TestCase):
         with self.assertRaises(qasm2qcx.QASM2QCXError):
             convert(prefix + 'pow(0) @ rx(a) missing;')
 
-    def test_rotation_powers_reject_runtime_and_float_even_in_skipped_loops(self):
-        prefix = 'OPENQASM 3; include "stdgates.inc"; qubit q; angle[3] a=pi; int k=2; '
-        for exponent in ('k', '2.0'):
-            for call in (f'pow({exponent}) @ rx(a) q;',
-                         f'for int i in [1:0] {{ pow({exponent}) @ rx(a) q; }}'):
-                with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
-                    convert(prefix + call)
+    def test_rotation_power_validation_in_skipped_loops(self):
+        prefix = ('OPENQASM 3; include "stdgates.inc"; qubit q; angle[3] a=pi; '
+                  'int k=2; uint u=3; ')
+        for exponent in ('k', 'u', 'k+1', 'i'):
+            with self.subTest(exponent=exponent):
+                lines = convert(prefix + f'for int i in [1:0] {{ pow({exponent}) @ rx(a) q; }}')
+                self.assertFalse(any(line.startswith('EX ') for line in lines))
+        for exponent in ('2.0', 'true', 'missing'):
+            with self.subTest(exponent=exponent), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(prefix + f'for int i in [1:0] {{ pow({exponent}) @ rx(a) q; }}')
+
+    def test_runtime_angle_rotation_power_is_gated_until_lowered(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; qubit q; angle[3] a=pi; '
+                  'int k=2; pow(k) @ rx(a) q;')
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            convert(source)
 
     def test_rotation_power_limits_and_failure_cleanup(self):
         prefix = ('OPENQASM 3; include "stdgates.inc"; qubit[2] q; angle[3] a=pi/4; ')

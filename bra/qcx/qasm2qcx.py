@@ -3259,6 +3259,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         angle_parameter = self.__angle_phase_parameter(statement)
         if angle_parameter is not None:
             if qasm_gate_name in self.angle_rotation_gates | self.angle_controlled_rotation_gates:
+                if runtime is not None:
+                    raise UnsupportedOpenQASMError('runtime integer power on angle-valued rotation gates')
                 self.__emit_angle_rotation_gate(statement, angle_parameter, qcx_gate_name, info)
                 return
             if isinstance(info, _OrderedGateModifierInfo):
@@ -3381,7 +3383,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise UnsupportedOpenQASMError('angle-valued parameter on a non-phase gate')
             for modifier in statement.modifiers:
                 if modifier.modifier == ast.GateModifierName.pow:
-                    self.__power_modifier_exponent(modifier, iterators)
+                    self.__power_modifier_exponent(modifier, iterators, allow_runtime=True)
                 elif modifier.modifier not in (ast.GateModifierName.ctrl, ast.GateModifierName.negctrl,
                                                ast.GateModifierName.inv):
                     raise UnsupportedOpenQASMError('modifiers on angle-valued rotation gates')
