@@ -4483,6 +4483,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if value_type != ValueType.ANGLE:
                 raise UnsupportedOpenQASMError('user-defined gate parameters require angle-valued arguments')
         active = set(iterators or ()) | {key for scope in self.__loop_bindings for key in scope}
+        register_sizes = set()
         for operand in statement.qubits:
             operand_name = self.__operand_name(operand)
             declared = (self.__quantum_registers if self.__is_initialization_process
@@ -4491,7 +4492,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise InvalidQubitOperandException(f'{operand_name} is not a declared qubit operand')
             if isinstance(operand, ast.Identifier):
                 if operand_name in self.__sized_quantum_registers:
-                    raise UnsupportedOpenQASMError('register broadcasting on user-defined gates')
+                    register_sizes.add(self.__quantum_registers[operand_name])
             elif (len(operand.indices) != 1 or not isinstance(operand.indices[0], list)
                   or len(operand.indices[0]) != 1
                   or isinstance(operand.indices[0][0], (ast.RangeDefinition, ast.DiscreteSet))):
@@ -4506,13 +4507,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                         or any(isinstance(scope.get(name), _RuntimeIteratorBinding)
                                for scope in self.__loop_bindings for name in names)):
                     raise UnsupportedOpenQASMError('runtime qubit index on user-defined gate')
+        if len(register_sizes) > 1:
+            raise WrongBroadcastingException
         if (not self.__is_initialization_process
                 and all(isinstance(operand, ast.Identifier)
                         or self.__is_literal_qubit_selector(operand.indices[0][0])
                         for operand in statement.qubits)):
-            physical = [self.__flattened_qubit_operand(operand)[0][0] for operand in statement.qubits]
-            if len(set(physical)) != len(physical):
-                raise InvalidQubitOperandException('user-defined gate requires distinct qubit operands')
+            for _ in self.__qubit_operand_tuples(statement.qubits, distinct=True):
+                pass
         return definition
 
     def __basic_gate_call_binding(

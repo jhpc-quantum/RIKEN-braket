@@ -668,8 +668,7 @@ class BasicGateCallTests(unittest.TestCase):
         self.assertEqual(convert(self.prefix + declarations + 'for int i in [0:1] { flip q[i]; }'),
                          convert(self.prefix + 'qubit[2] q; x q[0]; x q[1];'))
         self.assertEqual(convert(self.prefix + declarations + 'for int i in [1:0] { flip q[i]; }'), ['QUBITS 2'])
-        with self.assertRaises(qasm2qcx.QASM2QCXError):
-            convert(self.prefix + declarations + 'for int i in [1:0] { flip q; }')
+        self.assertEqual(convert(self.prefix + declarations + 'for int i in [1:0] { flip q; }'), ['QUBITS 2'])
         for body in ('int n=0; for int i in [1:0] { flip q[n]; }',
                      'int stop=1; for int i in [0:stop] { flip q[i]; }'):
             with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -685,6 +684,17 @@ class BasicGateCallTests(unittest.TestCase):
             convert(self.prefix + 'qubit[2] q; pair q[0],q[1]; gate pair a,b { cx a,b; }')
         for call in ('pair q[0],q[0];', 'pair q[0],q[2];', 'inv @ pair q[0],q[1];'):
             with self.subTest(skipped_call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(self.prefix + definition + f'for int i in [1:0] {{ {call} }}')
+
+    def test_skipped_broadcasts_validate_lengths_and_aliases(self):
+        definition = ('gate pair a,b { cx a,b; } qubit[2] q; qubit[2] r; '
+                      'qubit[3] s; qubit target; ')
+        for call in ('pair q,r;', 'pair target,r;', 'pair q,target;'):
+            with self.subTest(call=call):
+                lines = convert(self.prefix + definition + f'for int i in [1:0] {{ {call} }}')
+                self.assertEqual(lines, ['QUBITS 8'])
+        for call in ('pair q,s;', 'pair q,q;', 'pair q,q[1];', 'pair q[0],q;'):
+            with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert(self.prefix + definition + f'for int i in [1:0] {{ {call} }}')
 
     def test_expansion_limit(self):
