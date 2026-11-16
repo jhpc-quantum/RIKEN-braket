@@ -2,6 +2,7 @@
 """Check angle-valued rotations against independent matrices."""
 
 import argparse
+import ctypes
 import math
 import pathlib
 import resource
@@ -26,6 +27,38 @@ def main():
                                  gate, (angle,), (0,), inverse=True)
             check_amplitudes(bra, f'''qubit[5] q; angle[3] a={value};
                 h q[0]; inv @ {gate}(a) q[0];''', inverse)
+        state = [0j] * 32
+        state[0] = 1
+        state = apply_gate(state, 'h', (), (0,))
+        state = apply_gate(state, 'c' + gate, (2 * math.pi,), (0, 1))
+        check_amplitudes(bra, f'''qubit[5] q; angle[3] a=pi; h q[0];
+            pow(2) @ c{gate}(a) q[0],q[1];''', state)
+        for exponent in (-3, 0, 19, 1048577):
+            state = [0j] * 32
+            state[0] = 1
+            state = apply_gate(state, 'h', (), (0,))
+            state = apply_gate(state, gate, ((exponent % 16) * math.pi / 4,), (0,))
+            check_amplitudes(bra, f'''qubit[5] q; angle[3] a=pi/4; h q[0];
+                pow({exponent}) @ {gate}(a) q[0];''', state)
+    width = ctypes.sizeof(ctypes.c_uint) * 8
+    state = [0j] * 32
+    state[0] = 1
+    state = apply_gate(state, 'h', (), (0,))
+    state = apply_gate(state, 'crz', (2 * math.pi,), (0, 1))
+    check_amplitudes(bra, f'''qubit[5] q; angle[{width}] a=pi; h q[0];
+        pow(2) @ crz(a) q[0],q[1];''', state)
+    state = [0j] * 64
+    state[0] = 1
+    for qubit in (0, 1, 2):
+        state = apply_gate(state, 'h', (), (qubit,))
+    rotated = apply_gate(state, 'ry', (3 * math.pi / 4,), (2,))
+    expected = [rotated[index] if index & 3 == 2 else value
+                for index, value in enumerate(state)]
+    check_amplitudes(bra, '''gate inner(t,u) a,b,c {
+        negctrl @ inv @ pow(-3) @ cry(t+u) a,b,c; }
+        gate outer(t,u) a,b,c { inner(t,u) a,b,c; }
+        qubit[6] q; angle[3] x=7*pi/4; angle[5] y=pi/2;
+        h q[0]; h q[1]; h q[2]; outer(x,y) q[0],q[1],q[2];''', expected)
     state = [0j] * 32
     state[0] = 1
     for gate, angle in (('rx', math.pi / 4), ('ry', 7 * math.pi / 4),
