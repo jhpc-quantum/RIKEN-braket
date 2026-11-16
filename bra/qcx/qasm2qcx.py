@@ -4493,25 +4493,44 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if isinstance(operand, ast.Identifier):
                 if operand_name in self.__sized_quantum_registers:
                     register_sizes.add(self.__quantum_registers[operand_name])
-            elif (len(operand.indices) != 1 or not isinstance(operand.indices[0], list)
-                  or len(operand.indices[0]) != 1
-                  or isinstance(operand.indices[0][0], (ast.RangeDefinition, ast.DiscreteSet))):
-                raise UnsupportedOpenQASMError('register selection on user-defined gates')
             else:
-                index = operand.indices[0][0]
-                value_type, _ = self.__loop_expression_info(index, iterators)
-                if value_type not in (ValueType.INT, ValueType.UINT):
-                    raise InvalidQubitOperandException('Qubit index must be an integer')
-                names = self.__loop_bound_names(index)
-                if (any(name in self.__classical_source_types and name not in active for name in names)
-                        or any(isinstance(scope.get(name), _RuntimeIteratorBinding)
-                               for scope in self.__loop_bindings for name in names)):
-                    raise UnsupportedOpenQASMError('runtime qubit index on user-defined gate')
+                if len(operand.indices) != 1:
+                    raise UnsupportedOpenQASMError('multidimensional qubit indexing')
+                selection = operand.indices[0]
+                if isinstance(selection, ast.DiscreteSet):
+                    selector = selection
+                    parts = selection.values
+                elif isinstance(selection, list) and len(selection) == 1:
+                    selector = selection[0]
+                    if isinstance(selector, ast.RangeDefinition):
+                        if selector.start is None or selector.end is None:
+                            raise UnsupportedOpenQASMError('qubit range with omitted bound')
+                        parts = [part for part in (selector.start, selector.step, selector.end) if part is not None]
+                    else:
+                        parts = [selector]
+                else:
+                    raise UnsupportedOpenQASMError('multidimensional qubit indexing')
+                for part in parts:
+                    value_type, _ = self.__loop_expression_info(part, iterators)
+                    if value_type not in (ValueType.INT, ValueType.UINT):
+                        raise InvalidQubitOperandException('Qubit index must be an integer')
+                    names = self.__loop_bound_names(part)
+                    if (any(name in self.__classical_source_types and name not in active for name in names)
+                            or any(isinstance(scope.get(name), _RuntimeIteratorBinding)
+                                   for scope in self.__loop_bindings for name in names)):
+                        raise UnsupportedOpenQASMError('runtime qubit index on user-defined gate')
+                if self.__is_literal_qubit_selector(selector):
+                    indices, is_register = self.__index_selection(
+                        selection, self.__quantum_registers[operand_name], 'qubit', operand_name,
+                        InvalidQubitOperandException)
+                    if is_register:
+                        register_sizes.add(len(indices))
         if len(register_sizes) > 1:
             raise WrongBroadcastingException
         if (not self.__is_initialization_process
                 and all(isinstance(operand, ast.Identifier)
-                        or self.__is_literal_qubit_selector(operand.indices[0][0])
+                        or self.__is_literal_qubit_selector(
+                            operand.indices[0][0] if isinstance(operand.indices[0], list) else operand.indices[0])
                         for operand in statement.qubits)):
             for _ in self.__qubit_operand_tuples(statement.qubits, distinct=True):
                 pass
@@ -4539,6 +4558,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __emit_basic_gate_call(self, statement: ast.QuantumGate) -> None:
         definition = self.__validate_basic_gate_call(statement)
+        if any(isinstance(operand, ast.IndexedIdentifier)
+               and (isinstance(operand.indices[0], ast.DiscreteSet)
+                    or isinstance(operand.indices[0][0], ast.RangeDefinition))
+               for operand in statement.qubits):
+            raise UnsupportedOpenQASMError('register selection on user-defined gates')
         if self.MAX_GATE_DEFINITION_NESTING < 1 or self.MAX_GATE_DEFINITION_EXPANSION_STEPS < 1:
             raise InvalidLoopRangeException('user-defined gate expansion exceeds work or nesting limit')
         operands = [self.__qubit_operand_indices(operand) for operand in statement.qubits]

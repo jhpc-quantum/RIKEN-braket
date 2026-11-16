@@ -656,6 +656,18 @@ class NestedGateCallTests(unittest.TestCase):
 class BasicGateCallTests(unittest.TestCase):
     prefix = 'OPENQASM 3; include "stdgates.inc"; '
 
+    def test_skipped_static_qubit_selections_are_validated(self):
+        definition = ('gate pair a,b { cx a,b; } qubit[4] q; qubit[2] r; qubit t; ')
+        for call in ('pair q[0:1],r;', 'pair q[{3,1}],r;', 'pair t,q[3:-1:2];',
+                     'pair q[1:1],t;', 'pair q[{0}],t;'):
+            with self.subTest(call=call):
+                self.assertEqual(convert(self.prefix + definition + f'for int i in [1:0] {{ {call} }}'),
+                                 ['QUBITS 7'])
+        for call in ('pair q[0:2],r;', 'pair q[{0,4}],r;', 'pair q[0:0:2],r;',
+                     'pair q[1:2],q[1:2];', 'pair q[{1,2}],q[2];'):
+            with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(self.prefix + definition + f'for int i in [1:0] {{ {call} }}')
+
     def test_broadcast_matches_scalar_calls(self):
         defined = ('gate flip a { x a; } gate pair a,b { cx a,b; } '
                    'qubit[2] q; qubit[2] r; qubit target; flip q; pair q,r; pair target,r;')
