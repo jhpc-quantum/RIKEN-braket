@@ -599,6 +599,44 @@ class NestedGateDefinitionFoundationTests(unittest.TestCase):
                 self.converter(source)
 
 
+class RuntimeUserGatePowerFoundationTests(unittest.TestCase):
+    prefix = ('OPENQASM 3; include "stdgates.inc"; gate g a { h a; } '
+              'qubit[2] q; int n = -2; uint[4] u = 3; float f = 1.5; ')
+
+    def test_runtime_integer_factors_are_analyzed_with_controls_and_constants(self):
+        program = qasm2qcx.openqasm3.parser.parse(self.prefix)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        call = qasm2qcx.openqasm3.parser.parse(
+            'OPENQASM 3; negctrl @ pow(n) @ inv @ pow(-2) @ pow(u) @ g q[0], q[1];').statements[0]
+        info = converter._QASM2QCXConverter__user_gate_modifier_info(call.modifiers, allow_runtime=True)
+        self.assertEqual(info.power, 2)
+        self.assertEqual(info.controls, ((0, 1),))
+        self.assertEqual([factor.value_type for factor in info.runtime_exponents],
+                         [qasm2qcx.ValueType.INT, qasm2qcx.ValueType.UINT])
+        self.assertEqual(info.constant_factors, (-2,))
+
+    def test_skipped_calls_validate_runtime_factors_without_evaluating_them(self):
+        for modifiers in ('pow(n / 0)', 'pow(u)', 'negctrl @ pow(n) @ inv @ pow(-2)'):
+            operands = 'q[0], q[1]' if 'negctrl' in modifiers else 'q[0]'
+            with self.subTest(modifiers=modifiers):
+                lines = convert(self.prefix + f'for int i in [1:0] {{ {modifiers} @ g {operands}; }}')
+                self.assertFalse(any(line.startswith('H ') for line in lines))
+
+    def test_invalid_exponents_and_call_shapes_are_rejected_in_skipped_calls(self):
+        for call in ('pow(f) @ g q[0]', 'pow(0.5) @ g q[0]', 'pow(true) @ g q[0]',
+                     'pow(missing) @ g q[0]', 'pow(0) @ pow(f) @ g q[0]',
+                     'ctrl(0) @ pow(n) @ g q[0]', 'pow(n) @ g q[0], q[1]',
+                     'ctrl @ pow(n) @ g q[0], q[0]'):
+            with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(self.prefix + f'for int i in [1:0] {{ {call}; }}')
+
+    def test_reached_runtime_power_remains_an_explicit_error_until_lowering(self):
+        for modifiers in ('pow(n)', 'pow(u)', 'pow(0) @ pow(n)'):
+            with self.subTest(modifiers=modifiers), self.assertRaisesRegex(
+                    qasm2qcx.UnsupportedOpenQASMError, 'runtime integer pow on user-defined gates'):
+                convert(self.prefix + f'{modifiers} @ g q[0];')
+
+
 class NestedGateCallTests(unittest.TestCase):
     prefix = 'OPENQASM 3; include "stdgates.inc"; '
 
@@ -930,7 +968,7 @@ class BasicGateCallTests(unittest.TestCase):
     def test_zero_power_still_validates_user_gate_calls(self):
         source = self.prefix + 'gate pair a,b { cx a,b; } qubit[2] q; int k=1; '
         for call in ('pow(0) @ pair q[0];', 'pow(0) @ pair q[0],q[0];',
-                     'pow(k) @ pair q[0],q[1];', 'pow(0.5) @ pair q[0],q[1];'):
+                     'pow(0.5) @ pair q[0],q[1];'):
             with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert(source + f'for int i in [1:0] {{ {call} }}')
 

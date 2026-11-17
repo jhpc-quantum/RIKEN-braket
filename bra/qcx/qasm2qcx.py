@@ -4392,8 +4392,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __user_gate_modifier_info(
             self, modifiers: list[ast.QuantumGateModifier],
-            iterators: set[str] | dict[str, ValueType] | None = None) -> _GateModifierInfo:
-        return self.__analyze_gate_modifiers(modifiers, iterators)
+            iterators: set[str] | dict[str, ValueType] | None = None, *,
+            allow_runtime: bool = False) -> _GateModifierInfo:
+        return self.__analyze_gate_modifiers(modifiers, iterators, allow_runtime=allow_runtime)
 
     def visit_QuantumGateDefinition(self, statement: ast.QuantumGateDefinition) -> None:
         if not self.__is_initialization_process:
@@ -4477,7 +4478,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if not self.__is_initialization_process and name not in self.__defined_basic_gate_names:
             raise UnsupportedOpenQASMError(f'gate {name} used before definition')
         definition = self.__basic_gate_definitions[name]
-        info = self.__user_gate_modifier_info(statement.modifiers, iterators)
+        info = self.__user_gate_modifier_info(statement.modifiers, iterators, allow_runtime=True)
         if statement.duration is not None:
             raise UnsupportedOpenQASMError('duration on user-defined gate')
         expected_qubits = len(definition.qubits) + sum(count for _, count in info.controls)
@@ -4567,7 +4568,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __emit_basic_gate_call(self, statement: ast.QuantumGate) -> None:
         definition = self.__validate_basic_gate_call(statement)
-        info = self.__user_gate_modifier_info(statement.modifiers)
+        info = self.__user_gate_modifier_info(statement.modifiers, allow_runtime=True)
+        if info.runtime_exponents:
+            raise UnsupportedOpenQASMError('runtime integer pow on user-defined gates is not yet supported')
         inverse = info.power < 0
         repetitions = abs(info.power)
         control_count = sum(number for _, number in info.controls)
