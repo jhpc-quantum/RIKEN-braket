@@ -602,6 +602,31 @@ class NestedGateDefinitionFoundationTests(unittest.TestCase):
 class NestedGateCallTests(unittest.TestCase):
     prefix = 'OPENQASM 3; include "stdgates.inc"; '
 
+    def test_power_snapshots_arguments_and_preserves_limits_for_nested_empty_bodies(self):
+        source = ('gate inner(t) a {} gate outer(t) a { pow(2) @ inner(t) a; } '
+                  'qubit[2] q; angle[3] value=pi/4; ')
+        lines = convert(self.prefix + source + 'pow(2) @ outer(value) q;')
+        self.assertEqual(sum(line.endswith(':= VALUE31') for line in lines), 1)
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_GATE_DEFINITION_EXPANSION_STEPS', 11), \
+                self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'work limit'):
+            convert(self.prefix + source + 'pow(2) @ outer(value) q;')
+        zero = convert(self.prefix + source + 'pow(0) @ outer(value) q;')
+        self.assertEqual(sum(line.endswith(':= VALUE31') for line in zero), 1)
+
+    def test_power_failure_cleans_nested_captures(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; gate inner(t) a { p(t) a; } '
+                  'gate outer(t) a { pow(3) @ inner(t) a; } qubit q; angle[3] value=pi/4;')
+        program = qasm2qcx.openqasm3.parser.parse(source)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        call = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; pow(2) @ outer(value) q;').statements[0]
+        with patch.object(converter, 'MAX_GATE_DEFINITION_EXPANSION_STEPS', 3), \
+                self.assertRaises(qasm2qcx.InvalidLoopRangeException):
+            converter.visit(call)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(converter._QASM2QCXConverter__gate_angle_bindings, [])
+
     def test_constant_powers_repeat_complete_nested_bodies(self):
         defined = ('gate inner a { h a; s a; } gate outer a { pow(-2) @ inner a; x a; } '
                    'qubit q; pow(2) @ outer q;')
