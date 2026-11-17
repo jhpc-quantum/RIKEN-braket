@@ -4393,8 +4393,26 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __user_gate_modifier_info(
             self, modifiers: list[ast.QuantumGateModifier],
             iterators: set[str] | dict[str, ValueType] | None = None, *,
-            allow_runtime: bool = False) -> _GateModifierInfo:
-        return self.__analyze_gate_modifiers(modifiers, iterators, allow_runtime=allow_runtime)
+            allow_runtime: bool = False, allow_float: bool = False
+            ) -> _GateModifierInfo | _OrderedGateModifierInfo:
+        return self.__analyze_gate_modifiers(
+            modifiers, iterators, allow_runtime=allow_runtime, allow_float=allow_float)
+
+    def __single_operation_gate_chain(self, definition: _BasicGateDefinition) -> tuple[ast.QuantumGate, ...]:
+        """Find the original operations without flattening their modifier order."""
+        chain = []
+        while True:
+            if len(chain) >= self.MAX_GATE_DEFINITION_NESTING:
+                raise InvalidLoopRangeException('user-defined gate expansion exceeds nesting limit')
+            if len(definition.body) != 1:
+                raise UnsupportedOpenQASMError(
+                    'floating-point pow on user-defined gates requires a single-operation wrapper chain')
+            operation = definition.body[0]
+            chain.append(operation)
+            nested = self.__basic_gate_definitions.get(operation.name.name)
+            if nested is None:
+                return tuple(chain)
+            definition = nested
 
     def visit_QuantumGateDefinition(self, statement: ast.QuantumGateDefinition) -> None:
         if not self.__is_initialization_process:
@@ -4478,7 +4496,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if not self.__is_initialization_process and name not in self.__defined_basic_gate_names:
             raise UnsupportedOpenQASMError(f'gate {name} used before definition')
         definition = self.__basic_gate_definitions[name]
-        info = self.__user_gate_modifier_info(statement.modifiers, iterators, allow_runtime=True)
+        info = self.__user_gate_modifier_info(statement.modifiers, iterators, allow_runtime=True, allow_float=True)
+        if isinstance(info, _OrderedGateModifierInfo):
+            self.__single_operation_gate_chain(definition)
+            if any(isinstance(modifier.argument, _RuntimeGateExponent) for modifier in info.modifiers):
+                raise UnsupportedOpenQASMError('runtime integer factors in floating-point pow chains')
         if statement.duration is not None:
             raise UnsupportedOpenQASMError('duration on user-defined gate')
         expected_qubits = len(definition.qubits) + sum(count for _, count in info.controls)
@@ -4568,7 +4590,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __emit_basic_gate_call(self, statement: ast.QuantumGate) -> None:
         definition = self.__validate_basic_gate_call(statement)
-        info = self.__user_gate_modifier_info(statement.modifiers, allow_runtime=True)
+        info = self.__user_gate_modifier_info(statement.modifiers, allow_runtime=True, allow_float=True)
+        if isinstance(info, _OrderedGateModifierInfo):
+            raise UnsupportedOpenQASMError('floating-point pow on user-defined gate wrappers is not yet supported')
         inverse = info.power < 0
         repetitions = abs(info.power)
         control_count = sum(number for _, number in info.controls)
