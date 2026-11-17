@@ -93,6 +93,29 @@ def main():
         qubit[5] q; h q[0]; inv @ g q[0];''', state)
     state = [0j] * 32
     state[0] = 1
+    for qubit in (0, 1, 2):
+        state = apply_gate(state, 'h', (), (qubit,))
+    transformed = apply_gate(state, 'p', (-math.pi / 4,), (2,))
+    transformed = apply_gate(transformed, 'p', (math.pi / 4,), (2,))
+    transformed = apply_gate(transformed, 'U', (math.pi / 2, 0, math.pi), (2,), inverse=True)
+    state = [transformed[index] if index & 3 == 1 else value for index, value in enumerate(state)]
+    state = apply_gate(state, 'cx', (), (0, 2))
+    check_amplitudes(bra, '''gate inner(t) a { U(pi/2,0,pi) a; pow(0.5) @ inv @ s a; p(t) a; }
+        gate outer(t) c,a { negctrl @ inv @ inner(t) c,a; x a; }
+        qubit[5] q; angle[3] value=pi/4; h q[0]; h q[1]; h q[2];
+        ctrl @ outer(value) q[0],q[1],q[2];''', state)
+    state = [0j] * 32
+    state[0] = 1
+    state = apply_gate(state, 'h', (), (0,))
+    for target in (3, 1):
+        transformed = apply_gate(state, 'U', (math.pi / 2, 0, math.pi), (target,))
+        transformed = apply_gate(transformed, 'p', (math.pi / 4,), (target,))
+        state = [transformed[index] if index & 1 else value for index, value in enumerate(state)]
+    check_amplitudes(bra, '''gate inner(t) a { U(pi/2,0,pi) a; p(t) a; }
+        qubit[5] q; angle[3] value=pi/4; h q[0];
+        ctrl @ inner(value) q[0],q[{3,1}];''', state)
+    state = [0j] * 32
+    state[0] = 1
     for gate, parameters, qubits in (
             ('h', (), (0,)), ('h', (), (1,)),
             ('p', (math.pi / 4,), (0,)), ('cp', (math.pi / 2,), (0, 1)),
