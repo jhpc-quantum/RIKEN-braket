@@ -597,6 +597,21 @@ class NestedGateDefinitionFoundationTests(unittest.TestCase):
 class NestedGateCallTests(unittest.TestCase):
     prefix = 'OPENQASM 3; include "stdgates.inc"; '
 
+    def test_controls_propagate_through_nested_user_gates(self):
+        defined = ('gate inner a,b { h b; ctrl @ s a,b; } '
+                   'gate outer a,b,c { negctrl @ inv @ inner a,b,c; x c; } '
+                   'qubit[4] q; ctrl @ outer q[0],q[1],q[2],q[3];')
+        inline = ('qubit[4] q; ctrl @ negctrl @ inv @ ctrl @ s q[0],q[1],q[2],q[3]; '
+                  'ctrl @ negctrl @ inv @ h q[0],q[1],q[3]; ctrl @ x q[0],q[3];')
+        self.assertEqual(convert(self.prefix + defined), convert(self.prefix + inline))
+
+    def test_controlled_user_gate_inverse_matches_inline(self):
+        defined = ('gate g a { U(pi/2,0,pi) a; pow(0.5) @ inv @ s a; } '
+                   'qubit[2] q; negctrl @ inv @ g q[0],q[1];')
+        inline = ('qubit[2] q; negctrl @ inv @ pow(0.5) @ inv @ s q[0],q[1]; '
+                  'negctrl @ inv @ U(pi/2,0,pi) q[0],q[1];')
+        self.assertEqual(convert(self.prefix + defined), convert(self.prefix + inline))
+
     def test_repeated_inverse_and_selected_broadcast(self):
         definitions = ('gate inner a { h a; s a; } gate outer a { inv @ inner a; x a; } '
                        'qubit[3] q; ')
