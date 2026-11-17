@@ -593,6 +593,18 @@ class NestedGateDefinitionFoundationTests(unittest.TestCase):
 class NestedGateCallTests(unittest.TestCase):
     prefix = 'OPENQASM 3; include "stdgates.inc"; '
 
+    def test_inverse_nested_body_reverses_order_and_preserves_modifiers(self):
+        defined = ('gate inner a { h a; pow(0.5) @ s a; } '
+                   'gate outer a { x a; inv @ inner a; U(pi/2,0,pi) a; } '
+                   'qubit q; inv @ outer q;')
+        inline = ('qubit q; inv @ U(pi/2,0,pi) q; h q; pow(0.5) @ s q; x q;')
+        self.assertEqual(convert(self.prefix + defined), convert(self.prefix + inline))
+
+    def test_inverse_preserves_outer_modifier_order(self):
+        defined = ('gate g a { pow(0.5) @ inv @ s a; } qubit q; inv @ g q;')
+        inline = 'qubit q; inv @ pow(0.5) @ inv @ s q;'
+        self.assertEqual(convert(self.prefix + defined), convert(self.prefix + inline))
+
     def test_nested_bindings_match_inline_operations(self):
         defined = ('gate inner a,b { h a; cx a,b; } gate middle b,a { inner a,b; } '
                    'gate outer a,b { middle b,a; } qubit[2] q; outer q[1],q[0];')
@@ -781,7 +793,7 @@ class BasicGateCallTests(unittest.TestCase):
     def test_invalid_calls(self):
         definition = 'gate pair a,b { cx a,b; } qubit[2] q; '
         for call in ('pair q[0];', 'pair(1) q[0],q[1];', 'pair q[0],q[0];',
-                     'pair q[0],q[-2];', 'pair q,q;', 'inv @ pair q[0],q[1];'):
+                     'pair q[0],q[-2];', 'pair q,q;', 'pow(2) @ pair q[0],q[1];'):
             with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert(self.prefix + definition + call)
         with self.assertRaises(qasm2qcx.QASM2QCXError):
