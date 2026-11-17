@@ -660,6 +660,28 @@ class FloatingUserGateWrapperFoundationTests(unittest.TestCase):
         lines = convert(source)
         self.assertTrue(any('ANGLEBITS2PHASE' in line and 'POW 0.5' in line for line in lines))
 
+    def test_zero_power_still_captures_arguments_and_checks_aliases(self):
+        prefix = ('OPENQASM 3; include "stdgates.inc"; gate g(t) a { p(t) a; } '
+                  'qubit[2] q; angle[3] theta=pi/4; ')
+        lines = convert(prefix + 'pow(0.0) @ g(theta) q[0];')
+        self.assertEqual(sum(line.endswith(':= THETA31') for line in lines), 1)
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            convert(prefix + 'ctrl @ pow(0.0) @ g(theta) q[0],q[0];')
+
+    def test_expansion_work_limit_and_failed_scope_cleanup(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; gate inner(t) a { p(t) a; } '
+                  'gate outer(t) a { inner(t) a; } qubit q; angle[3] theta=pi/4;')
+        program = qasm2qcx.openqasm3.parser.parse(source)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        call = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; pow(0.5) @ outer(theta) q;').statements[0]
+        with patch.object(converter, 'MAX_GATE_DEFINITION_EXPANSION_STEPS', 1), \
+                self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'work limit'):
+            converter.visit(call)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(converter._QASM2QCXConverter__gate_angle_bindings, [])
+
 
 class RuntimeUserGatePowerFoundationTests(unittest.TestCase):
     prefix = ('OPENQASM 3; include "stdgates.inc"; gate g a { h a; } '
