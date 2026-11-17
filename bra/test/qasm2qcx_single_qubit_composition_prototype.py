@@ -74,3 +74,45 @@ def as_matrix(unitary):
     c = unitary.phase
     return ((c * complex(a, -z), c * complex(-y, -x)),
             (c * complex(y, -x), c * complex(a, z)))
+
+
+def native_principal_argument(value):
+    """Match the backend's negative-real endpoint rule for a computed value."""
+    if not (math.isfinite(value.real) and math.isfinite(value.imag)) or value == 0:
+        raise ValueError('a finite, nonzero eigenvalue is required')
+    if value.real < 0 and value.imag == 0:
+        return math.pi
+    return cmath.phase(value)
+
+
+def spectral_power_matrix(unitary, exponents):
+    """Model the existing U-family eigenphase path using host floating point.
+
+    This is an experiment, not an implementation of the QCX backend. The two
+    eigenvalues are selected separately before each power; no scalar snapping
+    or quaternion normalization is performed.
+    """
+    x, y, z = unitary.vector
+    length = math.hypot(x, y, z)
+    plus = unitary.phase * complex(unitary.scalar, -length)
+    minus = unitary.phase * complex(unitary.scalar, length)
+    for exponent in exponents:
+        if not math.isfinite(exponent):
+            raise ValueError('power must be finite')
+        plus = cmath.exp(1j * exponent * native_principal_argument(plus))
+        minus = cmath.exp(1j * exponent * native_principal_argument(minus))
+    common = (plus + minus) / 2
+    if length == 0:
+        return ((common, 0j), (0j, common))
+    difference = (plus - minus) / 2
+    nx, ny, nz = x / length, y / length, z / length
+    return ((common + difference * nz, difference * complex(nx, -ny)),
+            (difference * complex(nx, ny), common - difference * nz))
+
+
+if __name__ == '__main__':
+    # Four T gates are exactly Z, whose principal square root is S. Report the
+    # unsnapped result: host rounding may put its -1 eigenvalue below the cut.
+    for names in (('s', 's'), ('t', 't', 't', 't')):
+        unitary = compose_sequence(names)
+        print(' '.join(names), 'sqrt:', spectral_power_matrix(unitary, (0.5,)))
