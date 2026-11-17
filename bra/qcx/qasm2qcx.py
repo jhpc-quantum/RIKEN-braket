@@ -4393,8 +4393,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __user_gate_modifier_info(
             self, modifiers: list[ast.QuantumGateModifier],
             iterators: set[str] | dict[str, ValueType] | None = None) -> _GateModifierInfo:
-        if any(modifier.modifier == ast.GateModifierName.pow for modifier in modifiers):
-            raise UnsupportedOpenQASMError('power modifiers on user-defined gates')
         return self.__analyze_gate_modifiers(modifiers, iterators)
 
     def visit_QuantumGateDefinition(self, statement: ast.QuantumGateDefinition) -> None:
@@ -4549,6 +4547,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             ) -> tuple[_BasicGateDefinition, dict[str, ast.Identifier | ast.IndexedIdentifier], list]:
         definition = self.__validate_basic_gate_call(statement)
         info = self.__user_gate_modifier_info(statement.modifiers)
+        if any(modifier.modifier == ast.GateModifierName.pow for modifier in statement.modifiers):
+            raise UnsupportedOpenQASMError('user-defined gate power lowering')
         # Resolve all operands first so an invalid or aliased call emits nothing.
         physical = []
         resolved = []
@@ -4570,6 +4570,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_basic_gate_call(self, statement: ast.QuantumGate) -> None:
         definition = self.__validate_basic_gate_call(statement)
         info = self.__user_gate_modifier_info(statement.modifiers)
+        if any(modifier.modifier == ast.GateModifierName.pow for modifier in statement.modifiers):
+            raise UnsupportedOpenQASMError('user-defined gate power lowering')
         inverse = info.power < 0
         control_count = sum(number for _, number in info.controls)
         polarities = [value for value, number in info.controls for _ in range(number)]

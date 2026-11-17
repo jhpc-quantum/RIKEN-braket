@@ -166,7 +166,7 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
         prefix = 'include "stdgates.inc"; gate inner(x,y) a { p(x) a; p(y) a; } '
         for call in ('inner(phi) a;', 'inner(phi,phi,phi) a;', 'inner(phi,other) a;',
                      'inner(phi,phi*phi) a;', 'inner(phi,1) a;', 'inner(phi,pi) a;',
-                     'pow(2) @ inner(phi,phi) a;'):
+                     'pow(2.0) @ inner(phi,phi) a;'):
             with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(prefix + f'gate outer(phi) a {{ {call} }}')
 
@@ -580,13 +580,18 @@ class NestedGateDefinitionFoundationTests(unittest.TestCase):
         c = self.converter('gate a q {} gate b x,y,z { ctrl @ a x,y; negctrl @ inv @ a z,y; }')
         self.assertEqual(len(c._QASM2QCXConverter__basic_gate_definitions['b'].body), 2)
 
+    def test_records_nested_constant_integer_power_calls(self):
+        c = self.converter('gate a q {} gate b x,y { pow(0) @ a x; '
+                           'negctrl @ inv @ pow(-2) @ a x,y; }')
+        self.assertEqual(len(c._QASM2QCXConverter__basic_gate_definitions['b'].body), 2)
+
     def test_rejects_forward_recursive_and_invalid_nested_calls(self):
         for source in (
                 'gate a q { b q; } gate b q {}',
                 'gate a q { a q; }',
                 'gate a q {} gate b q { a q,q; }',
                 'gate a q {} gate b q { a(1) q; }',
-                'gate a q {} gate b q { pow(2) @ a q; }',
+                'gate a q {} gate b q { pow(2.0) @ a q; }',
                 'gate a q {} gate b q { a missing; }',
                 'gate a q {} gate b q { a q[0]; }',
                 'gate a x,y {} gate b q { a q,q; }'):
@@ -864,7 +869,7 @@ class BasicGateCallTests(unittest.TestCase):
                 convert(self.prefix + definition + call)
         with self.assertRaises(qasm2qcx.QASM2QCXError):
             convert(self.prefix + 'qubit[2] q; pair q[0],q[1]; gate pair a,b { cx a,b; }')
-        for call in ('pair q[0],q[0];', 'pair q[0],q[2];', 'pow(2) @ pair q[0],q[1];'):
+        for call in ('pair q[0],q[0];', 'pair q[0],q[2];', 'pow(2.0) @ pair q[0],q[1];'):
             with self.subTest(skipped_call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert(self.prefix + definition + f'for int i in [1:0] {{ {call} }}')
 
@@ -872,8 +877,16 @@ class BasicGateCallTests(unittest.TestCase):
         source = self.prefix + 'gate flip a { x a; } qubit[2] q; '
         self.assertEqual(convert(source + 'for int i in [1:0] { inv @ inv @ flip q; }'), ['QUBITS 2'])
         self.assertEqual(convert(source + 'for int i in [1:0] { ctrl @ flip q[0],q[1]; }'), ['QUBITS 2'])
-        for call in ('pow(2) @ flip q;', 'ctrl @ flip q[0];', 'inv @ flip missing;',
+        self.assertEqual(convert(source + 'for int i in [1:0] { pow(0) @ flip q; }'), ['QUBITS 2'])
+        for call in ('pow(2.0) @ flip q;', 'ctrl @ flip q[0];', 'inv @ flip missing;',
                      'negctrl @ flip q[0],q[0];', 'ctrl(0) @ flip q[0],q[1];'):
+            with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(source + f'for int i in [1:0] {{ {call} }}')
+
+    def test_zero_power_still_validates_user_gate_calls(self):
+        source = self.prefix + 'gate pair a,b { cx a,b; } qubit[2] q; int k=1; '
+        for call in ('pow(0) @ pair q[0];', 'pow(0) @ pair q[0],q[0];',
+                     'pow(k) @ pair q[0],q[1];', 'pow(0.5) @ pair q[0],q[1];'):
             with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert(source + f'for int i in [1:0] {{ {call} }}')
 
