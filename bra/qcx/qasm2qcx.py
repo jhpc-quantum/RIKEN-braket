@@ -4416,8 +4416,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise UnsupportedOpenQASMError(f'gate {gate_name} in gate definition')
             if child.duration is not None:
                 raise UnsupportedOpenQASMError('gate duration in gate definition')
-            if nested is not None and child.modifiers:
-                raise UnsupportedOpenQASMError('modifiers on user-defined gates')
+            if nested is not None:
+                self.__inverse_modifier_parity(child.modifiers)
             for modifier in child.modifiers:
                 if modifier.argument is not None and self.__loop_bound_names(modifier.argument) - {'pi', 'tau', 'euler'}:
                     raise UnsupportedOpenQASMError('nonlocal expression in gate definition')
@@ -4471,8 +4471,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if not self.__is_initialization_process and name not in self.__defined_basic_gate_names:
             raise UnsupportedOpenQASMError(f'gate {name} used before definition')
         definition = self.__basic_gate_definitions[name]
-        if statement.modifiers:
-            raise UnsupportedOpenQASMError('modifiers on user-defined gates')
+        self.__inverse_modifier_parity(statement.modifiers)
         if statement.duration is not None:
             raise UnsupportedOpenQASMError('duration on user-defined gate')
         if len(statement.arguments) != len(definition.parameters) or len(statement.qubits) != len(definition.qubits):
@@ -4540,6 +4539,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, statement: ast.QuantumGate
             ) -> tuple[_BasicGateDefinition, dict[str, ast.Identifier | ast.IndexedIdentifier]]:
         definition = self.__validate_basic_gate_call(statement)
+        if statement.modifiers:
+            raise UnsupportedOpenQASMError('inverse user-defined gate lowering')
         # Resolve all operands first so an invalid or aliased call emits nothing.
         physical = []
         resolved = []
@@ -4558,6 +4559,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __emit_basic_gate_call(self, statement: ast.QuantumGate) -> None:
         definition = self.__validate_basic_gate_call(statement)
+        if statement.modifiers:
+            raise UnsupportedOpenQASMError('inverse user-defined gate lowering')
         if self.MAX_GATE_DEFINITION_NESTING < 1 or self.MAX_GATE_DEFINITION_EXPANSION_STEPS < 1:
             raise InvalidLoopRangeException('user-defined gate expansion exceeds work or nesting limit')
         operands = [self.__qubit_operand_indices(operand) for operand in statement.qubits]
