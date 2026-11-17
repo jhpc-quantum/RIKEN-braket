@@ -602,6 +602,25 @@ class NestedGateDefinitionFoundationTests(unittest.TestCase):
 class NestedGateCallTests(unittest.TestCase):
     prefix = 'OPENQASM 3; include "stdgates.inc"; '
 
+    def test_constant_powers_repeat_complete_nested_bodies(self):
+        defined = ('gate inner a { h a; s a; } gate outer a { pow(-2) @ inner a; x a; } '
+                   'qubit q; pow(2) @ outer q;')
+        inline = ('qubit q; sdg q; h q; sdg q; h q; x q; '
+                  'sdg q; h q; sdg q; h q; x q;')
+        self.assertEqual(convert(self.prefix + defined), convert(self.prefix + inline))
+
+    def test_zero_power_and_broadcast_preserve_validation_and_work_limits(self):
+        source = self.prefix + 'gate g a { h a; s a; } qubit[2] q; '
+        self.assertEqual(convert(source + 'pow(0) @ g q;'), ['QUBITS 2'])
+        self.assertEqual(convert(source + 'pow(-2) @ g q;'),
+                         convert(self.prefix + 'qubit[2] q; '
+                                 'sdg q[0]; h q[0]; sdg q[0]; h q[0]; '
+                                 'sdg q[1]; h q[1]; sdg q[1]; h q[1];'))
+        empty = self.prefix + 'gate g a {} qubit q; pow(4) @ g q;'
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_GATE_DEFINITION_EXPANSION_STEPS', 3), \
+                self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'work limit'):
+            convert(empty)
+
     def test_controlled_user_gate_broadcasts_and_checks_aliases(self):
         source = ('gate inner(t) a { p(t) a; } gate outer(t) a { inner(t) a; } '
                   'qubit[4] q; angle[3] value=pi/4; ')
@@ -864,7 +883,7 @@ class BasicGateCallTests(unittest.TestCase):
     def test_invalid_calls(self):
         definition = 'gate pair a,b { cx a,b; } qubit[2] q; '
         for call in ('pair q[0];', 'pair(1) q[0],q[1];', 'pair q[0],q[0];',
-                     'pair q[0],q[-2];', 'pair q,q;', 'pow(2) @ pair q[0],q[1];'):
+                     'pair q[0],q[-2];', 'pair q,q;', 'pow(2.0) @ pair q[0],q[1];'):
             with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert(self.prefix + definition + call)
         with self.assertRaises(qasm2qcx.QASM2QCXError):
