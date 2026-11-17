@@ -593,6 +593,26 @@ class NestedGateDefinitionFoundationTests(unittest.TestCase):
 class NestedGateCallTests(unittest.TestCase):
     prefix = 'OPENQASM 3; include "stdgates.inc"; '
 
+    def test_repeated_inverse_and_selected_broadcast(self):
+        definitions = ('gate inner a { h a; s a; } gate outer a { inv @ inner a; x a; } '
+                       'qubit[3] q; ')
+        self.assertEqual(convert(self.prefix + definitions + 'inv @ inv @ outer q[{2,0}];'),
+                         convert(self.prefix + definitions + 'outer q[2]; outer q[0];'))
+
+    def test_inverse_nested_limits_and_cleanup(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; gate inner(t) a { p(t) a; } '
+                  'gate outer(t) a { inner(t) a; } qubit[2] q; angle[3] value=pi/4;')
+        program = qasm2qcx.openqasm3.parser.parse(source)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        call = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; inv @ outer(value) q;').statements[0]
+        with patch.object(converter, 'MAX_GATE_DEFINITION_EXPANSION_STEPS', 1), \
+                self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'work limit'):
+            converter.visit(call)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(converter._QASM2QCXConverter__gate_angle_bindings, [])
+
     def test_inverse_nested_body_reverses_order_and_preserves_modifiers(self):
         defined = ('gate inner a { h a; pow(0.5) @ s a; } '
                    'gate outer a { x a; inv @ inner a; U(pi/2,0,pi) a; } '
