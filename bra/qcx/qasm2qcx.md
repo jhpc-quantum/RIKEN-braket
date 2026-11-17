@@ -7064,8 +7064,9 @@ parameter computations. Controlled gates work in all supported loops, including
 are validated even inside empty enclosing loops. Successful and failed lowering
 release gate-owned temporaries while preserving caller-owned storage.
 
-Gate durations, floating powers on user-defined calls, and runtime-dependent control counts
-remain unsupported. No new QCX mnemonic is introduced: the native control
+Gate durations and runtime-dependent control counts remain unsupported.
+Floating powers on user-defined calls are supported for the single-operation
+wrappers described below. No new QCX mnemonic is introduced: the native control
 families use the `#0` operand suffix to select zero-controls.
 
 ### Basic user-defined gates
@@ -7145,8 +7146,7 @@ separately expanded inverse body. Factors use separate unsigned counters,
 including for signed `INT_MIN`, avoiding multiplication overflow. Each constant
 factor used in a runtime repetition must fit native `UINT`. Generated code and
 expansion work are bounded by the limits above, but the number of runtime
-iterations depends on the exponent. Floating-point powers on user-defined
-calls remain unsupported.
+iterations depends on the exponent.
 
 ```qasm
 OPENQASM 3.0;
@@ -7156,6 +7156,26 @@ qubit q;
 int n = -2;
 pow(n) @ pair q;
 ```
+
+Compile-time floating-point powers are supported when every definition in
+the wrapper chain contains exactly one operation and the chain ends in a
+supported built-in gate. The converter preserves modifier order through the
+chain and uses the built-in gate's principal-phase convention. Angle argument
+forwarding, inverse and control modifiers, and broadcasting follow the same
+rules as other user-gate calls. The underlying built-in operation's
+floating-power restrictions also apply.
+
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+gate wrapped a { x a; }
+qubit q;
+pow(0.5) @ wrapped q;
+```
+
+Floating powers of empty or multi-operation user-gate bodies and floating
+powers on nested user-gate calls inside definitions remain unsupported, as do
+runtime floating-point exponents and mixed runtime-integer/floating chains.
 
 Loops and `gphase` in definitions remain unsupported. Qubit selections follow the existing static indexing rules;
 runtime-dependent selections and omitted range bounds remain unsupported.
@@ -10501,6 +10521,10 @@ against independent amplitudes. It executes the documented example. Run with
 against phase-sensitive amplitudes, including nested definitions, negative
 controls, broadcast calls, and changing exponents in a runtime loop.
 
+`bra/test/qasm2qcx_user_gate_wrapper_float_power_numerical.py` checks floating
+powers of wrappers against phase-sensitive amplitudes, including nested
+modifier order, negative controls, broadcasting, and forwarded angles.
+
 `bra/test/qasm2qcx_basic_user_gates_numerical.py` checks basic gate expansion
 against independent amplitudes, including controlled operations and `U` phase.
 It executes the documented example. Run with `--bra /path/to/bra`.
@@ -11501,6 +11525,7 @@ python3 bra/test/qasm2qcx_control_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_basic_user_gates_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_user_gate_angle_parameters_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_user_gate_runtime_power_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_user_gate_wrapper_float_power_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_nested_user_gates_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_negative_control_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_power_numerical.py --bra bra/bin/bra
