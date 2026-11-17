@@ -4390,6 +4390,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 return False
         return True
 
+    def __user_gate_modifier_info(
+            self, modifiers: list[ast.QuantumGateModifier],
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _GateModifierInfo:
+        if any(modifier.modifier == ast.GateModifierName.pow for modifier in modifiers):
+            raise UnsupportedOpenQASMError('power modifiers on user-defined gates')
+        return self.__analyze_gate_modifiers(modifiers, iterators)
+
     def visit_QuantumGateDefinition(self, statement: ast.QuantumGateDefinition) -> None:
         if not self.__is_initialization_process:
             self.__defined_basic_gate_names.add(statement.name.name)
@@ -4417,7 +4424,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if child.duration is not None:
                 raise UnsupportedOpenQASMError('gate duration in gate definition')
             if nested is not None:
-                self.__inverse_modifier_parity(child.modifiers)
+                nested_info = self.__user_gate_modifier_info(child.modifiers)
             for modifier in child.modifiers:
                 if modifier.argument is not None and self.__loop_bound_names(modifier.argument) - {'pi', 'tau', 'euler'}:
                     raise UnsupportedOpenQASMError('nonlocal expression in gate definition')
@@ -4444,7 +4451,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if value_type in (ValueType.BIT, ValueType.BOOL, ValueType.COMPLEX):
                     raise WrongParameterTypeException(value_type)
             if nested is not None:
-                parameters, qubits = len(nested.parameters), len(nested.qubits)
+                parameters = len(nested.parameters)
+                qubits = len(nested.qubits) + sum(count for _, count in nested_info.controls)
             else:
                 info = self.__analyze_gate_modifiers(child.modifiers, allow_float=True)
                 if (gate_name in self.angle_rotation_gates | self.angle_controlled_rotation_gates
@@ -4471,11 +4479,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if not self.__is_initialization_process and name not in self.__defined_basic_gate_names:
             raise UnsupportedOpenQASMError(f'gate {name} used before definition')
         definition = self.__basic_gate_definitions[name]
-        self.__inverse_modifier_parity(statement.modifiers)
+        info = self.__user_gate_modifier_info(statement.modifiers, iterators)
         if statement.duration is not None:
             raise UnsupportedOpenQASMError('duration on user-defined gate')
-        if len(statement.arguments) != len(definition.parameters) or len(statement.qubits) != len(definition.qubits):
-            raise WrongGateArityException(name, len(definition.parameters), len(definition.qubits),
+        expected_qubits = len(definition.qubits) + sum(count for _, count in info.controls)
+        if len(statement.arguments) != len(definition.parameters) or len(statement.qubits) != expected_qubits:
+            raise WrongGateArityException(name, len(definition.parameters), expected_qubits,
                                           len(statement.arguments), len(statement.qubits))
         for argument in statement.arguments:
             value_type, _ = self.__loop_expression_info(argument, iterators)
@@ -4539,6 +4548,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, statement: ast.QuantumGate
             ) -> tuple[_BasicGateDefinition, dict[str, ast.Identifier | ast.IndexedIdentifier]]:
         definition = self.__validate_basic_gate_call(statement)
+        if self.__user_gate_modifier_info(statement.modifiers).controls:
+            raise UnsupportedOpenQASMError('controlled user-defined gate lowering')
         # Resolve all operands first so an invalid or aliased call emits nothing.
         physical = []
         resolved = []
@@ -4557,6 +4568,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __emit_basic_gate_call(self, statement: ast.QuantumGate) -> None:
         definition = self.__validate_basic_gate_call(statement)
+        if self.__user_gate_modifier_info(statement.modifiers).controls:
+            raise UnsupportedOpenQASMError('controlled user-defined gate lowering')
         inverse = self.__inverse_modifier_parity(statement.modifiers)
         if self.MAX_GATE_DEFINITION_NESTING < 1 or self.MAX_GATE_DEFINITION_EXPANSION_STEPS < 1:
             raise InvalidLoopRangeException('user-defined gate expansion exceeds work or nesting limit')
