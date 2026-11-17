@@ -7064,7 +7064,7 @@ parameter computations. Controlled gates work in all supported loops, including
 are validated even inside empty enclosing loops. Successful and failed lowering
 release gate-owned temporaries while preserving caller-owned storage.
 
-Gate durations, runtime and floating powers on user-defined calls, and runtime-dependent control counts
+Gate durations, floating powers on user-defined calls, and runtime-dependent control counts
 remain unsupported. No new QCX mnemonic is introduced: the native control
 families use the `#0` operand suffix to select zero-controls.
 
@@ -7133,12 +7133,29 @@ gate's own operands and are propagated through nested expansion to every
 operation. This retains the controlled operation's complete phase. Control
 and gate operands must be distinct for every broadcast tuple.
 
-Constant integer `pow` modifiers repeat the complete user-gate body, or its
-inverse for a negative power. Zero powers emit no gate operations, but still
-validate operands and capture reached angle arguments. Repetitions, including
-empty bodies, share the broadcast's work and output limits. Integer powers
-can be combined with inverse and control modifiers; runtime and floating-point
-powers on user-defined calls remain unsupported.
+Constant and runtime integer `pow` modifiers repeat the complete user-gate
+body, or its inverse for a negative power. Zero powers emit no gate operations,
+but still validate operands and capture reached exponents and angle arguments.
+Integer powers can be combined with inverse and control modifiers, nested
+definitions, and broadcasting. Runtime exponent expressions are captured once
+per reached call, before angle arguments, and reused across broadcast copies.
+
+Runtime powers use QCX loops around the expanded body; negative powers use a
+separately expanded inverse body. Factors use separate unsigned counters,
+including for signed `INT_MIN`, avoiding multiplication overflow. Each constant
+factor used in a runtime repetition must fit native `UINT`. Generated code and
+expansion work are bounded by the limits above, but the number of runtime
+iterations depends on the exponent. Floating-point powers on user-defined
+calls remain unsupported.
+
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+gate pair a { h a; s a; }
+qubit q;
+int n = -2;
+pow(n) @ pair q;
+```
 
 Loops and `gphase` in definitions remain unsupported. Qubit selections follow the existing static indexing rules;
 runtime-dependent selections and omitted range bounds remain unsupported.
@@ -10480,6 +10497,10 @@ precisions, repeated calls, and skipped paths
 against independent amplitudes. It executes the documented example. Run with
 `--bra /path/to/bra`.
 
+`bra/test/qasm2qcx_user_gate_runtime_power_numerical.py` checks runtime powers
+against phase-sensitive amplitudes, including nested definitions, negative
+controls, broadcast calls, and changing exponents in a runtime loop.
+
 `bra/test/qasm2qcx_basic_user_gates_numerical.py` checks basic gate expansion
 against independent amplitudes, including controlled operations and `U` phase.
 It executes the documented example. Run with `--bra /path/to/bra`.
@@ -11479,6 +11500,7 @@ python3 bra/test/qasm2qcx_inverse_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_control_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_basic_user_gates_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_user_gate_angle_parameters_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_user_gate_runtime_power_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_nested_user_gates_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_negative_control_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_power_numerical.py --bra bra/bin/bra
