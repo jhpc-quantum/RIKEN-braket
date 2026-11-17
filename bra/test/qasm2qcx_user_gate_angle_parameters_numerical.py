@@ -74,6 +74,25 @@ def main():
         outer(a) q[{3,1}],q[4:-2:2]; outer(a) q[0:0],q[{2}];''', state)
     state = [0j] * 32
     state[0] = 1
+    for qubit in (3, 1):
+        state = apply_gate(state, 'h', (), (qubit,))
+    for qubit in (3, 1):
+        state = apply_gate(state, 'x', (), (qubit,))
+        state = apply_gate(state, 'p', (math.pi / 4,), (qubit,))
+        state = apply_gate(state, 'p', (-math.pi / 4,), (qubit,))
+        state = apply_gate(state, 'U', (math.pi / 2, 0, math.pi), (qubit,), inverse=True)
+    check_amplitudes(bra, '''gate inner(theta) a { p(theta) a; pow(0.5) @ inv @ s a; }
+        gate outer(theta) a { U(pi/2,0,pi) a; inv @ inner(theta) a; x a; }
+        qubit[5] q; angle[3] value=pi/4; h q[3]; h q[1];
+        inv @ outer(value) q[{3,1}];''', state)
+    state = [0j] * 32
+    state[0] = 1
+    state = apply_gate(state, 'h', (), (0,))
+    state = apply_gate(state, 'p', (math.pi / 4,), (0,))
+    check_amplitudes(bra, '''gate g a { pow(0.5) @ inv @ s a; }
+        qubit[5] q; h q[0]; inv @ g q[0];''', state)
+    state = [0j] * 32
+    state[0] = 1
     for gate, parameters, qubits in (
             ('h', (), (0,)), ('h', (), (1,)),
             ('p', (math.pi / 4,), (0,)), ('cp', (math.pi / 2,), (0, 1)),

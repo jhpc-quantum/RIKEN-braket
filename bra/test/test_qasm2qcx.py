@@ -166,7 +166,7 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
         prefix = 'include "stdgates.inc"; gate inner(x,y) a { p(x) a; p(y) a; } '
         for call in ('inner(phi) a;', 'inner(phi,phi,phi) a;', 'inner(phi,other) a;',
                      'inner(phi,phi*phi) a;', 'inner(phi,1) a;', 'inner(phi,pi) a;',
-                     'inv @ inner(phi,phi) a;'):
+                     'pow(2) @ inner(phi,phi) a;'):
             with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(prefix + f'gate outer(phi) a {{ {call} }}')
 
@@ -572,13 +572,17 @@ class NestedGateDefinitionFoundationTests(unittest.TestCase):
         self.assertEqual(convert('OPENQASM 3; gate first a {} gate second a { first a; } qubit q; second q;'),
                          ['QUBITS 1'])
 
+    def test_records_nested_inverse_calls(self):
+        c = self.converter('gate a q {} gate b q { inv @ a q; inv @ inv @ a q; }')
+        self.assertEqual(len(c._QASM2QCXConverter__basic_gate_definitions['b'].body), 2)
+
     def test_rejects_forward_recursive_and_invalid_nested_calls(self):
         for source in (
                 'gate a q { b q; } gate b q {}',
                 'gate a q { a q; }',
                 'gate a q {} gate b q { a q,q; }',
                 'gate a q {} gate b q { a(1) q; }',
-                'gate a q {} gate b q { inv @ a q; }',
+                'gate a q {} gate b q { pow(2) @ a q; }',
                 'gate a q {} gate b q { a missing; }',
                 'gate a q {} gate b q { a q[0]; }',
                 'gate a x,y {} gate b q { a q,q; }'):
@@ -588,6 +592,38 @@ class NestedGateDefinitionFoundationTests(unittest.TestCase):
 
 class NestedGateCallTests(unittest.TestCase):
     prefix = 'OPENQASM 3; include "stdgates.inc"; '
+
+    def test_repeated_inverse_and_selected_broadcast(self):
+        definitions = ('gate inner a { h a; s a; } gate outer a { inv @ inner a; x a; } '
+                       'qubit[3] q; ')
+        self.assertEqual(convert(self.prefix + definitions + 'inv @ inv @ outer q[{2,0}];'),
+                         convert(self.prefix + definitions + 'outer q[2]; outer q[0];'))
+
+    def test_inverse_nested_limits_and_cleanup(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; gate inner(t) a { p(t) a; } '
+                  'gate outer(t) a { inner(t) a; } qubit[2] q; angle[3] value=pi/4;')
+        program = qasm2qcx.openqasm3.parser.parse(source)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        call = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; inv @ outer(value) q;').statements[0]
+        with patch.object(converter, 'MAX_GATE_DEFINITION_EXPANSION_STEPS', 1), \
+                self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'work limit'):
+            converter.visit(call)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(converter._QASM2QCXConverter__gate_angle_bindings, [])
+
+    def test_inverse_nested_body_reverses_order_and_preserves_modifiers(self):
+        defined = ('gate inner a { h a; pow(0.5) @ s a; } '
+                   'gate outer a { x a; inv @ inner a; U(pi/2,0,pi) a; } '
+                   'qubit q; inv @ outer q;')
+        inline = ('qubit q; inv @ U(pi/2,0,pi) q; h q; pow(0.5) @ s q; x q;')
+        self.assertEqual(convert(self.prefix + defined), convert(self.prefix + inline))
+
+    def test_inverse_preserves_outer_modifier_order(self):
+        defined = ('gate g a { pow(0.5) @ inv @ s a; } qubit q; inv @ g q;')
+        inline = 'qubit q; inv @ pow(0.5) @ inv @ s q;'
+        self.assertEqual(convert(self.prefix + defined), convert(self.prefix + inline))
 
     def test_nested_bindings_match_inline_operations(self):
         defined = ('gate inner a,b { h a; cx a,b; } gate middle b,a { inner a,b; } '
@@ -777,14 +813,21 @@ class BasicGateCallTests(unittest.TestCase):
     def test_invalid_calls(self):
         definition = 'gate pair a,b { cx a,b; } qubit[2] q; '
         for call in ('pair q[0];', 'pair(1) q[0],q[1];', 'pair q[0],q[0];',
-                     'pair q[0],q[-2];', 'pair q,q;', 'inv @ pair q[0],q[1];'):
+                     'pair q[0],q[-2];', 'pair q,q;', 'pow(2) @ pair q[0],q[1];'):
             with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert(self.prefix + definition + call)
         with self.assertRaises(qasm2qcx.QASM2QCXError):
             convert(self.prefix + 'qubit[2] q; pair q[0],q[1]; gate pair a,b { cx a,b; }')
-        for call in ('pair q[0],q[0];', 'pair q[0],q[2];', 'inv @ pair q[0],q[1];'):
+        for call in ('pair q[0],q[0];', 'pair q[0],q[2];', 'pow(2) @ pair q[0],q[1];'):
             with self.subTest(skipped_call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert(self.prefix + definition + f'for int i in [1:0] {{ {call} }}')
+
+    def test_skipped_inverse_calls_are_validated(self):
+        source = self.prefix + 'gate flip a { x a; } qubit[2] q; '
+        self.assertEqual(convert(source + 'for int i in [1:0] { inv @ inv @ flip q; }'), ['QUBITS 2'])
+        for call in ('pow(2) @ flip q;', 'ctrl @ flip q[0],q[1];', 'inv @ flip missing;'):
+            with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(source + f'for int i in [1:0] {{ {call} }}')
 
     def test_skipped_broadcasts_validate_lengths_and_aliases(self):
         definition = ('gate pair a,b { cx a,b; } qubit[2] q; qubit[2] r; '

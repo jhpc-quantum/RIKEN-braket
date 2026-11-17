@@ -7064,7 +7064,7 @@ parameter computations. Controlled gates work in all supported loops, including
 are validated even inside empty enclosing loops. Successful and failed lowering
 release gate-owned temporaries while preserving caller-owned storage.
 
-Gate durations, modifiers on user-defined calls, and runtime-dependent control counts
+Gate durations, control and power modifiers on user-defined calls, and runtime-dependent control counts
 remain unsupported. No new QCX mnemonic is introduced: the native control
 families use the `#0` operand suffix to select zero-controls.
 
@@ -7121,8 +7121,14 @@ Each nested call binds its own formal qubits. Definitions must precede their
 use, and forward references and recursion are rejected. Nested expansion uses
 an explicit stack and shares the outer call's work and output limits.
 
-Loops and `gphase` in definitions and modifiers on user-defined calls remain
-unsupported. Qubit selections follow the existing static indexing rules;
+User-defined calls support `inv` modifiers, including repeated inverses and
+inverses on nested calls. An inverted body is expanded in reverse order, with
+an outer `inv` applied to each operation. Existing modifier order is preserved,
+including for floating powers. Broadcasting, selections, angle snapshots, and
+expansion limits apply equally to inverse calls.
+
+Loops and `gphase` in definitions and control or power modifiers on
+user-defined calls remain unsupported. Qubit selections follow the existing static indexing rules;
 runtime-dependent selections and omitted range bounds remain unsupported.
 As elsewhere, runtime qubit indexing is unsupported; a statically expanded loop
 iterator may select a qubit. Invalid calls are checked even in empty loop bodies.
@@ -10457,7 +10463,7 @@ broadcasting, angles above pi, wraparound, and nested user-gate forwarding.
 Run with `--bra /path/to/bra`.
 
 `bra/test/qasm2qcx_user_gate_angle_parameters_numerical.py` checks scoped angle
-bindings, user-gate broadcasting and selections, nested forwarding, additive expressions, phase gates, multiple
+bindings, inverse user gates, broadcasting and selections, nested forwarding, additive expressions, phase gates, multiple
 precisions, repeated calls, and skipped paths
 against independent amplitudes. It executes the documented example. Run with
 `--bra /path/to/bra`.

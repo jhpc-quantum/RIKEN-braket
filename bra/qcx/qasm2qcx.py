@@ -4416,8 +4416,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise UnsupportedOpenQASMError(f'gate {gate_name} in gate definition')
             if child.duration is not None:
                 raise UnsupportedOpenQASMError('gate duration in gate definition')
-            if nested is not None and child.modifiers:
-                raise UnsupportedOpenQASMError('modifiers on user-defined gates')
+            if nested is not None:
+                self.__inverse_modifier_parity(child.modifiers)
             for modifier in child.modifiers:
                 if modifier.argument is not None and self.__loop_bound_names(modifier.argument) - {'pi', 'tau', 'euler'}:
                     raise UnsupportedOpenQASMError('nonlocal expression in gate definition')
@@ -4471,8 +4471,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if not self.__is_initialization_process and name not in self.__defined_basic_gate_names:
             raise UnsupportedOpenQASMError(f'gate {name} used before definition')
         definition = self.__basic_gate_definitions[name]
-        if statement.modifiers:
-            raise UnsupportedOpenQASMError('modifiers on user-defined gates')
+        self.__inverse_modifier_parity(statement.modifiers)
         if statement.duration is not None:
             raise UnsupportedOpenQASMError('duration on user-defined gate')
         if len(statement.arguments) != len(definition.parameters) or len(statement.qubits) != len(definition.qubits):
@@ -4558,6 +4557,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __emit_basic_gate_call(self, statement: ast.QuantumGate) -> None:
         definition = self.__validate_basic_gate_call(statement)
+        inverse = self.__inverse_modifier_parity(statement.modifiers)
         if self.MAX_GATE_DEFINITION_NESTING < 1 or self.MAX_GATE_DEFINITION_EXPANSION_STEPS < 1:
             raise InvalidLoopRangeException('user-defined gate expansion exceeds work or nesting limit')
         operands = [self.__qubit_operand_indices(operand) for operand in statement.qubits]
@@ -4593,12 +4593,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 parameters[name] = _RuntimeIteratorBinding(snapshot, ValueType.ANGLE, angle_type=angle_type)
             steps = 0
             for bindings in all_bindings:
-                steps = self.__expand_basic_gate_call(definition, bindings, parameters, output_start, steps)
+                steps = self.__expand_basic_gate_call(definition, bindings, parameters, output_start, steps, inverse)
 
     def __expand_basic_gate_call(
             self, definition: _BasicGateDefinition, bindings: dict[str, ast.Identifier | ast.IndexedIdentifier],
-            parameters: dict[str, _RuntimeIteratorBinding], output_start: int, steps: int = 0) -> int:
-        stack = [(iter(definition.body), bindings, parameters, None)]
+            parameters: dict[str, _RuntimeIteratorBinding], output_start: int, steps: int = 0,
+            inverse: bool = False) -> int:
+        stack = [(iter(reversed(definition.body) if inverse else definition.body), bindings, parameters, None, inverse)]
         steps += 1
         if steps > self.MAX_GATE_DEFINITION_EXPANSION_STEPS:
             raise InvalidLoopRangeException('user-defined gate expansion exceeds work limit')
@@ -4607,7 +4608,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise InvalidLoopRangeException('user-defined gate expansion exceeds QCX output limit')
         try:
             while stack:
-                operations, current_bindings, current_parameters, frame_captures = stack[-1]
+                operations, current_bindings, current_parameters, frame_captures, current_inverse = stack[-1]
                 operation = next(operations, None)
                 if operation is None:
                     stack.pop()
@@ -4625,14 +4626,20 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                         if len(stack) >= self.MAX_GATE_DEFINITION_NESTING:
                             raise InvalidLoopRangeException('user-defined gate expansion exceeds nesting limit')
                         nested, nested_bindings = self.__basic_gate_call_binding(expanded)
+                        nested_inverse = current_inverse ^ self.__inverse_modifier_parity(operation.modifiers)
                         with contextlib.ExitStack() as captures:
                             nested_parameters = {}
                             for name, argument in zip(nested.parameters, expanded.arguments):
                                 snapshot, angle_type = captures.enter_context(self.__captured_angle_bits(argument))
                                 nested_parameters[name] = _RuntimeIteratorBinding(
                                     snapshot, ValueType.ANGLE, angle_type=angle_type)
-                            stack.append((iter(nested.body), nested_bindings, nested_parameters, captures.pop_all()))
+                            body = reversed(nested.body) if nested_inverse else nested.body
+                            stack.append((iter(body), nested_bindings, nested_parameters, captures.pop_all(), nested_inverse))
                     else:
+                        if current_inverse:
+                            expanded = dataclasses.replace(
+                                expanded, modifiers=[ast.QuantumGateModifier(ast.GateModifierName.inv)]
+                                + list(expanded.modifiers))
                         self.visit(expanded)
                 finally:
                     self.__gate_angle_bindings.pop()
@@ -4640,7 +4647,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                         or len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES):
                     raise InvalidLoopRangeException('user-defined gate expansion exceeds QCX output limit')
         finally:
-            for _, _, _, captures in reversed(stack):
+            for _, _, _, captures, _ in reversed(stack):
                 if captures is not None:
                     captures.close()
         return steps
