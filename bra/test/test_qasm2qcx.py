@@ -597,6 +597,33 @@ class NestedGateDefinitionFoundationTests(unittest.TestCase):
 class NestedGateCallTests(unittest.TestCase):
     prefix = 'OPENQASM 3; include "stdgates.inc"; '
 
+    def test_controlled_user_gate_broadcasts_and_checks_aliases(self):
+        source = ('gate inner(t) a { p(t) a; } gate outer(t) a { inner(t) a; } '
+                  'qubit[4] q; angle[3] value=pi/4; ')
+        lines = convert(self.prefix + source + 'negctrl @ outer(value) q[0],q[{3,1}];')
+        self.assertEqual(sum(line.startswith('CR 0#0 ') for line in lines), 6)
+        self.assertEqual(sum(line.endswith(':= VALUE31') for line in lines), 1)
+        for call in ('ctrl @ outer(value) q[0],q[{1,0}];',
+                     'ctrl(2) @ outer(value) q[0],q[1];',
+                     'ctrl(0) @ outer(value) q[0],q[1];'):
+            for body in (call, f'for int i in [1:0] {{ {call} }}'):
+                with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert(self.prefix + source + body)
+
+    def test_controlled_nested_expansion_failure_releases_temporaries(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; gate inner(t) a { p(t) a; } '
+                  'gate outer(t) a { inner(t) a; } qubit[2] q; angle[3] value=pi/4;')
+        program = qasm2qcx.openqasm3.parser.parse(source)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        call = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ctrl @ outer(value) q[0],q[1];').statements[0]
+        with patch.object(converter, 'MAX_GATE_DEFINITION_EXPANSION_STEPS', 1), \
+                self.assertRaises(qasm2qcx.InvalidLoopRangeException):
+            converter.visit(call)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(converter._QASM2QCXConverter__gate_angle_bindings, [])
+
     def test_controls_propagate_through_nested_user_gates(self):
         defined = ('gate inner a,b { h b; ctrl @ s a,b; } '
                    'gate outer a,b,c { negctrl @ inv @ inner a,b,c; x c; } '
