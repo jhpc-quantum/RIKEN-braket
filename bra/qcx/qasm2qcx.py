@@ -4591,10 +4591,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_basic_gate_call(self, statement: ast.QuantumGate) -> None:
         definition = self.__validate_basic_gate_call(statement)
         info = self.__user_gate_modifier_info(statement.modifiers, allow_runtime=True, allow_float=True)
-        if isinstance(info, _OrderedGateModifierInfo):
-            raise UnsupportedOpenQASMError('floating-point pow on user-defined gate wrappers is not yet supported')
-        inverse = info.power < 0
-        repetitions = abs(info.power)
+        floating = isinstance(info, _OrderedGateModifierInfo)
+        inverse = False if floating else info.power < 0
+        repetitions = 1 if floating else abs(info.power)
         control_count = sum(number for _, number in info.controls)
         polarities = [value for value, number in info.controls for _ in range(number)]
         if self.MAX_GATE_DEFINITION_NESTING < 1 or self.MAX_GATE_DEFINITION_EXPANSION_STEPS < 1:
@@ -4604,7 +4603,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if len(sizes) > 1:
             raise WrongBroadcastingException
         count = next(iter(sizes)) if sizes else 1
-        static_repetitions = 1 if info.runtime_exponents else repetitions
+        static_repetitions = 1 if floating or info.runtime_exponents else repetitions
         if count > self.MAX_GATE_DEFINITION_EXPANSION_STEPS or count * static_repetitions > self.MAX_GATE_DEFINITION_EXPANSION_STEPS:
             raise InvalidLoopRangeException('user-defined gate expansion exceeds work limit')
         all_bindings = []
@@ -4629,7 +4628,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         output_start = len(self.__qcx_lines)
         previous_declarations = self.__declared_temporary_variables.copy()
         with contextlib.ExitStack() as captures:
-            runtime = captures.enter_context(self.__runtime_gate_power(info))
+            runtime = None if floating else captures.enter_context(self.__runtime_gate_power(info))
             parameters = {}
             for name, argument in zip(definition.parameters, statement.arguments):
                 snapshot, angle_type = captures.enter_context(self.__captured_angle_bits(argument))
@@ -4639,14 +4638,65 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise InvalidLoopRangeException('user-defined gate expansion exceeds QCX output limit')
             steps = 0
             for bindings, controls in all_bindings:
-                if runtime is not None and repetitions:
+                if floating:
+                    steps = self.__emit_floating_basic_gate_wrapper(
+                        definition, bindings, parameters, output_start, steps, controls, info)
+                elif runtime is not None and repetitions:
                     steps = self.__emit_runtime_basic_gate_power(
                         definition, bindings, parameters, output_start, steps, inverse, controls, repetitions, runtime)
                 elif runtime is None and repetitions:
                     steps = self.__expand_basic_gate_call(
                         definition, bindings, parameters, output_start, steps, inverse, controls, repetitions)
-        if info.runtime_exponents:
+        if not floating and info.runtime_exponents:
             self.__hoist_temporary_declarations(previous_declarations)
+
+    def __emit_floating_basic_gate_wrapper(
+            self, definition: _BasicGateDefinition, bindings: dict, parameters: dict,
+            output_start: int, steps: int, controls: list, info: _OrderedGateModifierInfo) -> int:
+        # Freeze call-site modifiers before entering the formal parameter
+        # scopes, which may contain names also used by caller constants.
+        modifiers = []
+        for modifier in info.modifiers:
+            argument = modifier.argument
+            if argument is not None:
+                argument = ast.FloatLiteral(argument) if isinstance(argument, float) else ast.IntegerLiteral(argument)
+            modifiers.append(ast.QuantumGateModifier(modifier.kind, argument))
+        scopes = 0
+        try:
+            with contextlib.ExitStack() as captures:
+                while True:
+                    steps += 1
+                    if steps > self.MAX_GATE_DEFINITION_EXPANSION_STEPS:
+                        raise InvalidLoopRangeException('user-defined gate expansion exceeds work limit')
+                    operation = definition.body[0]
+                    expanded = dataclasses.replace(
+                        operation, qubits=[bindings[qubit.name] for qubit in operation.qubits])
+                    self.__gate_angle_bindings.append(parameters)
+                    scopes += 1
+                    modifiers.extend(operation.modifiers)
+                    if operation.name.name not in self.__basic_gate_definitions:
+                        expanded = dataclasses.replace(
+                            expanded, modifiers=modifiers,
+                            qubits=[qubit for _, qubit in controls] + expanded.qubits)
+                        self.visit(expanded)
+                        break
+                    nested, bindings, nested_controls = self.__basic_gate_call_binding(expanded)
+                    controls = controls + nested_controls
+                    parameters = {}
+                    for name, argument in zip(nested.parameters, expanded.arguments):
+                        snapshot, angle_type = captures.enter_context(self.__captured_angle_bits(argument))
+                        parameters[name] = _RuntimeIteratorBinding(snapshot, ValueType.ANGLE, angle_type=angle_type)
+                    definition = nested
+                    if (len(self.__qcx_lines) - output_start > self.MAX_GATE_DEFINITION_OUTPUT_LINES
+                            or len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES):
+                        raise InvalidLoopRangeException('user-defined gate expansion exceeds QCX output limit')
+                if (len(self.__qcx_lines) - output_start > self.MAX_GATE_DEFINITION_OUTPUT_LINES
+                        or len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES):
+                    raise InvalidLoopRangeException('user-defined gate expansion exceeds QCX output limit')
+                return steps
+        finally:
+            for _ in range(scopes):
+                self.__gate_angle_bindings.pop()
 
     def __emit_runtime_basic_gate_power(
             self, definition: _BasicGateDefinition, bindings: dict, parameters: dict,

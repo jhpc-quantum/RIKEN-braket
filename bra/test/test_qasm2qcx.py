@@ -630,9 +630,35 @@ class FloatingUserGateWrapperFoundationTests(unittest.TestCase):
             with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert(self.prefix + f'for int i in [1:0] {{ {call} }}')
 
-    def test_reached_call_is_rejected_until_lowering_is_implemented(self):
-        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'wrappers is not yet supported'):
-            convert(self.prefix + 'pow(0.5) @ outer q[0];')
+    def test_reached_call_matches_the_equivalent_builtin_modifier_chain(self):
+        actual = convert(self.prefix + 'pow(0.5) @ outer q[0];')
+        expected = convert('OPENQASM 3; include "stdgates.inc"; qubit[2] q; '
+                           'int n=2; float f=0.5; pow(0.5) @ pow(2) @ inv @ s q[0];')
+        self.assertEqual(actual, expected)
+
+    def test_controlled_nested_wrappers_keep_modifier_and_operand_order(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; gate inner a { pow(2) @ s a; } '
+                  'gate outer a,b { negctrl @ inv @ inner a,b; } qubit[3] q; ')
+        actual = convert(source + 'ctrl @ pow(0.5) @ outer q[0],q[1],q[2];')
+        expected = convert('OPENQASM 3; include "stdgates.inc"; qubit[3] q; '
+                           'ctrl @ pow(0.5) @ negctrl @ inv @ pow(2) @ s q[0],q[1],q[2];')
+        self.assertEqual(actual, expected)
+
+    def test_wrapper_broadcast_and_parameter_forwarding(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; gate inner(t) a { p(t) a; } '
+                  'gate outer(t) a { inner(-t) a; } qubit[2] q; angle[3] a=pi/4; '
+                  'pow(0.5) @ outer(a) q;')
+        lines = convert(source)
+        self.assertEqual(sum(line.endswith(':= A1') for line in lines), 1)
+        self.assertTrue(any(line.startswith('U1 0 ') for line in lines))
+        self.assertTrue(any(line.startswith('U1 1 ') for line in lines))
+
+    def test_call_site_power_is_not_shadowed_by_a_formal_parameter(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; gate g(t) a { p(t) a; } '
+                  'qubit q; const float t=0.5; angle[3] theta=pi/4; '
+                  'pow(t) @ g(theta) q;')
+        lines = convert(source)
+        self.assertTrue(any('ANGLEBITS2PHASE' in line and 'POW 0.5' in line for line in lines))
 
 
 class RuntimeUserGatePowerFoundationTests(unittest.TestCase):
@@ -1020,7 +1046,7 @@ class BasicGateCallTests(unittest.TestCase):
     def test_invalid_calls(self):
         definition = 'gate pair a,b { cx a,b; } qubit[2] q; '
         for call in ('pair q[0];', 'pair(1) q[0],q[1];', 'pair q[0],q[0];',
-                     'pair q[0],q[-2];', 'pair q,q;', 'pow(2.0) @ pair q[0],q[1];'):
+                     'pair q[0],q[-2];', 'pair q,q;'):
             with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert(self.prefix + definition + call)
         with self.assertRaises(qasm2qcx.QASM2QCXError):
