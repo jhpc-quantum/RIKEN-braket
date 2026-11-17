@@ -7093,8 +7093,8 @@ bell q[0], q[1];
 Definitions must precede their calls. A call binds distinct scalar qubits to
 the formal arguments and expands the body in order into existing QCX
 instructions; an empty body is identity. Statically indexed qubits, scalar
-qubit variables, and whole-register operands are supported. A register call
-broadcasts in register order; multiple register operands must have equal
+qubit variables, whole registers, and static qubit ranges and index sets are
+supported. Register calls broadcast in register or selection order; multiple register operands must have equal
 lengths, and every expanded tuple must contain distinct qubits. Scalar operands
 may be mixed with registers. Angle arguments are captured once per reached
 broadcast and reused for all expanded calls.
@@ -7121,8 +7121,9 @@ Each nested call binds its own formal qubits. Definitions must precede their
 use, and forward references and recursion are rejected. Nested expansion uses
 an explicit stack and shares the outer call's work and output limits.
 
-Loops and `gphase` in definitions, register selections on user-defined calls,
-and modifiers on user-defined calls remain unsupported.
+Loops and `gphase` in definitions and modifiers on user-defined calls remain
+unsupported. Qubit selections follow the existing static indexing rules;
+runtime-dependent selections and omitted range bounds remain unsupported.
 As elsewhere, runtime qubit indexing is unsupported; a statically expanded loop
 iterator may select a qubit. Invalid calls are checked even in empty loop bodies.
 
@@ -10456,7 +10457,7 @@ broadcasting, angles above pi, wraparound, and nested user-gate forwarding.
 Run with `--bra /path/to/bra`.
 
 `bra/test/qasm2qcx_user_gate_angle_parameters_numerical.py` checks scoped angle
-bindings, user-gate broadcasting, nested forwarding, additive expressions, phase gates, multiple
+bindings, user-gate broadcasting and selections, nested forwarding, additive expressions, phase gates, multiple
 precisions, repeated calls, and skipped paths
 against independent amplitudes. It executes the documented example. Run with
 `--bra /path/to/bra`.
