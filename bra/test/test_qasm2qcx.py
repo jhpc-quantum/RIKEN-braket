@@ -166,7 +166,7 @@ class AngleGateParameterFoundationTests(unittest.TestCase):
         prefix = 'include "stdgates.inc"; gate inner(x,y) a { p(x) a; p(y) a; } '
         for call in ('inner(phi) a;', 'inner(phi,phi,phi) a;', 'inner(phi,other) a;',
                      'inner(phi,phi*phi) a;', 'inner(phi,1) a;', 'inner(phi,pi) a;',
-                     'inv @ inner(phi,phi) a;'):
+                     'pow(2) @ inner(phi,phi) a;'):
             with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.converter(prefix + f'gate outer(phi) a {{ {call} }}')
 
