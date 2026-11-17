@@ -7064,7 +7064,7 @@ parameter computations. Controlled gates work in all supported loops, including
 are validated even inside empty enclosing loops. Successful and failed lowering
 release gate-owned temporaries while preserving caller-owned storage.
 
-Gate durations, control and power modifiers on user-defined calls, and runtime-dependent control counts
+Gate durations, power modifiers on user-defined calls, and runtime-dependent control counts
 remain unsupported. No new QCX mnemonic is introduced: the native control
 families use the `#0` operand suffix to select zero-controls.
 
@@ -7127,7 +7127,13 @@ an outer `inv` applied to each operation. Existing modifier order is preserved,
 including for floating powers. Broadcasting, selections, angle snapshots, and
 expansion limits apply equally to inverse calls.
 
-Loops and `gphase` in definitions and control or power modifiers on
+User-defined calls also support `ctrl` and `negctrl`, including constant counts,
+mixed polarities, and combinations with `inv`. Added controls precede the
+gate's own operands and are propagated through nested expansion to every
+operation. This retains the controlled operation's complete phase. Control
+and gate operands must be distinct for every broadcast tuple.
+
+Loops and `gphase` in definitions and power modifiers on
 user-defined calls remain unsupported. Qubit selections follow the existing static indexing rules;
 runtime-dependent selections and omitted range bounds remain unsupported.
 As elsewhere, runtime qubit indexing is unsupported; a statically expanded loop
@@ -10463,7 +10469,7 @@ broadcasting, angles above pi, wraparound, and nested user-gate forwarding.
 Run with `--bra /path/to/bra`.
 
 `bra/test/qasm2qcx_user_gate_angle_parameters_numerical.py` checks scoped angle
-bindings, inverse user gates, broadcasting and selections, nested forwarding, additive expressions, phase gates, multiple
+bindings, inverse and controlled user gates, broadcasting and selections, nested forwarding, additive expressions, phase gates, multiple
 precisions, repeated calls, and skipped paths
 against independent amplitudes. It executes the documented example. Run with
 `--bra /path/to/bra`.
