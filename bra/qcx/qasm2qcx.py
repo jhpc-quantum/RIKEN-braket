@@ -4569,8 +4569,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_basic_gate_call(self, statement: ast.QuantumGate) -> None:
         definition = self.__validate_basic_gate_call(statement)
         info = self.__user_gate_modifier_info(statement.modifiers, allow_runtime=True)
-        if info.runtime_exponents:
-            raise UnsupportedOpenQASMError('runtime integer pow on user-defined gates is not yet supported')
         inverse = info.power < 0
         repetitions = abs(info.power)
         control_count = sum(number for _, number in info.controls)
@@ -4582,7 +4580,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if len(sizes) > 1:
             raise WrongBroadcastingException
         count = next(iter(sizes)) if sizes else 1
-        if count > self.MAX_GATE_DEFINITION_EXPANSION_STEPS or count * repetitions > self.MAX_GATE_DEFINITION_EXPANSION_STEPS:
+        static_repetitions = 1 if info.runtime_exponents else repetitions
+        if count > self.MAX_GATE_DEFINITION_EXPANSION_STEPS or count * static_repetitions > self.MAX_GATE_DEFINITION_EXPANSION_STEPS:
             raise InvalidLoopRangeException('user-defined gate expansion exceeds work limit')
         all_bindings = []
         for index in range(count):
@@ -4604,7 +4603,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # Each frame has its own bindings. Count the root and every expanded
         # operation, including calls to empty gates, even when no QCX is emitted.
         output_start = len(self.__qcx_lines)
+        previous_declarations = self.__declared_temporary_variables.copy()
         with contextlib.ExitStack() as captures:
+            runtime = captures.enter_context(self.__runtime_gate_power(info))
             parameters = {}
             for name, argument in zip(definition.parameters, statement.arguments):
                 snapshot, angle_type = captures.enter_context(self.__captured_angle_bits(argument))
@@ -4614,9 +4615,48 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise InvalidLoopRangeException('user-defined gate expansion exceeds QCX output limit')
             steps = 0
             for bindings, controls in all_bindings:
-                if repetitions:
+                if runtime is not None and repetitions:
+                    steps = self.__emit_runtime_basic_gate_power(
+                        definition, bindings, parameters, output_start, steps, inverse, controls, repetitions, runtime)
+                elif runtime is None and repetitions:
                     steps = self.__expand_basic_gate_call(
                         definition, bindings, parameters, output_start, steps, inverse, controls, repetitions)
+        if info.runtime_exponents:
+            self.__hoist_temporary_declarations(previous_declarations)
+
+    def __emit_runtime_basic_gate_power(
+            self, definition: _BasicGateDefinition, bindings: dict, parameters: dict,
+            output_start: int, steps: int, inverse: bool, controls: list,
+            repetitions: int, runtime: _RuntimeGatePower) -> int:
+        previous_used = self.__used_temporary_variables.copy()
+        prefix = self.__gate_power_label()
+        try:
+            magnitudes, repetitions = self.__prepare_runtime_power_counts(runtime, repetitions, None)
+            counters = [self.__add_new_temporary_variable(ValueType.UINT) for _ in magnitudes]
+            self.__qcx_lines.extend(f'JUMPIF {prefix}_DONE {value} == 0' for value in magnitudes)
+            for depth, (counter, magnitude) in enumerate(zip(counters, magnitudes)):
+                self.__qcx_lines.extend([f'LET {counter} := {magnitude}', f'@{prefix}_{depth}_LOOP',
+                                         f'JUMPIF {prefix}_{depth}_END {counter} == 0'])
+            if runtime.signed_exponent is not None:
+                self.__qcx_lines.append(f'JUMPIF {prefix}_INVERSE {runtime.signed_exponent} < 0')
+            steps = self.__expand_basic_gate_call(
+                definition, bindings, parameters, output_start, steps, inverse, controls, repetitions)
+            if runtime.signed_exponent is not None:
+                self.__qcx_lines.extend([f'JUMP {prefix}_NEXT', f'@{prefix}_INVERSE'])
+                steps = self.__expand_basic_gate_call(
+                    definition, bindings, parameters, output_start, steps, not inverse, controls, repetitions)
+                self.__qcx_lines.append(f'@{prefix}_NEXT')
+            for depth in reversed(range(len(counters))):
+                self.__qcx_lines.extend([f'LET {counters[depth]} -= 1', f'JUMP {prefix}_{depth}_LOOP',
+                                         f'@{prefix}_{depth}_END'])
+            self.__qcx_lines.append(f'@{prefix}_DONE')
+            if (len(self.__qcx_lines) - output_start > self.MAX_GATE_DEFINITION_OUTPUT_LINES
+                    or len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES):
+                raise InvalidLoopRangeException('user-defined gate expansion exceeds QCX output limit')
+            return steps
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
 
     def __expand_basic_gate_call(
             self, definition: _BasicGateDefinition, bindings: dict[str, ast.Identifier | ast.IndexedIdentifier],

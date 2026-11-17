@@ -630,11 +630,25 @@ class RuntimeUserGatePowerFoundationTests(unittest.TestCase):
             with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert(self.prefix + f'for int i in [1:0] {{ {call}; }}')
 
-    def test_reached_runtime_power_remains_an_explicit_error_until_lowering(self):
-        for modifiers in ('pow(n)', 'pow(u)', 'pow(0) @ pow(n)'):
-            with self.subTest(modifiers=modifiers), self.assertRaisesRegex(
-                    qasm2qcx.UnsupportedOpenQASMError, 'runtime integer pow on user-defined gates'):
-                convert(self.prefix + f'{modifiers} @ g q[0];')
+    def test_runtime_power_emits_complete_forward_and_inverse_bodies(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; gate pair a { h a; s a; } '
+                  'qubit q; int n = -2; pow(n) @ pair q;')
+        lines = convert(source)
+        self.assertEqual([line for line in lines if line in ('H 0', 'S 0', 'S+ 0')],
+                         ['H 0', 'S 0', 'S+ 0', 'H 0'])
+        self.assertTrue(any(line.startswith('JUMPIF QASM2QCX_GATE_POWER_') for line in lines))
+        labels = [line for line in lines if line.startswith('@')]
+        self.assertEqual(len(labels), len(set(labels)))
+
+    def test_zero_constant_still_captures_runtime_exponent(self):
+        lines = convert(self.prefix + 'pow(0) @ pow(n) @ g q[0];')
+        self.assertTrue(any(line.endswith(':= N1') for line in lines))
+        self.assertFalse(any(line.startswith('H ') for line in lines))
+
+    def test_runtime_power_hoists_declarations_out_of_generated_loops(self):
+        lines = convert(self.prefix + 'for int i in [0:1] { pow(n) @ g q[i]; }')
+        first_label = next(index for index, line in enumerate(lines) if line.startswith('@'))
+        self.assertFalse(any(line.startswith('VAR QASM2QCX_') for line in lines[first_label:]))
 
 
 class NestedGateCallTests(unittest.TestCase):
