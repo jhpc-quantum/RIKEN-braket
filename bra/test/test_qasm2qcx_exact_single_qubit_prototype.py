@@ -55,5 +55,39 @@ class ExactArithmeticTests(unittest.TestCase):
                 self.assertEqual(matrix_product(adjoint, matrix), exact.GATES['id'])
 
 
+class ExactCompositionTests(unittest.TestCase):
+    def test_exact_gate_identities_and_scalar_phase(self):
+        identity = exact.GATES['id']
+        for names in ((), ('h', 'h'), ('x', 'x'), ('s', 'sdg'), ('t',) * 8,
+                      ('sx', 'sx', 'sx', 'sx')):
+            with self.subTest(gates=names):
+                self.assertEqual(exact.compose_sequence(names), identity)
+        self.assertEqual(exact.compose_sequence(('t',) * 4), exact.GATES['z'])
+        self.assertEqual(exact.compose_sequence(('sx', 'sx')), exact.GATES['x'])
+        self.assertEqual(exact.compose_sequence(('z', 'y', 'x')),
+                         ((exact.I, exact.ZERO), (exact.ZERO, exact.I)))
+
+    def test_order_for_noncommuting_gates(self):
+        hs = exact.compose_sequence(('h', 's'))
+        sh = exact.compose_sequence(('s', 'h'))
+        self.assertEqual(hs, exact.multiply_matrices(exact.GATES['s'], exact.GATES['h']))
+        self.assertEqual(sh, exact.multiply_matrices(exact.GATES['h'], exact.GATES['s']))
+        self.assertNotEqual(hs, sh)
+
+    def test_fixed_sequences_match_independent_direct_matrix_reference(self):
+        for length in range(4):
+            for names in itertools.product(exact.GATES, repeat=length):
+                actual = exact.compose_sequence(names)
+                expected = reference.sequence_matrix(names)
+                for row, column in itertools.product(range(2), repeat=2):
+                    with self.subTest(gates=names, row=row, column=column):
+                        self.assertTrue(cmath.isclose(actual[row][column].to_complex(), expected[row][column],
+                                                      rel_tol=1e-14, abs_tol=1e-14))
+
+    def test_unknown_gate_is_rejected(self):
+        with self.assertRaises(KeyError):
+            exact.compose_sequence(('h', 'unknown'))
+
+
 if __name__ == '__main__':
     unittest.main()

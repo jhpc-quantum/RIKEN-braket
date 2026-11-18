@@ -84,3 +84,17 @@ GATES = {
     'sx': ((HALF_PLUS_HALF_I, HALF_MINUS_HALF_I),
            (HALF_MINUS_HALF_I, HALF_PLUS_HALF_I)),
 }
+
+
+def multiply_matrices(left, right):
+    """Return the exact matrix product left * right."""
+    return tuple(tuple(sum((left[row][k] * right[k][column] for k in range(2)), ZERO)
+                       for column in range(2)) for row in range(2))
+
+
+def compose_sequence(names):
+    """Apply the named gates in execution order, starting at identity."""
+    result = GATES['id']
+    for name in names:
+        result = multiply_matrices(GATES[name], result)
+    return result
