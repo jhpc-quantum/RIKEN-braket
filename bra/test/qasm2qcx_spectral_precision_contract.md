@@ -113,6 +113,41 @@ executables were not available for this study. The amplitude output uses
 default stream precision, so that check cannot establish double- or
 long-double-level accuracy. No change to build options is proposed here.
 
+## Recommendation and remaining work
+
+The proposed contract is an explicit target descriptor and a requested
+absolute operator-norm error for the serialized converter output. It retains
+the exact branch decision and full phase, pairs each eigenphase with its basis
+column, and includes angle arithmetic and serialization in the bound. The
+conditional formula above is one way to combine independently certified input
+errors. A result is acceptable only if the supplied bounds are established and
+the resulting total meets the request; a branch label or a passing numerical
+sample alone is not a certificate. The same converter-side bound applies to
+controlled use with an exact identity inactive block.
+
+This study does **not** establish an end-to-end QCX/bra guarantee or a universal
+default tolerance. Backend parsing and execution are separate from the
+converter's exact-decimal-output contract. Actual target formats and operating
+environments must be identified, and backend rounding, transcendental, and
+gate-execution behavior must be analyzed or explicitly treated as outside that
+contract. The existing Python binary64 folding of floating exponents also
+needs a defined relationship to the ideal source operation.
+
+Do not integrate the bound into supported converter paths yet. Before that,
+implement and independently validate certified phase, eigenbasis, and decimal
+serialization error bounds; demonstrate consistent eigenvalue-to-eigenvector
+pairing; define behavior for exact scalar, near-cut, and nearly degenerate
+matrices; and establish coefficient-size, refinement-work, memory, and output
+limits. Resource exhaustion or an uncertifiable result should produce a clear
+conversion error instead of silently switching to an uncertified branch.
+
+The next practical work should focus on obtaining certified input bounds for
+the restricted single-power fixed-gate subset and comparing the cost of an
+audited interval library with a reviewed standard-library implementation. The
+current target descriptor and conditional formula are prototypes, not an
+endorsed final CLI or an established numerical guarantee. Runtime parameters,
+ordered nested floating powers, and multi-qubit bodies remain separate work.
+
 ## Stage 1 validation
 
 The descriptor tests check exact unit-roundoff calculations, normal and
