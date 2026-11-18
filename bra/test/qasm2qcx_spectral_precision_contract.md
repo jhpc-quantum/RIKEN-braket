@@ -53,6 +53,38 @@ Python's floating-point precision. A future contract must say whether its ideal
 operation uses that evaluated value or a different exact interpretation of the
 source expression; the prototype does not change those semantics.
 
+## Conditional operation bound
+
+`qasm2qcx_spectral_error_bound_prototype.py` evaluates a conservative bound
+using exact rational arithmetic. It assumes that an independent process has
+already established the branch, paired each eigenphase with the corresponding
+eigenbasis column, and bounded each supplied error. Matching labels in the
+prototype catches an accidental mismatch; labels alone are not proof that
+the pairing or branch is correct.
+
+For `V = U3(beta, eta, 0)` and `D = diag(exp(i*alpha0), exp(i*alpha1))`,
+the ideal operation is `V D V+`. If the basis parameter errors are `dbeta`
+and `deta`, a telescoping operator-norm bound for both basis operations is
+`dbeta + 2*deta`. For each diagonal phase, the prototype bounds the powered
+angle error by `abs(r)*dtheta + (22/7)*dr + dout`, where `r` is the exponent
+used to form the emitted angle, `dtheta` bounds the selected unpowered
+principal phase, `dr` bounds the difference from the ideal exponent, and
+`dout` covers subsequent angle calculation and serialization. The comparison
+uses the same labeled branch and a consistent real-valued phase representative;
+all ideal principal phases have magnitude at most pi.
+
+The total is the basis bound plus the larger of the two phase bounds. This
+includes global phase. The same converter-side operator bound applies to a
+controlled version with an exact identity inactive block. It does not include
+bra parsing or execution. Large exponents magnify phase uncertainty, and a
+bound exceeding the requested error is rejected by the prototype.
+
+This is a conditional bound only. The prototype does not yet derive certified
+phase, eigenbasis, or serialization error bounds from exact matrices, and it
+does not prove that the target descriptor matches a bra binary. Numerical
+perturbation tests check the formula on representative 2x2 operations but are
+not a proof of those missing inputs or of backend behavior.
+
 ## Stage 1 validation
 
 The descriptor tests check exact unit-roundoff calculations, normal and
@@ -62,4 +94,5 @@ floating-point error bound.
 
 ```bash
 python3 -m unittest discover -s bra/test -p 'test_qasm2qcx_spectral_target_prototype.py' -v
+python3 -m unittest discover -s bra/test -p 'test_qasm2qcx_spectral_error_bound_prototype.py' -v
 ```
