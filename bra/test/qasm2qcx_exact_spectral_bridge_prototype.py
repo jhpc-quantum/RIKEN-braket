@@ -159,7 +159,7 @@ def _sqrt_complex(value, real_sign, imag_sign, bits):
     return real_root, imag_root if imag_sign > 0 else _neg(imag_root)
 
 
-def certify_eigenvalue_branches(matrix, *, max_bits=1024, max_input_bits=4096):
+def certify_eigenvalue_branches(matrix, *, max_bits=1024, max_input_bits=4096, min_bits=None):
     """Certify branch sides for an exact 2x2 unitary; do not round phases.
 
     Characteristic roots are enclosed with rational interval arithmetic.
@@ -169,6 +169,8 @@ def certify_eigenvalue_branches(matrix, *, max_bits=1024, max_input_bits=4096):
     """
     if type(max_bits) is not int or max_bits < 8 or type(max_input_bits) is not int or max_input_bits < 1:
         raise ValueError('invalid certification budget')
+    if min_bits is not None and (type(min_bits) is not int or not 8 <= min_bits <= max_bits):
+        raise ValueError('invalid minimum enclosure precision')
     bits, denominator = exact.representation_size(matrix)
     if max(bits, denominator) > max_input_bits:
         raise CertificationLimit('exact input exceeds coefficient budget')
@@ -190,7 +192,7 @@ def certify_eigenvalue_branches(matrix, *, max_bits=1024, max_input_bits=4096):
         raise ValueError('repeated eigenvalue requires an exact scalar matrix')
     real_sign = _sign_surd(discriminant.a, discriminant.b)
     imag_sign = _sign_surd(discriminant.c, discriminant.d)
-    precision = min(32, max_bits)
+    precision = min(32, max_bits) if min_bits is None else min_bits
     while True:
         trace_real, trace_imag = _exact_interval(trace, precision)
         root_real, root_imag = _sqrt_complex(_exact_interval(discriminant, precision),
