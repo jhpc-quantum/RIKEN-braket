@@ -89,5 +89,39 @@ class ExactCompositionTests(unittest.TestCase):
             exact.compose_sequence(('h', 'unknown'))
 
 
+class ExactBranchAndSizeTests(unittest.TestCase):
+    def test_scalar_detection_includes_nontrivial_overall_phase(self):
+        self.assertEqual(exact.scalar_value(exact.compose_sequence(('h', 'h'))), exact.ONE)
+        self.assertEqual(exact.scalar_value(exact.compose_sequence(('t',) * 8)), exact.ONE)
+        self.assertEqual(exact.scalar_value(exact.compose_sequence(('z', 'y', 'x'))), exact.I)
+        self.assertIsNone(exact.scalar_value(exact.GATES['z']))
+        self.assertIsNone(exact.scalar_value(exact.GATES['x']))
+
+    def test_negative_one_eigenvalue_detects_exact_branch_endpoint(self):
+        for names, expected in (((), False), (('t',) * 4, True), (('s', 's'), True),
+                                (('x',), True), (('h',), True), (('t',) * 8, False),
+                                (('z', 'y', 'x'), False)):
+            with self.subTest(gates=names):
+                self.assertEqual(exact.has_negative_one_eigenvalue(exact.compose_sequence(names)), expected)
+        minus_identity = ((-exact.ONE, exact.ZERO), (exact.ZERO, -exact.ONE))
+        self.assertEqual(exact.scalar_value(minus_identity), -exact.ONE)
+        self.assertTrue(exact.has_negative_one_eigenvalue(minus_identity))
+
+    def test_nearby_exact_nonendpoint_values_are_not_snapped(self):
+        # These matrices are unitary diagonal phase gates at +/- pi/4 and
+        # have no eigenvalue -1; no tolerance participates in the test.
+        for gate in ('t', 'tdg'):
+            with self.subTest(gate=gate):
+                self.assertFalse(exact.has_negative_one_eigenvalue(exact.GATES[gate]))
+        near = exact.Exact(a=-(2**128), c=1, k=128)
+        matrix = ((near, exact.ZERO), (exact.ZERO, exact.ONE))
+        self.assertFalse(exact.has_negative_one_eigenvalue(matrix))
+
+    def test_representation_size_tracks_arbitrary_precision(self):
+        large = exact.Exact(a=2**300 + 1, b=1, k=200)
+        matrix = ((large, exact.ZERO), (exact.ZERO, exact.ONE))
+        self.assertEqual(exact.representation_size(matrix), (301, 200))
+
+
 if __name__ == '__main__':
     unittest.main()

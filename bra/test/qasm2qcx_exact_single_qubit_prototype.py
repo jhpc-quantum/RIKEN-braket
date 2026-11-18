@@ -98,3 +98,24 @@ def compose_sequence(names):
     for name in names:
         result = multiply_matrices(GATES[name], result)
     return result
+
+
+def scalar_value(matrix):
+    """Return the common diagonal for an exact scalar matrix, else None."""
+    if matrix[0][1] == ZERO and matrix[1][0] == ZERO and matrix[0][0] == matrix[1][1]:
+        return matrix[0][0]
+    return None
+
+
+def has_negative_one_eigenvalue(matrix):
+    """Test det(matrix + I) == 0 exactly, without finding eigenvalues."""
+    return ((matrix[0][0] + ONE) * (matrix[1][1] + ONE)
+            - matrix[0][1] * matrix[1][0]) == ZERO
+
+
+def representation_size(matrix):
+    """Return max numerator bit length and denominator exponent in a matrix."""
+    entries = [entry for row in matrix for entry in row]
+    return (max(abs(value).bit_length() for entry in entries
+                for value in (entry.a, entry.b, entry.c, entry.d)),
+            max(entry.k for entry in entries))
