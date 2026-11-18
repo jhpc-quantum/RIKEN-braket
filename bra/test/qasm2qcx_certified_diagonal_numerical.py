@@ -41,6 +41,10 @@ def main():
     scalar = ((exact.I, exact.ZERO), (exact.ZERO, exact.I))
     root = cmath.exp(0.25j * math.pi)
     run_case(bra, scalar, (root, root))
+    # Distinct exact non-endpoint phases on opposite sides of the cut.
+    for value, sign in ((-exact.OMEGA, -1), (-exact.OMEGA.conjugate(), 1)):
+        matrix = ((exact.ONE, exact.ZERO), (exact.ZERO, value))
+        run_case(bra, matrix, (1, cmath.exp(sign * 0.375j * math.pi)))
 
 
 if __name__ == '__main__':

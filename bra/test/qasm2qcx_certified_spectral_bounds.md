@@ -80,4 +80,5 @@ python3 bra/test/qasm2qcx_certified_diagonal_numerical.py --bra bra/bin/bra
 ```
 
 The first command needs Python's standard library. The second requires a
-working `bra` executable and checks only the two controlled examples above.
+working `bra` executable and checks the controlled endpoint, scalar-phase, and
+non-endpoint examples.
