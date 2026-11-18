@@ -85,6 +85,34 @@ does not prove that the target descriptor matches a bra binary. Numerical
 perturbation tests check the formula on representative 2x2 operations but are
 not a proof of those missing inputs or of backend behavior.
 
+## Backend precision experiment
+
+`spectral_precision_backend_probe.cpp` is a separate C++ probe. It parses
+decimal angles with `boost::lexical_cast` and calls ket's `exp_i` for C++
+`float`, `double`, and `long double`. It reports parsing error against a
+100-decimal-digit reference and `exp_i` error against a reference evaluated at
+the parsed value. The latter separates the phase primitive's observed error
+from the initial parsing error. This high-precision reference is numerical,
+not a certified enclosure.
+
+On the host used for this study, the three C++ types reported 24, 53, and 64
+significand bits respectively. Decimal inputs at pi and on either side by
+`1e-20` parsed to the same native value within each type. The `large-phase`
+sample, approximately `3.14e6`, had parsing errors of about `9.64e-2`,
+`2.23e-10`, and `8.97e-14`, respectively. These are observations for the
+particular inputs and toolchain, not universal error bounds. They illustrate
+why an already-certified branch cannot be recovered by reclassifying a rounded
+native angle and why large-phase parsing belongs in an end-to-end error budget.
+
+The probe is compiled separately with `-O2`; it is not a `bra` build and does
+not establish behavior for release builds, which currently use `-Ofast`, or
+for other floating-point environments. The available `bra/bin/bra` executable
+passed the existing controlled exact-endpoint QCX amplitude experiment. Its
+type was not independently identified, and separate float and long-double
+executables were not available for this study. The amplitude output uses
+default stream precision, so that check cannot establish double- or
+long-double-level accuracy. No change to build options is proposed here.
+
 ## Stage 1 validation
 
 The descriptor tests check exact unit-roundoff calculations, normal and
@@ -95,4 +123,8 @@ floating-point error bound.
 ```bash
 python3 -m unittest discover -s bra/test -p 'test_qasm2qcx_spectral_target_prototype.py' -v
 python3 -m unittest discover -s bra/test -p 'test_qasm2qcx_spectral_error_bound_prototype.py' -v
+python3 -m unittest discover -s bra/test -p 'test_qasm2qcx_spectral_precision_probe.py' -v
+g++ -std=c++14 -O2 -Iket/include bra/test/spectral_precision_backend_probe.cpp -o /tmp/braket-spectral-precision-probe
+/tmp/braket-spectral-precision-probe
+python3 bra/test/qasm2qcx_exact_spectral_numerical.py --bra bra/bin/bra
 ```
