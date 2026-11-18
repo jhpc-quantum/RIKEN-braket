@@ -183,6 +183,18 @@ class BoundedPhaseAndSerializationTests(unittest.TestCase):
         self.assertLessEqual(budget.output_chars, 30)
         self.assertGreater(budget.work, 0)
 
+    def test_repeated_certifications_share_budget_without_free_cache(self):
+        budget = foundation.Budget(foundation.BudgetLimits(output_chars=104))
+        arguments = (foundation.FIXED_GATES['z'], Fraction(1, 2), Fraction(1, 10**12), budget)
+        first = foundation.certify_diagonal_power(*arguments)
+        work_first = budget.work
+        second = foundation.certify_diagonal_power(*arguments)
+        self.assertEqual(first, second)
+        self.assertEqual(budget.work - work_first, work_first)
+        self.assertEqual(budget.output_chars, 104)
+        with self.assertRaisesRegex(foundation.BudgetExceeded, 'output characters'):
+            foundation.certify_diagonal_power(*arguments)
+
     def test_precision_term_size_and_accuracy_failures_are_explicit(self):
         cases = ((foundation.BudgetLimits(precision_bits=40), {}, 'precision bits'),
                  (foundation.BudgetLimits(series_terms=1), {}, 'series terms'),
@@ -198,6 +210,11 @@ class BoundedPhaseAndSerializationTests(unittest.TestCase):
         with self.assertRaises(foundation.AccuracyNotMet):
             foundation.certify_diagonal_power(foundation.FIXED_GATES['z'], Fraction(1, 2),
                                              Fraction(1, 10**30), foundation.Budget(), decimal_places=2)
+
+    def test_huge_series_limit_is_still_bounded_by_shared_work(self):
+        budget = foundation.Budget(foundation.BudgetLimits(series_terms=10**30, work=50))
+        with self.assertRaisesRegex(foundation.BudgetExceeded, 'work'):
+            foundation._atan_series(Fraction(1, 2), 80, budget)
 
     def test_rejects_nonunitary_nondiagonal_and_invalid_goal(self):
         with self.assertRaisesRegex(foundation.InvalidInput, 'diagonal'):

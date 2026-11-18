@@ -120,3 +120,44 @@ configurable limits in tests. Stage 3 should add checked phase/serialization
 operations and measure both intermediate growth and failure behavior. An
 independent review of the enclosure and preflight arguments remains necessary
 before any user-facing certificate is enabled.
+
+## Stage 4 foundation review
+
+`bra/qcx/certified_diagonal.py` now provides the unconnected foundation:
+bounded exact fixed-gate matrix composition and classification, rational
+phase enclosures, exact decimal serialization, and a conservative exact-real
+operator-error check for exactly diagonal unitary matrices. `Budget` counters
+are shared by the caller across these operations. The rational helpers
+preflight cross-products and sums before `Fraction` normalization; they may
+conservatively reject values that would become smaller after reduction. Pi
+and arctangent work is recomputed and charged on every call rather than using a
+cross-call cache.
+
+The current module tests cover fixed-gate sequences up to length three,
+endpoint and synthetic near-cut phases, scalar phase, decimal rounding,
+negative and large exponents, shared and exhausted budgets, and agreement with
+the earlier diagonal prototype. `certified_diagonal_numerical.py` checks
+controlled endpoint, scalar, and non-endpoint QCX examples with the maintained
+module's strings. These examples check backend behavior at printed amplitude
+precision; they do not certify parsing or execution error.
+
+The module is **not connected** to `qasm2qcx.py`. Its counters do not yet
+account for OpenQASM AST expansion, nested definitions, broadcast copies, or
+the converter's output; a future caller must charge and enforce those using the
+same budget. Input values must already be exact bounded objects; a later CLI
+must bound decimal input before constructing large Python integers. The
+configurable limits are trusted inputs, and modeled work/size limits are not a
+hard bound on Python process memory or wall time. The cost model, candidate
+defaults, interval arguments, and preflight bounds still need independent
+review and more adversarial testing before user-facing integration.
+
+The module's certificate compares the ideal powered diagonal operation with
+serialized decimal angles treated as exact real values. It does not infer a
+target format or certify bra parsing, transcendental functions, or gate
+execution. The CLI accuracy option, exception mapping, output atomicity, and
+direct-file versus script import behavior remain integration work.
+
+```bash
+python3 -m unittest discover -s bra/test -p 'test_certified_diagonal.py' -v
+python3 bra/test/certified_diagonal_numerical.py --bra bra/bin/bra
+```

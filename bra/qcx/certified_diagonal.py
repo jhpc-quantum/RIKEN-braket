@@ -433,7 +433,8 @@ def _atan_series(value, bits, budget):
     squared = _qmul(value, value, budget)
     power = value
     total = Fraction(0)
-    for index in range(budget.limits.series_terms):
+    index = 0
+    while index < budget.limits.series_terms:
         budget.charge_series_term()
         term = _qdiv(power, _fraction(2 * index + 1, 1, budget), budget)
         total = _qadd(total, term, budget) if index % 2 == 0 else _qsub(total, term, budget)
@@ -442,6 +443,7 @@ def _atan_series(value, bits, budget):
         if _qcompare(next_term, tolerance, budget) <= 0:
             next_total = _qsub(total, next_term, budget) if index % 2 == 0 else _qadd(total, next_term, budget)
             return (next_total, total) if index % 2 == 0 else (total, next_total)
+        index += 1
     raise BudgetExceeded('series terms')
 
 
