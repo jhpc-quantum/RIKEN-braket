@@ -217,3 +217,65 @@ error bound.
 python3 -m unittest discover -s bra/test -p 'test_qasm2qcx_diagonal_design_validation.py' -v
 python3 bra/test/qasm2qcx_certified_diagonal_numerical.py --bra bra/bin/bra
 ```
+
+## Proposed implementation sequence
+
+1. **Production arithmetic and budgets.** Move or refactor the necessary exact
+   fixed-gate arithmetic, phase enclosures, and exact decimal serialization into
+   a maintained `bra/qcx` module. The converter must not import modules from
+   `bra/test`. Implement and test a shared per-call budget, including checked
+   intermediate growth before allocation. Keep the new lowering disabled.
+2. **Accuracy option and API.** Add a reviewed CLI option and keyword-only API
+   argument for an exact decimal error goal. Preserve the current one-argument
+   CLI and `convert(source)` behavior for previously supported programs. Test
+   valid and invalid options, a missing goal on the new path, and atomic CLI
+   output. Do not claim target-format or backend certification.
+3. **Eligibility and exact composition.** Recognize the subset above, compose
+   fixed gate bodies exactly with the shared budget, and require exact zero
+   off-diagonal entries. Check invalid definitions, operands, modifiers, and
+   skipped classical paths. Preserve existing wrapper and integer-power paths.
+4. **Certified lowering.** Convert the existing evaluated finite float
+   exponent to an exact rational, obtain basis-paired phase enclosures, serialize
+   both angles, and verify the converter-only operator bound before emitting
+   QCX. Preserve scalar and global phase, controls, broadcasting, and zero or
+   negative powers. Release converter-owned state on success and failure.
+5. **Integration validation and documentation.** Add conversion, failure,
+   phase-sensitive controlled-amplitude, and regression tests; document the
+   exact-real guarantee and its backend limits. Audit bra parsing and execution
+   independently if a broader guarantee is proposed.
+
+These steps can be split into implementation sub-issues or staged commits. The
+candidate resource constants above require measurement before adoption; the
+implemented budget and diagnostics should be reviewed as part of the first
+step. No implementation stage should silently fall back to the uncertified
+floating-point composition investigated in #630.
+
+## Proposed acceptance criteria
+
+- Existing supported converter programs retain their behavior without a new
+  option. An eligible call selected for the new path requires a valid explicit
+  error goal, including when static validation encounters a skipped path.
+- Exact matrix composition recognizes diagonal, non-diagonal, identity, and
+  scalar-phase results correctly, including nested eligible definitions and
+  the `z`, `s; s;`, and four-`t` equivalence.
+- The selected branch and basis pairing remain correct for endpoint and tested
+  near-cut cases. No epsilon-based branch snapping or silent uncertified
+  fallback is used. Unsupported definitions and modifier chains are diagnosed.
+- For every accepted new-path operation, a conservatively computed exact-real
+  bound is at most the requested goal. Certification or resource exhaustion
+  produces a clear error and no partial CLI output.
+- Tests cover zero, negative, integer-valued floating, and large finite
+  exponents; full scalar phase; positive and negative controls; broadcasting;
+  invalid and skipped calls; cleanup; serialization; and each implemented
+  resource limit. Independent references check phase-sensitive amplitudes.
+- The documentation states that the bound is **per emitted operation** and
+  excludes bra parsing and execution. Repeated operations in a circuit do not
+  automatically inherit the same bound for the complete circuit.
+
+## Stage 4 decision
+
+The exactly diagonal subset has enough prototype evidence to define a
+candidate integration design, but it is **not ready to be enabled**. The
+prototype still lacks complete resource enforcement, a production API, and an
+independent audit of the enclosure and error arguments. Backend numerical
+accuracy is explicitly outside the proposed initial converter contract.
