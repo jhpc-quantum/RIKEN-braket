@@ -93,3 +93,96 @@ It does not certify how a specific `bra` binary parses or executes them. The
 target format or accuracy interface, parsing assumptions, achievable error
 contract, and handling of exhausted certification resources remain open for
 Stage 2. This document does not claim an end-to-end backend error guarantee.
+
+## Proposed accuracy interface
+
+For the initial path, require an explicit **absolute operator-error goal**;
+do not require a target format to make the converter-only guarantee. The
+mathematical operation represented by the emitted decimal QCX parameters is
+independent of a particular `bra` build. A target descriptor cannot by itself
+certify that a particular executable parses or computes those parameters with
+the described rounding behavior.
+
+One possible CLI spelling is:
+
+```text
+qasm2qcx.py --diagonal-power-error 1e-12 program.qasm
+```
+
+The corresponding Python API could add the keyword-only argument
+`diagonal_power_error`, supplied as an exact decimal string. These names are a
+proposal for review, not existing options. Parse the value directly as an exact
+rational; require it to be finite and strictly between zero and one. Do not
+round the requested bound through Python `float`.
+
+The option is required only when the new certified diagonal path is
+selected; existing converter calls and previously supported gate paths must not
+require it or silently change semantics. There is no default certificate goal
+for the new path. If a selected new-path call lacks a goal, report a conversion
+error with an actionable diagnostic.
+
+Optional target-format metadata can be added later for a separately justified
+parsing or backend analysis. It must identify the actual target environment
+and must not be presented as certified merely because the user selected a
+format. In the current diagonal prototype, `AccuracyRequest.target` is not
+used in the converter-only bound: the same exact-real angles and bound result
+for binary32 and binary64. Integration should make this separation explicit
+rather than implying otherwise.
+
+## Converter-only contract
+
+For each selected call, let `G` be its exact composed diagonal matrix and let
+`r` be the exact rational representation of its already-evaluated finite Python
+float exponent. Using the selected principal phases, form the ideal `G^r`.
+Treat each serialized decimal angle as an exact real number and the QCX gate
+operations as exact mathematical unitaries. The certificate must bound the
+operator 2-norm of the difference between that serialized operation and
+`G^r`, **including global phase**, by the requested goal. The same bound holds
+for added controls when the inactive block is exactly identity.
+
+Use certified rational phase enclosures paired with computational basis values
+zero and one. Bound multiplication by `r` and exact decimal serialization,
+and accept only when the resulting conservative bound is within the goal.
+For an exact scalar matrix, both basis phases are still retained. For zero
+powers, perform static eligibility and call validation before certifying the
+identity. If a phase, label, resource bound, or output accuracy cannot be
+certified, report an error; never guess a branch or silently drop the phase.
+
+This guarantee does **not** include parsing the decimal strings into a
+particular native type, `bra` transcendental functions, or simulation error.
+In particular, it is not an end-to-end guarantee for `float`, `double`, or
+`long double`. Those errors require a distinct backend contract and verified
+build/runtime assumptions. QCX output must not be described as target-precision
+certified merely because its decimal strings have many digits.
+
+## Proposed resource limits and failure behavior
+
+The following are initial **candidates for validation**, not established safe
+production defaults. All counters should be shared across the complete
+source call, including nested expansion and broadcast output:
+
+| Resource | Candidate limit |
+| --- | ---: |
+| Gate-definition expansion steps / nesting | Existing 100,000 / 128 limits |
+| Exact input or intermediate integer bit length | 4,096 bits |
+| Rational numerator or denominator bit length | 8,192 bits |
+| Interval refinement precision | 1,024 bits |
+| Arctangent series terms per evaluation | 512 |
+| Total arithmetic/refinement operations per call | 100,000 |
+| Decimal places per emitted angle | 200 |
+| Gate-definition / enclosing loop QCX lines | Existing 100,000 / 1,000,000 limits |
+
+Check operand growth **before** allocating large shifts, products, powers,
+decimal strings, and intermediate rationals. The limits must cover both input
+and intermediate values; checking only the final result is insufficient. The
+existing prototype does not yet enforce this complete budget. Stage 3 should
+measure representative cases, test each failure path, and determine whether
+the candidates are practical or need adjustment.
+
+Conversion is atomic at the public CLI boundary: no QCX lines should be
+printed if validation or certification fails. Diagnostics should distinguish
+an invalid option, unsupported gate or modifier, exhausted work/precision/size
+budget, and a bound that remains above the requested goal. Internal temporary
+and binding state must be restored on failures. Static checks must also apply
+inside unexecuted classical branches and loops without evaluating runtime
+expressions from those paths.
