@@ -66,6 +66,15 @@ class CertifiedProjectorTests(unittest.TestCase):
                             for component in item.entries[row][column]:
                                 self.assertLessEqual(component[1] - component[0], Fraction(1, 2**32))
 
+    def test_real_gate_sequence_near_cut_keeps_root_indices(self):
+        matrix = exact.compose_sequence(('h', 't') * 450)
+        eigenphases = phases.certify_principal_phases(matrix, target_bits=32)
+        result = projectors.certify_projectors(matrix, target_bits=32)
+        self.assertEqual([phase.index for phase in eigenphases], [item.index for item in result])
+        self.assertEqual([phase.branch for phase in eigenphases], [item.eigenvalue.branch for item in result])
+        # This fixed sequence has a non-endpoint eigenphase just above -pi.
+        self.assertTrue(any(-3.142 < float(phase.lower) < -3.140 for phase in eigenphases))
+
     def test_zero_gap_and_budget_failures_do_not_guess(self):
         zero = (Fraction(-1), Fraction(1))
         with self.assertRaisesRegex(bridge.CertificationLimit, 'gap'):
