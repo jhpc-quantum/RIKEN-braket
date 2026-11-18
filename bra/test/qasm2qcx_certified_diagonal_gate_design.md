@@ -186,3 +186,34 @@ budget, and a bound that remains above the requested goal. Internal temporary
 and binding state must be restored on failures. Static checks must also apply
 inside unexecuted classical branches and loops without evaluating runtime
 expressions from those paths.
+
+## Stage 3 validation
+
+`test_qasm2qcx_diagonal_design_validation.py` checks the existing diagonal
+prototype's bound against independent rational pi-prefix intervals for
+identity, `z`, four `t` gates, `t`, `tdg`, and an `i*I` sequence. Tested
+exponents include zero, negative values, and `10**8`. It confirms that the
+current exact-real certificate is unchanged by choosing the prototype's
+binary32 or binary64 target descriptor. Synthetic rational rectangles close to
+both sides of the negative-real cut exercise phase enclosures without claiming
+that those points are eligible fixed-gate eigenvalues.
+
+The tests exercise the prototype's current precision, series-term, output
+decimal-place, and unmet-bound failures. They do **not** establish the proposed
+complete per-call work, intermediate-integer, rational-size, or output limits:
+those counters and pre-allocation checks are not implemented in the prototype.
+The prototype also accepts an exact rational exponent directly; it does not
+test Python float folding, the proposed CLI option, converter diagnostics, or
+atomic output.
+
+`qasm2qcx_certified_diagonal_numerical.py` checks controlled endpoint,
+scalar-phase, and non-endpoint examples on the available `bra` executable.
+These amplitude checks use its default output precision and do not certify
+native parsing or execution, identify the executable's REAL type, or validate
+other bra builds. In particular, the exact-real certificate is not a backend
+error bound.
+
+```bash
+python3 -m unittest discover -s bra/test -p 'test_qasm2qcx_diagonal_design_validation.py' -v
+python3 bra/test/qasm2qcx_certified_diagonal_numerical.py --bra bra/bin/bra
+```
