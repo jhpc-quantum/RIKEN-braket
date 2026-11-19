@@ -7,6 +7,7 @@ import enum
 import dataclasses
 import contextlib
 import ctypes
+import re
 from fractions import Fraction
 from collections.abc import Iterable, Iterator
 
@@ -24,6 +25,49 @@ ExpressionKind = enum.Enum('ExpressionKind', [('ARITHMETIC', 1), ('CONST_ARITHME
 
 class QASM2QCXError(Exception):
     """Base class for conversion errors."""
+
+
+class InvalidDiagonalPowerErrorGoal(QASM2QCXError):
+    """An accuracy goal is malformed, out of range, or exceeds its input limit."""
+
+
+# Bound text and decimal scale before integer conversion or powers of ten.
+# A scale of 1,000 needs at most 3,322 denominator bits, within the current
+# certification foundation's 4,096-bit input budget.
+MAX_DIAGONAL_POWER_GOAL_CHARS = 256
+MAX_DIAGONAL_POWER_GOAL_SCALE = 1000
+_DIAGONAL_POWER_GOAL_PATTERN = re.compile(
+    r'(?P<sign>[+-]?)(?:(?P<whole>[0-9]+)(?:\.(?P<fraction>[0-9]*))?'
+    r'|\.(?P<fraction_only>[0-9]+))(?:[eE](?P<exponent>[+-]?[0-9]+))?')
+
+
+def _parse_diagonal_power_error_goal(text: str) -> Fraction:
+    """Parse a bounded ASCII decimal goal exactly, requiring 0 < goal < 1."""
+    if not isinstance(text, str):
+        raise InvalidDiagonalPowerErrorGoal('diagonal power error goal must be a decimal string')
+    if len(text) > MAX_DIAGONAL_POWER_GOAL_CHARS:
+        raise InvalidDiagonalPowerErrorGoal('diagonal power error goal exceeds the input length limit')
+    match = _DIAGONAL_POWER_GOAL_PATTERN.fullmatch(text)
+    if match is None:
+        raise InvalidDiagonalPowerErrorGoal('diagonal power error goal must be an ASCII decimal')
+    if match.group('sign') == '-':
+        raise InvalidDiagonalPowerErrorGoal('diagonal power error goal must be strictly between zero and one')
+    whole = match.group('whole') or ''
+    fraction = match.group('fraction') if match.group('whole') is not None else match.group('fraction_only')
+    fraction = fraction or ''
+    exponent = int(match.group('exponent') or '0')
+    if abs(exponent) > MAX_DIAGONAL_POWER_GOAL_SCALE:
+        raise InvalidDiagonalPowerErrorGoal('diagonal power error goal exceeds the decimal scale limit')
+    scale = len(fraction) - exponent
+    if abs(scale) > MAX_DIAGONAL_POWER_GOAL_SCALE:
+        raise InvalidDiagonalPowerErrorGoal('diagonal power error goal exceeds the decimal scale limit')
+    numerator = int(whole + fraction)
+    if numerator == 0 or scale <= 0:
+        raise InvalidDiagonalPowerErrorGoal('diagonal power error goal must be strictly between zero and one')
+    denominator = 10**scale
+    if numerator >= denominator:
+        raise InvalidDiagonalPowerErrorGoal('diagonal power error goal must be strictly between zero and one')
+    return Fraction(numerator, denominator)
 
 
 class UnsupportedOpenQASMError(QASM2QCXError):

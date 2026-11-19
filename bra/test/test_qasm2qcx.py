@@ -21,6 +21,38 @@ def convert(source: str) -> list[str]:
     return qasm2qcx.convert(source)
 
 
+class DiagonalPowerErrorGoalParsingTests(unittest.TestCase):
+    def test_decimal_syntax_is_parsed_exactly(self):
+        for text, expected in (('0.1', Fraction(1, 10)), ('.5', Fraction(1, 2)),
+                               ('+0.125', Fraction(1, 8)), ('000.5000', Fraction(1, 2)),
+                               ('1e-12', Fraction(1, 10**12)), ('0.01E+1', Fraction(1, 10)),
+                               ('0001.e-1', Fraction(1, 10)), ('1e-1000', Fraction(1, 10**1000))):
+            with self.subTest(text=text):
+                self.assertEqual(qasm2qcx._parse_diagonal_power_error_goal(text), expected)
+
+    def test_exact_text_length_boundary(self):
+        text = '0.' + '0' * 253 + '1'
+        self.assertEqual(len(text), qasm2qcx.MAX_DIAGONAL_POWER_GOAL_CHARS)
+        self.assertEqual(qasm2qcx._parse_diagonal_power_error_goal(text), Fraction(1, 10**254))
+        with self.assertRaisesRegex(qasm2qcx.InvalidDiagonalPowerErrorGoal, 'length limit'):
+            qasm2qcx._parse_diagonal_power_error_goal(text + '0')
+
+    def test_invalid_syntax_type_and_range_are_rejected(self):
+        for value in ('', '.', '+', 'nan', 'NaN', 'inf', '-inf', '1_0', '1/2',
+                      ' 0.5', '0.5 ', '0.5\n', '０.５', '1e', '1e+',
+                      '0', '-0', '-0.5', '1', '1.0', '1e1', '2.0',
+                      0.5, Fraction(1, 2), None, True):
+            with self.subTest(value=value), self.assertRaises(qasm2qcx.InvalidDiagonalPowerErrorGoal):
+                qasm2qcx._parse_diagonal_power_error_goal(value)
+
+    def test_large_exponents_and_effective_scales_are_rejected(self):
+        for text in ('1e-1001', '1e1001', '0.1e-1000', '1e-' + '9' * 240,
+                     '0e' + '9' * 240):
+            with self.subTest(text=text), self.assertRaisesRegex(
+                    qasm2qcx.InvalidDiagonalPowerErrorGoal, 'scale limit'):
+                qasm2qcx._parse_diagonal_power_error_goal(text)
+
+
 class BasicGateDefinitionFoundationTests(unittest.TestCase):
     def converter(self, source):
         program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ' + source)
