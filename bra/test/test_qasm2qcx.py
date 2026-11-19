@@ -53,6 +53,53 @@ class DiagonalPowerErrorGoalParsingTests(unittest.TestCase):
                 qasm2qcx._parse_diagonal_power_error_goal(text)
 
 
+class DiagonalPowerErrorGoalApiTests(unittest.TestCase):
+    def test_optional_goal_preserves_existing_conversion(self):
+        source = 'OPENQASM 3; include "stdgates.inc"; qubit q; h q;'
+        expected = qasm2qcx.convert(source)
+        self.assertEqual(qasm2qcx.convert(source, diagonal_power_error=None), expected)
+        for value in ('0.1', '1e-12', '1e-1000'):
+            with self.subTest(value=value):
+                self.assertEqual(qasm2qcx.convert(source, diagonal_power_error=value), expected)
+
+    def test_goal_is_keyword_only_and_reaches_converter_exactly(self):
+        program = qasm2qcx.openqasm3.parse('OPENQASM 3; qubit q;')
+        exact_goal = Fraction(1, 10**1000)
+        converter = qasm2qcx.QASM2QCXConverter(program, diagonal_power_error=exact_goal)
+        self.assertEqual(converter._QASM2QCXConverter__diagonal_power_error, exact_goal)
+        with self.assertRaises(TypeError):
+            qasm2qcx.convert('OPENQASM 3; qubit q;', '0.1')
+        original_init = qasm2qcx.QASM2QCXConverter.__init__
+        seen = []
+        def record(instance, ast, **kwargs):
+            seen.append(kwargs.get('diagonal_power_error'))
+            original_init(instance, ast, **kwargs)
+        with patch.object(qasm2qcx.QASM2QCXConverter, '__init__', record):
+            qasm2qcx.convert('OPENQASM 3; qubit q;', diagonal_power_error='1e-1000')
+        self.assertEqual(seen, [exact_goal])
+
+    def test_invalid_goal_is_rejected_before_parsing_source(self):
+        with patch.object(qasm2qcx.openqasm3, 'parse') as parse:
+            with self.assertRaises(qasm2qcx.InvalidDiagonalPowerErrorGoal):
+                qasm2qcx.convert('not valid qasm', diagonal_power_error='0')
+            parse.assert_not_called()
+        for invalid in (0.1, Fraction(1, 10), '', 'nan', '1', '1e-1001'):
+            with self.subTest(value=invalid), self.assertRaises(qasm2qcx.InvalidDiagonalPowerErrorGoal):
+                qasm2qcx.convert('OPENQASM 3; qubit q;', diagonal_power_error=invalid)
+
+    def test_converter_rejects_unbounded_or_invalid_internal_goals(self):
+        program = qasm2qcx.openqasm3.parse('OPENQASM 3; qubit q;')
+        for invalid in (0.1, Fraction(0), Fraction(1), Fraction(-1, 2), Fraction(1, 2**5000)):
+            with self.subTest(value=invalid), self.assertRaises(qasm2qcx.InvalidDiagonalPowerErrorGoal):
+                qasm2qcx.QASM2QCXConverter(program, diagonal_power_error=invalid)
+
+    def test_goal_does_not_enable_unsupported_multi_operation_power(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; gate g q { t q; t q; } '
+                  'qubit q; pow(0.5) @ g q;')
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            qasm2qcx.convert(source, diagonal_power_error='1e-12')
+
+
 class BasicGateDefinitionFoundationTests(unittest.TestCase):
     def converter(self, source):
         program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ' + source)

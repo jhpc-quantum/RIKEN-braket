@@ -36,6 +36,7 @@ class InvalidDiagonalPowerErrorGoal(QASM2QCXError):
 # certification foundation's 4,096-bit input budget.
 MAX_DIAGONAL_POWER_GOAL_CHARS = 256
 MAX_DIAGONAL_POWER_GOAL_SCALE = 1000
+MAX_DIAGONAL_POWER_GOAL_BITS = 4096
 _DIAGONAL_POWER_GOAL_PATTERN = re.compile(
     r'(?P<sign>[+-]?)(?:(?P<whole>[0-9]+)(?:\.(?P<fraction>[0-9]*))?'
     r'|\.(?P<fraction_only>[0-9]+))(?:[eE](?P<exponent>[+-]?[0-9]+))?')
@@ -1005,7 +1006,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     angle_rotation_gates = frozenset(('rx', 'ry', 'rz'))
     angle_controlled_rotation_gates = frozenset(('crx', 'cry', 'crz'))
 
-    def __init__(self, qasm_ast_root: ast.Program) -> None:
+    def __init__(self, qasm_ast_root: ast.Program, *, diagonal_power_error: Fraction | None = None) -> None:
+        if diagonal_power_error is not None:
+            if (not isinstance(diagonal_power_error, Fraction)
+                    or diagonal_power_error.numerator.bit_length() > MAX_DIAGONAL_POWER_GOAL_BITS
+                    or diagonal_power_error.denominator.bit_length() > MAX_DIAGONAL_POWER_GOAL_BITS
+                    or not 0 < diagonal_power_error.numerator < diagonal_power_error.denominator):
+                raise InvalidDiagonalPowerErrorGoal('diagonal power error goal must be a bounded rational between zero and one')
+        # Reserved for a future certified lowering. Supplying a goal does not
+        # enable that path or change existing gate conversion.
+        self.__diagonal_power_error = diagonal_power_error
         self.__value: str | int | float | complex | None = None
         self.__value_type: ValueType | None = None
         self.__value_kind: ValueKind | None = None
@@ -14418,10 +14428,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if value_kind == ValueKind.TEMPORARY:
                 self.__release_temporary_variable(str(value))
 
-def convert(source: str) -> list[str]:
-    """Convert an OpenQASM 3 source string into QCX input lines."""
+def convert(source: str, *, diagonal_power_error: str | None = None) -> list[str]:
+    """Convert OpenQASM to QCX; the optional bounded accuracy goal is reserved."""
+    goal = (_parse_diagonal_power_error_goal(diagonal_power_error)
+            if diagonal_power_error is not None else None)
     qasm_ast_root = openqasm3.parse(source)
-    converter = QASM2QCXConverter(qasm_ast_root)
+    converter = QASM2QCXConverter(qasm_ast_root, diagonal_power_error=goal)
     converter.visit(qasm_ast_root)
     return list(converter)
 
