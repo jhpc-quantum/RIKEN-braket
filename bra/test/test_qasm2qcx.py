@@ -147,11 +147,25 @@ class DiagonalPowerErrorGoalCliTests(unittest.TestCase):
             output.assert_not_called()
 
     def test_option_like_filename_remains_usable(self):
-        for arguments in (['--source.qasm'], ['--', '--source.qasm']):
+        for arguments, filename in ((['--source.qasm'], '--source.qasm'),
+                                    (['--', '--source.qasm'], '--source.qasm'),
+                                    (['--', '--help'], '--help'), (['--', '-h'], '-h')):
             with self.subTest(arguments=arguments), patch('builtins.open', mock_open(read_data=self.source)) as opened, \
                     patch('builtins.print'):
                 qasm2qcx.main(arguments)
-            opened.assert_called_once_with('--source.qasm', encoding='utf-8')
+            opened.assert_called_once_with(filename, encoding='utf-8')
+
+    def test_help_exits_without_opening_a_file(self):
+        for arguments in (['-h'], ['--help'], ['program.qasm', '--help']):
+            with self.subTest(arguments=arguments), patch('builtins.open', mock_open()) as opened, \
+                    patch('builtins.print') as output:
+                qasm2qcx.main(arguments)
+            opened.assert_not_called()
+            output.assert_called_once()
+            help_text = output.call_args.args[0]
+            self.assertIn('usage: qasm2qcx.py', help_text)
+            self.assertIn('--diagonal-power-error', help_text)
+            self.assertIn('does not yet', help_text)
 
 
 class BasicGateDefinitionFoundationTests(unittest.TestCase):

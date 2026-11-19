@@ -14438,7 +14438,21 @@ def convert(source: str, *, diagonal_power_error: str | None = None) -> list[str
     return list(converter)
 
 
-def _parse_command_line(arguments: list[str]) -> tuple[str, str | None]:
+_COMMAND_LINE_HELP = '''usage: qasm2qcx.py [--diagonal-power-error DECIMAL] <OpenQASM file name>
+
+Convert an OpenQASM 3 source file to QCX on standard output.
+
+options:
+  -h, --help                       Show this help and exit.
+  --diagonal-power-error DECIMAL   Reserve an exact converter-side error goal
+                                   between zero and one for future certified
+                                   diagonal powers. The option does not yet
+                                   enable that lowering or certify bra.
+
+Use -- before a filename that would otherwise be interpreted as an option.'''
+
+
+def _parse_command_line(arguments: list[str]) -> tuple[str | None, str | None]:
     usage = 'usage: qasm2qcx.py [--diagonal-power-error DECIMAL] <OpenQASM file name>'
     filename = None
     goal = None
@@ -14449,6 +14463,8 @@ def _parse_command_line(arguments: list[str]) -> tuple[str, str | None]:
         argument = arguments[index]
         if not positional_only and argument == '--':
             positional_only = True
+        elif not positional_only and argument in ('-h', '--help'):
+            return None, None
         elif not positional_only and (argument == '--diagonal-power-error'
                                       or argument.startswith('--diagonal-power-error=')):
             if seen_goal:
@@ -14477,6 +14493,9 @@ def main(arguments: list[str] | None = None) -> None:
     if arguments is None:
         arguments = sys.argv[1:]
     filename, goal = _parse_command_line(arguments)
+    if filename is None:
+        print(_COMMAND_LINE_HELP)
+        return
 
     try:
         if goal is not None:
