@@ -60,6 +60,37 @@ installation of `qasm2qcx.py` is needed.
 Python callers can use `qasm2qcx.convert(source)` to obtain the generated QCX
 lines as a list of strings.
 
+## Command-line help and reserved accuracy goal
+
+Use `python3 bra/qcx/qasm2qcx.py --help` or `-h` for the command-line help.
+The optional argument `--diagonal-power-error` accepts a converter-side error
+goal as a decimal string:
+
+```console
+python3 bra/qcx/qasm2qcx.py --diagonal-power-error 1e-12 circuit.qasm > circuit.qcx
+```
+
+The option is **reserved for future certified diagonal gate powers**. It is
+validated and stored, but currently does not enable that lowering, change QCX
+output, or certify the output or a `bra` execution. The one-file command
+without the option remains supported. Use `--` before a filename that would
+otherwise be interpreted as an option, for example `qasm2qcx.py -- --help`.
+
+The goal must be an ASCII decimal strictly between zero and one, with optional
+leading `+` and optional `e` or `E` exponent. Examples include `0.01`, `.5`,
+and `1e-12`. Whitespace, underscores, fractions such as `1/10`, `NaN`, and
+infinity are not accepted. Input is limited to 256 characters; both the
+explicit exponent and the effective decimal scale are limited in magnitude to
+1,000. The value is parsed exactly rather than through Python `float`.
+Errors are reported without printing partial QCX output.
+
+Python callers can pass the same string using the keyword-only argument
+`qasm2qcx.convert(source, diagonal_power_error="1e-12")`. Omitting it, or
+passing `None`, preserves the existing call. Numeric values such as `0.1`
+are not accepted in place of the string. The intended future error goal is
+for the mathematical operation represented by the emitted decimal QCX
+parameters; it excludes `bra` parsing and execution errors.
+
 ## Current integration scope
 
 The converter currently covers:

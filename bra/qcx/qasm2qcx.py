@@ -7,6 +7,7 @@ import enum
 import dataclasses
 import contextlib
 import ctypes
+import re
 from fractions import Fraction
 from collections.abc import Iterable, Iterator
 
@@ -24,6 +25,50 @@ ExpressionKind = enum.Enum('ExpressionKind', [('ARITHMETIC', 1), ('CONST_ARITHME
 
 class QASM2QCXError(Exception):
     """Base class for conversion errors."""
+
+
+class InvalidDiagonalPowerErrorGoal(QASM2QCXError):
+    """An accuracy goal is malformed, out of range, or exceeds its input limit."""
+
+
+# Bound text and decimal scale before integer conversion or powers of ten.
+# A scale of 1,000 needs at most 3,322 denominator bits, within the current
+# certification foundation's 4,096-bit input budget.
+MAX_DIAGONAL_POWER_GOAL_CHARS = 256
+MAX_DIAGONAL_POWER_GOAL_SCALE = 1000
+MAX_DIAGONAL_POWER_GOAL_BITS = 4096
+_DIAGONAL_POWER_GOAL_PATTERN = re.compile(
+    r'(?P<sign>[+-]?)(?:(?P<whole>[0-9]+)(?:\.(?P<fraction>[0-9]*))?'
+    r'|\.(?P<fraction_only>[0-9]+))(?:[eE](?P<exponent>[+-]?[0-9]+))?')
+
+
+def _parse_diagonal_power_error_goal(text: str) -> Fraction:
+    """Parse a bounded ASCII decimal goal exactly, requiring 0 < goal < 1."""
+    if not isinstance(text, str):
+        raise InvalidDiagonalPowerErrorGoal('diagonal power error goal must be a decimal string')
+    if len(text) > MAX_DIAGONAL_POWER_GOAL_CHARS:
+        raise InvalidDiagonalPowerErrorGoal('diagonal power error goal exceeds the input length limit')
+    match = _DIAGONAL_POWER_GOAL_PATTERN.fullmatch(text)
+    if match is None:
+        raise InvalidDiagonalPowerErrorGoal('diagonal power error goal must be an ASCII decimal')
+    if match.group('sign') == '-':
+        raise InvalidDiagonalPowerErrorGoal('diagonal power error goal must be strictly between zero and one')
+    whole = match.group('whole') or ''
+    fraction = match.group('fraction') if match.group('whole') is not None else match.group('fraction_only')
+    fraction = fraction or ''
+    exponent = int(match.group('exponent') or '0')
+    if abs(exponent) > MAX_DIAGONAL_POWER_GOAL_SCALE:
+        raise InvalidDiagonalPowerErrorGoal('diagonal power error goal exceeds the decimal scale limit')
+    scale = len(fraction) - exponent
+    if abs(scale) > MAX_DIAGONAL_POWER_GOAL_SCALE:
+        raise InvalidDiagonalPowerErrorGoal('diagonal power error goal exceeds the decimal scale limit')
+    numerator = int(whole + fraction)
+    if numerator == 0 or scale <= 0:
+        raise InvalidDiagonalPowerErrorGoal('diagonal power error goal must be strictly between zero and one')
+    denominator = 10**scale
+    if numerator >= denominator:
+        raise InvalidDiagonalPowerErrorGoal('diagonal power error goal must be strictly between zero and one')
+    return Fraction(numerator, denominator)
 
 
 class UnsupportedOpenQASMError(QASM2QCXError):
@@ -961,7 +1006,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     angle_rotation_gates = frozenset(('rx', 'ry', 'rz'))
     angle_controlled_rotation_gates = frozenset(('crx', 'cry', 'crz'))
 
-    def __init__(self, qasm_ast_root: ast.Program) -> None:
+    def __init__(self, qasm_ast_root: ast.Program, *, diagonal_power_error: Fraction | None = None) -> None:
+        if diagonal_power_error is not None:
+            if (not isinstance(diagonal_power_error, Fraction)
+                    or diagonal_power_error.numerator.bit_length() > MAX_DIAGONAL_POWER_GOAL_BITS
+                    or diagonal_power_error.denominator.bit_length() > MAX_DIAGONAL_POWER_GOAL_BITS
+                    or not 0 < diagonal_power_error.numerator < diagonal_power_error.denominator):
+                raise InvalidDiagonalPowerErrorGoal('diagonal power error goal must be a bounded rational between zero and one')
+        # Reserved for a future certified lowering. Supplying a goal does not
+        # enable that path or change existing gate conversion.
+        self.__diagonal_power_error = diagonal_power_error
         self.__value: str | int | float | complex | None = None
         self.__value_type: ValueType | None = None
         self.__value_kind: ValueKind | None = None
@@ -14374,23 +14428,80 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if value_kind == ValueKind.TEMPORARY:
                 self.__release_temporary_variable(str(value))
 
-def convert(source: str) -> list[str]:
-    """Convert an OpenQASM 3 source string into QCX input lines."""
+def convert(source: str, *, diagonal_power_error: str | None = None) -> list[str]:
+    """Convert OpenQASM to QCX; the optional bounded accuracy goal is reserved."""
+    goal = (_parse_diagonal_power_error_goal(diagonal_power_error)
+            if diagonal_power_error is not None else None)
     qasm_ast_root = openqasm3.parse(source)
-    converter = QASM2QCXConverter(qasm_ast_root)
+    converter = QASM2QCXConverter(qasm_ast_root, diagonal_power_error=goal)
     converter.visit(qasm_ast_root)
     return list(converter)
+
+
+_COMMAND_LINE_HELP = '''usage: qasm2qcx.py [--diagonal-power-error DECIMAL] <OpenQASM file name>
+
+Convert an OpenQASM 3 source file to QCX on standard output.
+
+options:
+  -h, --help                       Show this help and exit.
+  --diagonal-power-error DECIMAL   Reserve an exact converter-side error goal
+                                   between zero and one for future certified
+                                   diagonal powers. The option does not yet
+                                   enable that lowering or certify bra.
+
+Use -- before a filename that would otherwise be interpreted as an option.'''
+
+
+def _parse_command_line(arguments: list[str]) -> tuple[str | None, str | None]:
+    usage = 'usage: qasm2qcx.py [--diagonal-power-error DECIMAL] <OpenQASM file name>'
+    filename = None
+    goal = None
+    seen_goal = False
+    positional_only = False
+    index = 0
+    while index < len(arguments):
+        argument = arguments[index]
+        if not positional_only and argument == '--':
+            positional_only = True
+        elif not positional_only and argument in ('-h', '--help'):
+            return None, None
+        elif not positional_only and (argument == '--diagonal-power-error'
+                                      or argument.startswith('--diagonal-power-error=')):
+            if seen_goal:
+                raise SystemExit('qasm2qcx.py: --diagonal-power-error may be specified only once')
+            seen_goal = True
+            if argument == '--diagonal-power-error':
+                index += 1
+                if index == len(arguments):
+                    raise SystemExit('qasm2qcx.py: --diagonal-power-error requires a decimal value')
+                goal = arguments[index]
+            else:
+                goal = argument.partition('=')[2]
+        elif not positional_only and argument.startswith('--') and len(arguments) > 1:
+            raise SystemExit('qasm2qcx.py: unrecognized option')
+        elif filename is None:
+            filename = argument
+        else:
+            raise SystemExit(usage)
+        index += 1
+    if filename is None:
+        raise SystemExit(usage)
+    return filename, goal
 
 
 def main(arguments: list[str] | None = None) -> None:
     if arguments is None:
         arguments = sys.argv[1:]
-    if len(arguments) != 1:
-        raise SystemExit('usage: qasm2qcx.py <OpenQASM file name>')
+    filename, goal = _parse_command_line(arguments)
+    if filename is None:
+        print(_COMMAND_LINE_HELP)
+        return
 
     try:
-        with open(arguments[0], encoding='utf-8') as qasm_file:
-            qcx_lines = convert(qasm_file.read())
+        if goal is not None:
+            _parse_diagonal_power_error_goal(goal)
+        with open(filename, encoding='utf-8') as qasm_file:
+            qcx_lines = convert(qasm_file.read(), diagonal_power_error=goal)
     except (OSError, QASM2QCXError, openqasm3.parser.QASM3ParsingError) as error:
         raise SystemExit(f'qasm2qcx.py: {error}') from error
 
