@@ -1005,6 +1005,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     angle_phase_gates = frozenset(('p', 'phase', 'u1', 'cp', 'cphase'))
     angle_rotation_gates = frozenset(('rx', 'ry', 'rz'))
     angle_controlled_rotation_gates = frozenset(('crx', 'cry', 'crz'))
+    # Structural subset for a future exact diagonal-gate path. This analysis
+    # is not consulted by normal conversion yet.
+    diagonal_fixed_gates = frozenset(('id', 'x', 'y', 'z', 'h', 's', 'sdg', 't', 'tdg', 'sx'))
 
     def __init__(self, qasm_ast_root: ast.Program, *, diagonal_power_error: Fraction | None = None) -> None:
         if diagonal_power_error is not None:
@@ -4451,6 +4454,56 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             ) -> _GateModifierInfo | _OrderedGateModifierInfo:
         return self.__analyze_gate_modifiers(
             modifiers, iterators, allow_runtime=allow_runtime, allow_float=allow_float)
+
+    def __iter_diagonal_fixed_gate_operations(self, name: str) -> Iterator[str]:
+        """Inspect and stream fixed operations without emitting QCX.
+
+        This only checks structural eligibility, not whether the composed
+        matrix is diagonal. Existing source validation remains unchanged.
+        """
+        root = self.__basic_gate_definitions.get(name)
+        if root is None:
+            raise UnsupportedOpenQASMError(f'user-defined gate {name}')
+
+        def check_definition(definition):
+            if definition.parameters or len(definition.qubits) != 1:
+                raise UnsupportedOpenQASMError('diagonal fixed gate requires one qubit and no parameters')
+
+        check_definition(root)
+        if self.MAX_GATE_DEFINITION_NESTING < 1 or self.MAX_GATE_DEFINITION_EXPANSION_STEPS < 1:
+            raise InvalidLoopRangeException('diagonal fixed gate analysis exceeds work or nesting limit')
+        active = {name}
+        stack = [(name, root, iter(root.body))]
+        steps = 1
+        while stack:
+            current_name, definition, operations = stack[-1]
+            operation = next(operations, None)
+            if operation is None:
+                stack.pop()
+                active.remove(current_name)
+                continue
+            steps += 1
+            if steps > self.MAX_GATE_DEFINITION_EXPANSION_STEPS:
+                raise InvalidLoopRangeException('diagonal fixed gate analysis exceeds work limit')
+            if (not isinstance(operation, ast.QuantumGate) or operation.modifiers or operation.arguments
+                    or operation.duration is not None or len(operation.qubits) != 1
+                    or not isinstance(operation.qubits[0], ast.Identifier)
+                    or operation.qubits[0].name != definition.qubits[0]):
+                raise UnsupportedOpenQASMError('diagonal fixed gate requires unmodified fixed one-qubit calls')
+            child_name = operation.name.name
+            child = self.__basic_gate_definitions.get(child_name)
+            if child is None:
+                if child_name not in self.diagonal_fixed_gates:
+                    raise UnsupportedOpenQASMError(f'fixed gate {child_name} in diagonal gate analysis')
+                yield child_name
+                continue
+            check_definition(child)
+            if child_name in active:
+                raise UnsupportedOpenQASMError('recursive diagonal fixed gate definition')
+            if len(stack) >= self.MAX_GATE_DEFINITION_NESTING:
+                raise InvalidLoopRangeException('diagonal fixed gate analysis exceeds nesting limit')
+            active.add(child_name)
+            stack.append((child_name, child, iter(child.body)))
 
     def __single_operation_gate_chain(self, definition: _BasicGateDefinition) -> tuple[ast.QuantumGate, ...]:
         """Find the original operations without flattening their modifier order."""
