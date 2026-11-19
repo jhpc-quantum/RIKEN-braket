@@ -908,6 +908,12 @@ class _BasicGateDefinition:
     parameters: tuple[str, ...] = ()
 
 
+@dataclasses.dataclass(frozen=True)
+class _DiagonalFixedGateAnalysis:
+    matrix: tuple
+    classification: str
+
+
 class QASM2QCXConverter(visitor.QASMVisitor):
     # bra::int_type is C++ int. These bounds describe a backend built for the
     # converter's host; OpenQASM declared widths do not change QCX storage.
@@ -4558,6 +4564,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         for gate in self.__iter_diagonal_fixed_gate_operations(name, budget=budget):
             matrix = foundation.multiply_matrices(foundation.FIXED_GATES[gate], matrix, budget)
         return matrix
+
+    def __analyze_diagonal_fixed_gate(self, name: str, budget) -> _DiagonalFixedGateAnalysis:
+        """Compose and classify a definition without emitting or lowering it."""
+        foundation = _load_diagonal_foundation()
+        matrix = self.__compose_diagonal_fixed_gate(name, budget)
+        classification = foundation.classify_matrix(matrix, budget)
+        return _DiagonalFixedGateAnalysis(matrix, classification)
 
     def __single_operation_gate_chain(self, definition: _BasicGateDefinition) -> tuple[ast.QuantumGate, ...]:
         """Find the original operations without flattening their modifier order."""
