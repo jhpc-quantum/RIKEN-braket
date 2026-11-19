@@ -6,6 +6,9 @@ import math
 import cmath
 from fractions import Fraction
 import re
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 import unittest
 from unittest.mock import mock_open, patch
@@ -166,6 +169,222 @@ class DiagonalPowerErrorGoalCliTests(unittest.TestCase):
             self.assertIn('usage: qasm2qcx.py', help_text)
             self.assertIn('--diagonal-power-error', help_text)
             self.assertIn('does not yet', help_text)
+
+
+class DiagonalFixedGateStructureTests(unittest.TestCase):
+    def converter(self, definitions):
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; include "stdgates.inc"; ' + definitions)
+        return qasm2qcx.QASM2QCXConverter(program)
+
+    def analyze(self, converter, name):
+        return list(converter._QASM2QCXConverter__iter_diagonal_fixed_gate_operations(name))
+
+    def test_streams_fixed_gates_in_order_through_nested_and_empty_definitions(self):
+        converter = self.converter('gate leaf a { h a; t a; } gate empty q {} '
+                                   'gate outer q { leaf q; empty q; x q; leaf q; } qubit q;')
+        before = converter._QASM2QCXConverter__qcx_lines.copy()
+        self.assertEqual(self.analyze(converter, 'outer'), ['h', 't', 'x', 'h', 't'])
+        self.assertEqual(self.analyze(converter, 'empty'), [])
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, before)
+
+    def test_all_designated_fixed_gates_are_structurally_eligible(self):
+        body = ' '.join(f'{name} q;' for name in sorted(qasm2qcx.QASM2QCXConverter.diagonal_fixed_gates))
+        converter = self.converter(f'gate allfixed q {{ {body} }}')
+        self.assertEqual(self.analyze(converter, 'allfixed'),
+                         sorted(qasm2qcx.QASM2QCXConverter.diagonal_fixed_gates))
+
+    def test_ineligible_definitions_remain_valid_for_existing_conversion(self):
+        for definition, name in (('gate g(t) q { p(t) q; }', 'g'),
+                                 ('gate g a,b { cx a,b; }', 'g'),
+                                 ('gate g q { inv @ x q; }', 'g'),
+                                 ('gate g q { rx(pi) q; }', 'g'),
+                                 ('gate child q { inv @ x q; } gate g q { child q; }', 'g')):
+            with self.subTest(definition=definition):
+                converter = self.converter(definition)
+                with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                    self.analyze(converter, name)
+        source = ('OPENQASM 3; include "stdgates.inc"; gate g q { inv @ x q; } '
+                  'qubit q; g q;')
+        self.assertEqual(convert(source), ['QUBITS 1', 'X 0'])
+
+    def test_analysis_enforces_work_and_nesting_without_emitting(self):
+        converter = self.converter('gate leaf q { h q; } gate outer q { leaf q; t q; }')
+        before = converter._QASM2QCXConverter__qcx_lines.copy()
+        with patch.object(converter, 'MAX_GATE_DEFINITION_NESTING', 1), \
+                self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'nesting limit'):
+            self.analyze(converter, 'outer')
+        with patch.object(converter, 'MAX_GATE_DEFINITION_EXPANSION_STEPS', 2), \
+                self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'work limit'):
+            self.analyze(converter, 'outer')
+        with patch.object(converter, 'MAX_GATE_DEFINITION_EXPANSION_STEPS', 2):
+            self.assertEqual(self.analyze(converter, 'leaf'), ['h'])
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, before)
+
+    def test_unknown_definition_is_rejected(self):
+        converter = self.converter('gate g q {}')
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            self.analyze(converter, 'missing')
+
+    def test_synthetic_recursive_definition_is_rejected(self):
+        converter = self.converter('gate loop q {}')
+        operation = qasm2qcx.openqasm3.parser.parse(
+            'OPENQASM 3; gate loop q { loop q; }').statements[0].body[0]
+        definitions = converter._QASM2QCXConverter__basic_gate_definitions
+        definitions['loop'] = qasm2qcx.dataclasses.replace(definitions['loop'], body=(operation,))
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'recursive'):
+            self.analyze(converter, 'loop')
+
+    def test_normal_conversion_does_not_load_or_use_the_foundation(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; gate g q { h q; h q; } '
+                  'qubit q; g q;')
+        with patch.object(qasm2qcx, '_load_diagonal_foundation', side_effect=AssertionError('unexpected load')):
+            self.assertEqual(qasm2qcx.convert(source, diagonal_power_error='1e-12'),
+                             ['QUBITS 1', 'H 0', 'H 0'])
+
+
+class DiagonalFixedGateCompositionTests(unittest.TestCase):
+    def setUp(self):
+        self.foundation = qasm2qcx._load_diagonal_foundation()
+
+    def converter(self, definitions):
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; include "stdgates.inc"; ' + definitions)
+        return qasm2qcx.QASM2QCXConverter(program)
+
+    def test_nested_composition_uses_one_budget_and_preserves_order(self):
+        converter = self.converter('gate leaf a { h a; t a; } gate empty q {} '
+                                   'gate outer q { leaf q; empty q; x q; leaf q; } qubit q;')
+        budget = self.foundation.Budget()
+        before = converter._QASM2QCXConverter__qcx_lines.copy()
+        matrix = converter._QASM2QCXConverter__compose_diagonal_fixed_gate('outer', budget)
+        expected = self.foundation.compose_fixed_gates(('h', 't', 'x', 'h', 't'), self.foundation.Budget())
+        self.assertEqual(matrix, expected)
+        self.assertEqual(budget.gate_steps, 9)  # root, nested calls, and each fixed operation
+        self.assertGreater(budget.work, budget.gate_steps)
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, before)
+
+    def test_empty_definition_and_reused_budget(self):
+        converter = self.converter('gate empty q {}')
+        budget = self.foundation.Budget(self.foundation.BudgetLimits(gate_steps=1))
+        self.assertEqual(converter._QASM2QCXConverter__compose_diagonal_fixed_gate('empty', budget),
+                         self.foundation.FIXED_GATES['id'])
+        with self.assertRaisesRegex(self.foundation.BudgetExceeded, 'gate steps'):
+            converter._QASM2QCXConverter__compose_diagonal_fixed_gate('empty', budget)
+        self.assertEqual(budget.gate_steps, 1)
+
+    def test_shared_work_nesting_and_failure_do_not_emit_or_poison_state(self):
+        converter = self.converter('gate leaf q { h q; } gate outer q { leaf q; t q; }')
+        before = converter._QASM2QCXConverter__qcx_lines.copy()
+        for limits, category in ((self.foundation.BudgetLimits(gate_steps=2), 'gate steps'),
+                                 (self.foundation.BudgetLimits(nesting=1), 'nesting'),
+                                 (self.foundation.BudgetLimits(work=10), 'work')):
+            budget = self.foundation.Budget(limits)
+            with self.subTest(category=category), self.assertRaisesRegex(self.foundation.BudgetExceeded, category):
+                converter._QASM2QCXConverter__compose_diagonal_fixed_gate('outer', budget)
+            self.assertGreater(budget.work, 0)
+            self.assertEqual(converter._QASM2QCXConverter__qcx_lines, before)
+        result = converter._QASM2QCXConverter__compose_diagonal_fixed_gate('outer', self.foundation.Budget())
+        self.assertEqual(result, self.foundation.compose_fixed_gates(('h', 't'), self.foundation.Budget()))
+
+    def test_unsupported_body_fails_without_partial_output(self):
+        converter = self.converter('gate g q { h q; inv @ x q; }')
+        budget = self.foundation.Budget()
+        before = converter._QASM2QCXConverter__qcx_lines.copy()
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            converter._QASM2QCXConverter__compose_diagonal_fixed_gate('g', budget)
+        self.assertGreater(budget.work, 0)
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, before)
+
+    def test_sibling_import_works_for_file_and_script_loading_from_another_directory(self):
+        path = str(CONVERTER_PATH.resolve())
+        code = '''
+import contextlib, importlib.util, io, runpy, sys
+path = sys.argv[1]
+if sys.argv[2] == "file":
+    spec = importlib.util.spec_from_file_location("external_qasm2qcx", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    namespace = vars(module)
+else:
+    sys.argv = [path, "--help"]
+    with contextlib.redirect_stdout(io.StringIO()):
+        namespace = runpy.run_path(path, run_name="__main__")
+foundation = namespace["_load_diagonal_foundation"]()
+program = namespace["openqasm3"].parse('OPENQASM 3; gate g q {} qubit q;')
+converter = namespace["QASM2QCXConverter"](program)
+assert converter._QASM2QCXConverter__compose_diagonal_fixed_gate("g", foundation.Budget()) == foundation.FIXED_GATES["id"]
+print("OK")
+'''
+        for mode in ('file', 'script'):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                result = subprocess.run([sys.executable, '-c', code, path, mode], cwd=directory,
+                                        capture_output=True, text=True, check=True, timeout=30)
+                self.assertEqual(result.stdout.strip(), 'OK')
+
+
+class DiagonalFixedGateClassificationTests(unittest.TestCase):
+    def setUp(self):
+        self.foundation = qasm2qcx._load_diagonal_foundation()
+        definitions = ('gate empty q {} gate t4 q { t q; t q; t q; t q; } '
+                       'gate hh q { h q; h q; } gate scalarphase q { z q; y q; x q; } '
+                       'gate offdiag q { h q; } gate nested q { t4 q; hh q; } qubit q;')
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; include "stdgates.inc"; ' + definitions)
+        self.converter = qasm2qcx.QASM2QCXConverter(program)
+
+    def analyze(self, name, budget=None):
+        return self.converter._QASM2QCXConverter__analyze_diagonal_fixed_gate(
+            name, self.foundation.Budget() if budget is None else budget)
+
+    def test_exact_diagonal_scalar_and_non_diagonal_results(self):
+        for name, classification, matrix in (
+                ('empty', 'scalar', self.foundation.FIXED_GATES['id']),
+                ('t4', 'diagonal', self.foundation.FIXED_GATES['z']),
+                ('hh', 'scalar', self.foundation.FIXED_GATES['id']),
+                ('scalarphase', 'scalar', ((self.foundation.I, self.foundation.ZERO),
+                                     (self.foundation.ZERO, self.foundation.I))),
+                ('offdiag', 'non-diagonal', self.foundation.FIXED_GATES['h']),
+                ('nested', 'diagonal', self.foundation.FIXED_GATES['z'])):
+            with self.subTest(name=name):
+                result = self.analyze(name)
+                self.assertEqual((result.classification, result.matrix), (classification, matrix))
+                with self.assertRaises(qasm2qcx.dataclasses.FrozenInstanceError):
+                    result.classification = 'changed'
+
+    def test_classification_is_charged_to_the_composition_budget(self):
+        probe = self.foundation.Budget()
+        self.converter._QASM2QCXConverter__compose_diagonal_fixed_gate('t4', probe)
+        budget = self.foundation.Budget(self.foundation.BudgetLimits(work=probe.work))
+        before = self.converter._QASM2QCXConverter__qcx_lines.copy()
+        with self.assertRaisesRegex(self.foundation.BudgetExceeded, 'work'):
+            self.analyze('t4', budget)
+        self.assertEqual(budget.work, probe.work)
+        self.assertEqual(self.converter._QASM2QCXConverter__qcx_lines, before)
+        self.assertEqual(self.analyze('t4').classification, 'diagonal')
+
+    def test_repeated_analysis_uses_the_same_budget_without_result_cache(self):
+        budget = self.foundation.Budget()
+        first = self.analyze('t4', budget)
+        work = budget.work
+        gates = budget.gate_steps
+        self.assertEqual(self.analyze('t4', budget), first)
+        self.assertEqual((budget.work, budget.gate_steps), (2 * work, 2 * gates))
+
+    def test_budget_and_invalid_structure_fail_without_output(self):
+        program = qasm2qcx.openqasm3.parser.parse(
+            'OPENQASM 3; include "stdgates.inc"; gate bad q { h q; inv @ x q; }')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        before = converter._QASM2QCXConverter__qcx_lines.copy()
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            converter._QASM2QCXConverter__analyze_diagonal_fixed_gate('bad', self.foundation.Budget())
+        with self.assertRaisesRegex(self.foundation.BudgetExceeded, 'gate steps'):
+            self.analyze('t4', self.foundation.Budget(self.foundation.BudgetLimits(gate_steps=1)))
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, before)
+
+    def test_analysis_does_not_enable_multi_operation_float_power(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; gate t4 q { t q; t q; t q; t q; } '
+                  'qubit q; pow(0.5) @ t4 q;')
+        for goal in (None, '1e-12'):
+            with self.subTest(goal=goal), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                qasm2qcx.convert(source, diagonal_power_error=goal)
 
 
 class BasicGateDefinitionFoundationTests(unittest.TestCase):
