@@ -100,6 +100,60 @@ class DiagonalPowerErrorGoalApiTests(unittest.TestCase):
             qasm2qcx.convert(source, diagonal_power_error='1e-12')
 
 
+class DiagonalPowerErrorGoalCliTests(unittest.TestCase):
+    source = 'OPENQASM 3; include "stdgates.inc"; qubit q; h q;'
+
+    def test_legacy_and_option_forms_produce_identical_output(self):
+        expected = qasm2qcx.convert(self.source)
+        variants = (['program.qasm'], ['--diagonal-power-error', '1e-12', 'program.qasm'],
+                    ['program.qasm', '--diagonal-power-error=0.000000000001'],
+                    ['--diagonal-power-error=1e-1000', '--', 'program.qasm'])
+        for arguments in variants:
+            with self.subTest(arguments=arguments), patch('builtins.open', mock_open(read_data=self.source)) as opened, \
+                    patch('builtins.print') as output:
+                qasm2qcx.main(arguments)
+                opened.assert_called_once_with('program.qasm', encoding='utf-8')
+                self.assertEqual([call.args[0] for call in output.call_args_list], expected)
+
+    def test_goal_reaches_conversion_without_float_rounding(self):
+        with patch('builtins.open', mock_open(read_data=self.source)), patch('builtins.print'), \
+                patch.object(qasm2qcx, 'convert', wraps=qasm2qcx.convert) as convert_call:
+            qasm2qcx.main(['--diagonal-power-error', '1e-1000', 'program.qasm'])
+            convert_call.assert_called_once_with(self.source, diagonal_power_error='1e-1000')
+
+    def test_invalid_arguments_or_goals_do_not_open_or_print(self):
+        variants = ([], ['--diagonal-power-error'], ['--diagonal-power-error', '0', 'program.qasm'],
+                    ['--diagonal-power-error=nan', 'program.qasm'],
+                    ['--diagonal-power-error=', 'program.qasm'],
+                    ['--diagonal-power-error', '-0.1', 'program.qasm'],
+                    ['--diagonal-power-error=1e-1001', 'program.qasm'],
+                    ['--diagonal-power-error=0.1', '--diagonal-power-error=0.2', 'program.qasm'],
+                    ['--unknown', 'program.qasm'], ['first.qasm', 'second.qasm'])
+        for arguments in variants:
+            with self.subTest(arguments=arguments), patch('builtins.open', mock_open()) as opened, \
+                    patch('builtins.print') as output, self.assertRaises(SystemExit):
+                qasm2qcx.main(arguments)
+            opened.assert_not_called()
+            output.assert_not_called()
+
+    def test_source_failure_and_unsupported_power_print_no_qcx(self):
+        sources = ('not valid openqasm',
+                   'OPENQASM 3; include "stdgates.inc"; gate g q { t q; t q; } '
+                   'qubit q; pow(0.5) @ g q;')
+        for source in sources:
+            with self.subTest(source=source), patch('builtins.open', mock_open(read_data=source)), \
+                    patch('builtins.print') as output, self.assertRaises(SystemExit):
+                qasm2qcx.main(['--diagonal-power-error', '0.1', 'program.qasm'])
+            output.assert_not_called()
+
+    def test_option_like_filename_remains_usable(self):
+        for arguments in (['--source.qasm'], ['--', '--source.qasm']):
+            with self.subTest(arguments=arguments), patch('builtins.open', mock_open(read_data=self.source)) as opened, \
+                    patch('builtins.print'):
+                qasm2qcx.main(arguments)
+            opened.assert_called_once_with('--source.qasm', encoding='utf-8')
+
+
 class BasicGateDefinitionFoundationTests(unittest.TestCase):
     def converter(self, source):
         program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ' + source)

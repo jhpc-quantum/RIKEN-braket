@@ -14438,15 +14438,51 @@ def convert(source: str, *, diagonal_power_error: str | None = None) -> list[str
     return list(converter)
 
 
+def _parse_command_line(arguments: list[str]) -> tuple[str, str | None]:
+    usage = 'usage: qasm2qcx.py [--diagonal-power-error DECIMAL] <OpenQASM file name>'
+    filename = None
+    goal = None
+    seen_goal = False
+    positional_only = False
+    index = 0
+    while index < len(arguments):
+        argument = arguments[index]
+        if not positional_only and argument == '--':
+            positional_only = True
+        elif not positional_only and (argument == '--diagonal-power-error'
+                                      or argument.startswith('--diagonal-power-error=')):
+            if seen_goal:
+                raise SystemExit('qasm2qcx.py: --diagonal-power-error may be specified only once')
+            seen_goal = True
+            if argument == '--diagonal-power-error':
+                index += 1
+                if index == len(arguments):
+                    raise SystemExit('qasm2qcx.py: --diagonal-power-error requires a decimal value')
+                goal = arguments[index]
+            else:
+                goal = argument.partition('=')[2]
+        elif not positional_only and argument.startswith('--') and len(arguments) > 1:
+            raise SystemExit('qasm2qcx.py: unrecognized option')
+        elif filename is None:
+            filename = argument
+        else:
+            raise SystemExit(usage)
+        index += 1
+    if filename is None:
+        raise SystemExit(usage)
+    return filename, goal
+
+
 def main(arguments: list[str] | None = None) -> None:
     if arguments is None:
         arguments = sys.argv[1:]
-    if len(arguments) != 1:
-        raise SystemExit('usage: qasm2qcx.py <OpenQASM file name>')
+    filename, goal = _parse_command_line(arguments)
 
     try:
-        with open(arguments[0], encoding='utf-8') as qasm_file:
-            qcx_lines = convert(qasm_file.read())
+        if goal is not None:
+            _parse_diagonal_power_error_goal(goal)
+        with open(filename, encoding='utf-8') as qasm_file:
+            qcx_lines = convert(qasm_file.read(), diagonal_power_error=goal)
     except (OSError, QASM2QCXError, openqasm3.parser.QASM3ParsingError) as error:
         raise SystemExit(f'qasm2qcx.py: {error}') from error
 
