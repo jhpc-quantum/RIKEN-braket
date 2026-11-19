@@ -7,7 +7,11 @@ import enum
 import dataclasses
 import contextlib
 import ctypes
+import hashlib
+import importlib.util
+from pathlib import Path
 import re
+import threading
 from fractions import Fraction
 from collections.abc import Iterable, Iterator
 
@@ -40,6 +44,31 @@ MAX_DIAGONAL_POWER_GOAL_BITS = 4096
 _DIAGONAL_POWER_GOAL_PATTERN = re.compile(
     r'(?P<sign>[+-]?)(?:(?P<whole>[0-9]+)(?:\.(?P<fraction>[0-9]*))?'
     r'|\.(?P<fraction_only>[0-9]+))(?:[eE](?P<exponent>[+-]?[0-9]+))?')
+
+_DIAGONAL_FOUNDATION_LOCK = threading.RLock()
+
+
+def _load_diagonal_foundation():
+    """Load the sibling module lazily, independent of the caller's sys.path."""
+    path = Path(__file__).resolve().with_name('certified_diagonal.py')
+    # Distinct converter copies must not accidentally share a sibling module.
+    module_name = ('_qasm2qcx_diagonal_' + hashlib.sha256(bytes(path)).hexdigest()
+                   + '_' + str(id(_DIAGONAL_FOUNDATION_LOCK)))
+    with _DIAGONAL_FOUNDATION_LOCK:
+        module = sys.modules.get(module_name)
+        if module is not None:
+            return module
+        spec = importlib.util.spec_from_file_location(module_name, path)
+        if spec is None or spec.loader is None:
+            raise ImportError('cannot load the diagonal certification foundation')
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        try:
+            spec.loader.exec_module(module)
+        except BaseException:
+            sys.modules.pop(module_name, None)
+            raise
+        return module
 
 
 def _parse_diagonal_power_error_goal(text: str) -> Fraction:
@@ -4455,7 +4484,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return self.__analyze_gate_modifiers(
             modifiers, iterators, allow_runtime=allow_runtime, allow_float=allow_float)
 
-    def __iter_diagonal_fixed_gate_operations(self, name: str) -> Iterator[str]:
+    def __iter_diagonal_fixed_gate_operations(self, name: str, *, budget=None) -> Iterator[str]:
         """Inspect and stream fixed operations without emitting QCX.
 
         This only checks structural eligibility, not whether the composed
@@ -4464,6 +4493,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         root = self.__basic_gate_definitions.get(name)
         if root is None:
             raise UnsupportedOpenQASMError(f'user-defined gate {name}')
+        if budget is not None:
+            foundation = _load_diagonal_foundation()
+            if not isinstance(budget, foundation.Budget):
+                raise foundation.InvalidInput('expected a shared diagonal certification Budget')
+            budget.charge_gate(depth=1)
 
         def check_definition(definition):
             if definition.parameters or len(definition.qubits) != 1:
@@ -4489,9 +4523,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     or operation.duration is not None or len(operation.qubits) != 1
                     or not isinstance(operation.qubits[0], ast.Identifier)
                     or operation.qubits[0].name != definition.qubits[0]):
+                if budget is not None:
+                    budget.charge_gate(depth=len(stack))
                 raise UnsupportedOpenQASMError('diagonal fixed gate requires unmodified fixed one-qubit calls')
             child_name = operation.name.name
             child = self.__basic_gate_definitions.get(child_name)
+            if budget is not None:
+                budget.charge_gate(depth=len(stack) + (1 if child is not None else 0))
             if child is None:
                 if child_name not in self.diagonal_fixed_gates:
                     raise UnsupportedOpenQASMError(f'fixed gate {child_name} in diagonal gate analysis')
@@ -4504,6 +4542,22 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise InvalidLoopRangeException('diagonal fixed gate analysis exceeds nesting limit')
             active.add(child_name)
             stack.append((child_name, child, iter(child.body)))
+
+    def __compose_diagonal_fixed_gate(self, name: str, budget):
+        """Compose an eligible definition with one shared, caller-owned budget.
+
+        This remains an internal, non-emitting helper; ordinary conversion does
+        not call it, and no diagonal classification or lowering is performed.
+        """
+        foundation = _load_diagonal_foundation()
+        if not isinstance(budget, foundation.Budget):
+            raise foundation.InvalidInput('expected a shared diagonal certification Budget')
+        if self.diagonal_fixed_gates != frozenset(foundation.FIXED_GATES):
+            raise RuntimeError('fixed gate sets disagree with diagonal certification foundation')
+        matrix = foundation.compose_fixed_gates((), budget)
+        for gate in self.__iter_diagonal_fixed_gate_operations(name, budget=budget):
+            matrix = foundation.multiply_matrices(foundation.FIXED_GATES[gate], matrix, budget)
+        return matrix
 
     def __single_operation_gate_chain(self, definition: _BasicGateDefinition) -> tuple[ast.QuantumGate, ...]:
         """Find the original operations without flattening their modifier order."""
