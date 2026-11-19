@@ -225,6 +225,22 @@ class DiagonalFixedGateStructureTests(unittest.TestCase):
         with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
             self.analyze(converter, 'missing')
 
+    def test_synthetic_recursive_definition_is_rejected(self):
+        converter = self.converter('gate loop q {}')
+        operation = qasm2qcx.openqasm3.parser.parse(
+            'OPENQASM 3; gate loop q { loop q; }').statements[0].body[0]
+        definitions = converter._QASM2QCXConverter__basic_gate_definitions
+        definitions['loop'] = qasm2qcx.dataclasses.replace(definitions['loop'], body=(operation,))
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'recursive'):
+            self.analyze(converter, 'loop')
+
+    def test_normal_conversion_does_not_load_or_use_the_foundation(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; gate g q { h q; h q; } '
+                  'qubit q; g q;')
+        with patch.object(qasm2qcx, '_load_diagonal_foundation', side_effect=AssertionError('unexpected load')):
+            self.assertEqual(qasm2qcx.convert(source, diagonal_power_error='1e-12'),
+                             ['QUBITS 1', 'H 0', 'H 0'])
+
 
 class DiagonalFixedGateCompositionTests(unittest.TestCase):
     def setUp(self):

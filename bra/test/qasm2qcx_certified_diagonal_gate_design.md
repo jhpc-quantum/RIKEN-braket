@@ -279,3 +279,28 @@ candidate integration design, but it is **not ready to be enabled**. The
 prototype still lacks complete resource enforcement, a production API, and an
 independent audit of the enclosure and error arguments. Backend numerical
 accuracy is explicitly outside the proposed initial converter contract.
+
+## Internal eligibility and composition foundation
+
+The internal work for #646 adds a non-emitting structural iterator for the
+fixed-gate subset described above. It streams operations through eligible
+nested definitions in source execution order, including empty definitions,
+and checks the existing work and nesting limits. A separate internal helper
+uses the maintained `certified_diagonal.py` foundation to compose the complete
+matrix, then classifies it as scalar, diagonal, or non-diagonal by exact
+comparison. A non-diagonal classification is a result, not permission to lower
+that gate through the future diagonal path.
+
+The root definition, nested calls, fixed operations, matrix arithmetic, and
+classification use one caller-owned foundation budget. Failure does not
+produce QCX or return a partial matrix; consumed budget remains consumed. The
+foundation module is loaded lazily from the converter's sibling path, with
+tests for direct-file and script loading from another working directory.
+
+These helpers are not called by normal conversion. They do not themselves
+check whether a definition has been reached at a source call, inspect the
+accuracy option, certify phases, map foundation errors to CLI diagnostics, or
+emit QCX. In particular, the initial pass records definitions before source
+execution; future integration must retain the existing use-before-definition
+and call-validation rules. The reserved accuracy option still does not enable
+multi-operation floating powers.
