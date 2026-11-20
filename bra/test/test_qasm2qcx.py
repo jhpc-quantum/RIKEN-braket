@@ -178,7 +178,8 @@ class DiagonalFixedGateStructureTests(unittest.TestCase):
         return qasm2qcx.QASM2QCXConverter(program)
 
     def analyze(self, converter, name):
-        return list(converter._QASM2QCXConverter__iter_diagonal_fixed_gate_operations(name))
+        return [gate for event, gate, _ in
+                converter._QASM2QCXConverter__iter_diagonal_fixed_gate_operations(name) if event == 'gate']
 
     def test_streams_fixed_gates_in_order_through_nested_and_empty_definitions(self):
         converter = self.converter('gate leaf a { h a; t a; } gate empty q {} '
@@ -197,9 +198,9 @@ class DiagonalFixedGateStructureTests(unittest.TestCase):
     def test_ineligible_definitions_remain_valid_for_existing_conversion(self):
         for definition, name in (('gate g(t) q { p(t) q; }', 'g'),
                                  ('gate g a,b { cx a,b; }', 'g'),
-                                 ('gate g q { inv @ x q; }', 'g'),
+                                 ('gate g q { pow(2) @ x q; }', 'g'),
                                  ('gate g q { rx(pi) q; }', 'g'),
-                                 ('gate child q { inv @ x q; } gate g q { child q; }', 'g')):
+                                 ('gate child q { pow(2) @ x q; } gate g q { child q; }', 'g')):
             with self.subTest(definition=definition):
                 converter = self.converter(definition)
                 with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
@@ -251,6 +252,18 @@ class DiagonalFixedGateCompositionTests(unittest.TestCase):
         program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; include "stdgates.inc"; ' + definitions)
         return qasm2qcx.QASM2QCXConverter(program)
 
+    def test_fixed_and_nested_inverses_compose_in_the_correct_order(self):
+        converter = self.converter(
+            'gate child q { h q; s q; } '
+            'gate nested q { child q; inv @ child q; } '
+            'gate fixed q { inv @ sx q; sx q; inv @ inv @ t q; tdg q; }')
+        for name in ('nested', 'fixed'):
+            with self.subTest(name=name):
+                budget = self.foundation.Budget()
+                matrix = converter._QASM2QCXConverter__compose_diagonal_fixed_gate(name, budget)
+                self.assertEqual(matrix, self.foundation.FIXED_GATES['id'])
+                self.assertGreater(budget.work, 0)
+
     def test_nested_composition_uses_one_budget_and_preserves_order(self):
         converter = self.converter('gate leaf a { h a; t a; } gate empty q {} '
                                    'gate outer q { leaf q; empty q; x q; leaf q; } qubit q;')
@@ -287,7 +300,7 @@ class DiagonalFixedGateCompositionTests(unittest.TestCase):
         self.assertEqual(result, self.foundation.compose_fixed_gates(('h', 't'), self.foundation.Budget()))
 
     def test_unsupported_body_fails_without_partial_output(self):
-        converter = self.converter('gate g q { h q; inv @ x q; }')
+        converter = self.converter('gate g q { h q; pow(2) @ x q; }')
         budget = self.foundation.Budget()
         before = converter._QASM2QCXConverter__qcx_lines.copy()
         with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
@@ -371,7 +384,7 @@ class DiagonalFixedGateClassificationTests(unittest.TestCase):
 
     def test_budget_and_invalid_structure_fail_without_output(self):
         program = qasm2qcx.openqasm3.parser.parse(
-            'OPENQASM 3; include "stdgates.inc"; gate bad q { h q; inv @ x q; }')
+            'OPENQASM 3; include "stdgates.inc"; gate bad q { h q; pow(2) @ x q; }')
         converter = qasm2qcx.QASM2QCXConverter(program)
         before = converter._QASM2QCXConverter__qcx_lines.copy()
         with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
@@ -395,7 +408,7 @@ class CertifiedDiagonalRoutingTests(unittest.TestCase):
               'gate scalar a { h a; h a; } gate empty a {} '
               'gate nested a { diagonal a; scalar a; } '
               'gate offdiag a { h a; t a; } '
-              'gate modified a { inv @ x a; x a; } '
+              'gate modified a { pow(2) @ x a; x a; } '
               'qubit[3] q; int n = 1; ')
 
     def convert_call(self, call, *, skipped=False, goal='1e-12'):
@@ -479,6 +492,15 @@ class CertifiedDiagonalIntegrationTests(unittest.TestCase):
     prefix = ('OPENQASM 3; include "stdgates.inc"; '
               'gate inner a { t a; t a; } gate outer a { inner a; inner a; } '
               'qubit[4] q; ')
+
+    def test_inverse_fixed_and_nested_gate_calls_are_lowered(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; '
+                  'gate child a { h a; s a; } '
+                  'gate identity a { child a; inv @ child a; inv @ sx a; sx a; } '
+                  'qubit q; pow(0.5) @ identity q;')
+        lines = qasm2qcx.convert(source, diagonal_power_error='1e-12')
+        self.assertEqual([Fraction(line.split()[-1]) for line in lines if line.startswith('U1 ')],
+                         [Fraction(0), Fraction(0)])
 
     def test_principal_branch_and_evaluated_float_exponent(self):
         pi = Fraction('3.141592653589793238462643383279502884197169399375105820974944592')
