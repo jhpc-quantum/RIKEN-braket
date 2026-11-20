@@ -697,6 +697,72 @@ class CertifiedDiagonalOuterInverseValidationTests(unittest.TestCase):
         self.assertAlmostEqual(float(phases[1][4]), -math.pi / 2, places=12)
 
 
+class CertifiedDiagonalOuterInverseIntegrationTests(unittest.TestCase):
+    prefix = ('OPENQASM 3; include "stdgates.inc"; '
+              'gate scalar_i a { z a; y a; x a; } '
+              'gate diagonal a { pow(4) @ t a; id a; } '
+              'gate non_diagonal a { h a; t a; } qubit[4] q; ')
+
+    def test_certificate_receives_exact_signed_float_exponent(self):
+        foundation = qasm2qcx._load_diagonal_foundation()
+        original = foundation.certify_diagonal_power
+        observed = []
+
+        def capture(matrix, exponent, goal, budget, **kwargs):
+            observed.append(exponent)
+            return original(matrix, exponent, goal, budget, **kwargs)
+
+        cases = (('inv @ pow(0.1)', -Fraction.from_float(0.1)),
+                 ('inv @ inv @ pow(0.1)', Fraction.from_float(0.1)),
+                 ('inv @ pow(-0.1)', Fraction.from_float(0.1)),
+                 ('inv @ pow(-0.0)', Fraction(0)))
+        with patch.object(foundation, 'certify_diagonal_power', capture):
+            for modifiers, expected in cases:
+                with self.subTest(modifiers=modifiers):
+                    qasm2qcx.convert(self.prefix + f'{modifiers} @ diagonal q[0];',
+                                     diagonal_power_error='1e-12')
+                    self.assertEqual(observed[-1], expected)
+
+    def test_interleaved_controls_and_scalar_phase(self):
+        call = 'negctrl @ inv @ ctrl @ pow(0.5) @ scalar_i q[0],q[1],q[2];'
+        lines = qasm2qcx.convert(self.prefix + call, diagonal_power_error='1e-12')
+        phases = [line.split() for line in lines if line.startswith('C2U1 ')]
+        self.assertEqual([line[1:4] for line in phases], [['0#0', '1', '2#0'], ['0#0', '1', '2']])
+        for line in phases:
+            self.assertAlmostEqual(float(line[4]), -math.pi / 4, places=12)
+
+    def test_broadcast_uses_one_certificate_and_preserves_both_phases(self):
+        foundation = qasm2qcx._load_diagonal_foundation()
+        call = 'inv @ pow(0.5) @ diagonal q[{0,2,3}];'
+        with patch.object(foundation, 'certify_diagonal_power', wraps=foundation.certify_diagonal_power) as certify:
+            lines = qasm2qcx.convert(self.prefix + call, diagonal_power_error='1e-12')
+        certify.assert_called_once()
+        phases = [line.split() for line in lines if line.startswith('U1 ')]
+        self.assertEqual([line[1] for line in phases], ['0#0', '0', '2#0', '2', '3#0', '3'])
+        for line in phases[1::2]:
+            self.assertAlmostEqual(float(line[2]), -math.pi / 2, places=12)
+
+    def test_invalid_chains_remain_invalid_in_skipped_paths_and_at_zero_power(self):
+        calls = ('pow(0.0) @ inv @ diagonal q[0];',
+                 'inv @ pow(0.0) @ non_diagonal q[0];',
+                 'inv @ pow(0.5) @ pow(2) @ diagonal q[0];',
+                 'ctrl @ inv @ pow(0.5) @ diagonal q[0],q[0];')
+        for call in calls:
+            for skipped in (False, True):
+                body = f'for int i in [1:0] {{ {call} }}' if skipped else call
+                with self.subTest(call=call, skipped=skipped), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    qasm2qcx.convert(self.prefix + body, diagonal_power_error='1e-12')
+
+    def test_certification_failure_is_atomic_at_cli(self):
+        foundation = qasm2qcx._load_diagonal_foundation()
+        source = self.prefix + 'inv @ pow(0.5) @ diagonal q[0];'
+        with patch.object(foundation, 'certify_diagonal_power', side_effect=foundation.BudgetExceeded('work')), \
+                patch('builtins.open', mock_open(read_data=source)), \
+                patch('builtins.print') as output, self.assertRaises(SystemExit):
+            qasm2qcx.main(['--diagonal-power-error', '1e-12', 'program.qasm'])
+        output.assert_not_called()
+
+
 class CertifiedDiagonalIntegerPowerTests(unittest.TestCase):
     prefix = ('OPENQASM 3; include "stdgates.inc"; '
               'gate pair a { h a; s a; } '
