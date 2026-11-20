@@ -25,6 +25,56 @@ def as_complex(value):
 
 
 class BoundedCompositionTests(unittest.TestCase):
+    def test_adjoint_of_each_fixed_gate_is_an_exact_inverse(self):
+        for name, matrix in foundation.FIXED_GATES.items():
+            with self.subTest(gate=name):
+                budget = foundation.Budget()
+                adjoint = foundation.adjoint_matrix(matrix, budget)
+                self.assertEqual(foundation.adjoint_matrix(adjoint, budget), matrix)
+                self.assertEqual(foundation.multiply_matrices(adjoint, matrix, budget),
+                                 foundation.FIXED_GATES['id'])
+                self.assertEqual(foundation.multiply_matrices(matrix, adjoint, budget),
+                                 foundation.FIXED_GATES['id'])
+
+    def test_adjoint_reverses_noncommuting_composition(self):
+        budget = foundation.Budget()
+        h, s = foundation.FIXED_GATES['h'], foundation.FIXED_GATES['s']
+        hs = foundation.multiply_matrices(h, s, budget)
+        expected = foundation.multiply_matrices(foundation.adjoint_matrix(s, budget),
+                                                foundation.adjoint_matrix(h, budget), budget)
+        self.assertEqual(foundation.adjoint_matrix(hs, budget), expected)
+        self.assertNotEqual(expected, foundation.multiply_matrices(
+            foundation.adjoint_matrix(h, budget), foundation.adjoint_matrix(s, budget), budget))
+
+    def test_adjoint_transposes_and_conjugates_all_exact_components(self):
+        a = foundation.Exact(1, 2, 3, 4, 1)
+        b = foundation.Exact(5, 6, -7, -8, 1)
+        matrix = ((a, b), (foundation.I, foundation.ZERO))
+        self.assertEqual(foundation.adjoint_matrix(matrix, foundation.Budget()),
+                         ((foundation.Exact(1, 2, -3, -4, 1), foundation.MINUS_I),
+                          (foundation.Exact(5, 6, 7, 8, 1), foundation.ZERO)))
+
+    def test_adjoint_rejects_invalid_input_and_exhausted_shared_budget(self):
+        matrix = foundation.FIXED_GATES['sx']
+        for invalid in (None, (), ((foundation.ONE,), (foundation.ZERO,)),
+                        ((foundation.ONE, 1), (foundation.ZERO, foundation.ONE)),
+                        ((foundation.Exact(a=2, k=1), foundation.ZERO),
+                         (foundation.ZERO, foundation.ONE))):
+            with self.subTest(invalid=invalid), self.assertRaises(foundation.InvalidInput):
+                foundation.adjoint_matrix(invalid, foundation.Budget())
+        with self.assertRaises(foundation.InvalidInput):
+            foundation.adjoint_matrix(matrix, None)
+        budget = foundation.Budget(foundation.BudgetLimits(work=7))
+        self.assertEqual(foundation.adjoint_matrix(matrix, budget), foundation.adjoint_matrix(
+            matrix, foundation.Budget()))
+        with self.assertRaisesRegex(foundation.BudgetExceeded, 'work'):
+            foundation.adjoint_matrix(matrix, budget)
+        self.assertEqual(budget.work, 7)
+        with self.assertRaisesRegex(foundation.BudgetExceeded, 'exact coefficient'):
+            foundation.adjoint_matrix(((foundation.Exact(a=2), foundation.ZERO),
+                                       (foundation.ZERO, foundation.ONE)),
+                                      foundation.Budget(foundation.BudgetLimits(exact_bits=1)))
+
     def test_exact_identities_scalar_phase_and_classification(self):
         for names in ((), ('h', 'h'), ('x', 'x'), ('s', 'sdg'), ('t',) * 8):
             with self.subTest(sequence=names):

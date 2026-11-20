@@ -1,7 +1,7 @@
-"""Bounded exact arithmetic for future diagonal-gate certification.
+"""Bounded exact arithmetic for diagonal-gate certification.
 
-This module is not yet used by qasm2qcx. Bounds count explicitly modeled work
-and integer sizes; they do not constitute a process-memory or parser budget.
+Bounds count explicitly modeled work and integer sizes; they do not constitute
+a process-memory or parser budget.
 """
 
 from dataclasses import dataclass
@@ -258,6 +258,23 @@ def multiply_matrices(left, right, budget):
     return tuple(tuple(_exact_add(_exact_multiply(left[row][0], right[0][column], budget),
                                   _exact_multiply(left[row][1], right[1][column], budget), budget)
                        for column in range(2)) for row in range(2))
+
+
+def adjoint_matrix(matrix, budget):
+    """Return the exact conjugate transpose using the caller's shared budget."""
+    if not isinstance(budget, Budget):
+        raise InvalidInput('expected a shared Budget')
+    if (not isinstance(matrix, (tuple, list)) or len(matrix) != 2
+            or any(not isinstance(row, (tuple, list)) or len(row) != 2 for row in matrix)):
+        raise InvalidInput('expected a 2x2 matrix')
+    for row in matrix:
+        for value in row:
+            _validate_exact(value, budget)
+    # Negation does not increase an integer's bit length; _make_exact charges
+    # each entry and verifies the output limits before constructing it.
+    return tuple(tuple(_make_exact((value.a, value.b, -value.c, -value.d), value.k, budget)
+                       for value in (matrix[column][row] for column in range(2)))
+                 for row in range(2))
 
 
 def compose_fixed_gates(names, budget):
