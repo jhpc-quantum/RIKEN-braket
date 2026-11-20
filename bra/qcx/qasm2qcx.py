@@ -4639,10 +4639,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                   if modifier.kind == ast.GateModifierName.pow]
         if (len(powers) != 1 or not isinstance(modifiers[powers[0]].argument, float)
                 or powers[0] != len(modifiers) - 1
-                or any(modifier.kind not in (ast.GateModifierName.ctrl, ast.GateModifierName.negctrl)
+                or any(modifier.kind not in (ast.GateModifierName.ctrl, ast.GateModifierName.negctrl,
+                                             ast.GateModifierName.inv)
                        for modifier in modifiers[:powers[0]])):
             raise UnsupportedOpenQASMError(
-                'certified diagonal gate powers require one floating pow with only outer controls')
+                'certified diagonal gate powers require one floating pow with only outer inverses and controls')
 
     def visit_QuantumGateDefinition(self, statement: ast.QuantumGateDefinition) -> None:
         if not self.__is_initialization_process:
@@ -4817,6 +4818,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_certified_diagonal_power(
             self, statement: ast.QuantumGate, info: _OrderedGateModifierInfo,
             budget, analysis: _DiagonalFixedGateAnalysis) -> None:
+        if any(modifier.kind == ast.GateModifierName.inv for modifier in info.modifiers):
+            raise UnsupportedOpenQASMError('certified diagonal outer inverse lowering is not yet implemented')
         foundation = _load_diagonal_foundation()
         exponent = next(modifier.argument for modifier in info.modifiers
                         if modifier.kind == ast.GateModifierName.pow)
