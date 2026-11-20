@@ -4588,6 +4588,31 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 return tuple(chain)
             definition = nested
 
+    def __is_single_operation_gate_chain(self, definition: _BasicGateDefinition) -> bool:
+        """Keep the established wrapper path separate from composite gates."""
+        depth = 0
+        while True:
+            if depth >= self.MAX_GATE_DEFINITION_NESTING:
+                raise InvalidLoopRangeException('user-defined gate expansion exceeds nesting limit')
+            if len(definition.body) != 1:
+                return False
+            depth += 1
+            nested = self.__basic_gate_definitions.get(definition.body[0].name.name)
+            if nested is None:
+                return True
+            definition = nested
+
+    def __validate_certified_diagonal_modifiers(self, info: _OrderedGateModifierInfo) -> None:
+        modifiers = info.modifiers
+        powers = [index for index, modifier in enumerate(modifiers)
+                  if modifier.kind == ast.GateModifierName.pow]
+        if (len(powers) != 1 or not isinstance(modifiers[powers[0]].argument, float)
+                or powers[0] != len(modifiers) - 1
+                or any(modifier.kind not in (ast.GateModifierName.ctrl, ast.GateModifierName.negctrl)
+                       for modifier in modifiers[:powers[0]])):
+            raise UnsupportedOpenQASMError(
+                'certified diagonal gate powers require one floating pow with only outer controls')
+
     def visit_QuantumGateDefinition(self, statement: ast.QuantumGateDefinition) -> None:
         if not self.__is_initialization_process:
             self.__defined_basic_gate_names.add(statement.name.name)
@@ -4671,9 +4696,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError(f'gate {name} used before definition')
         definition = self.__basic_gate_definitions[name]
         info = self.__user_gate_modifier_info(statement.modifiers, iterators, allow_runtime=True, allow_float=True)
+        certified_diagonal = False
         if isinstance(info, _OrderedGateModifierInfo):
-            self.__single_operation_gate_chain(definition)
-            if any(isinstance(modifier.argument, _RuntimeGateExponent) for modifier in info.modifiers):
+            certified_diagonal = not self.__is_single_operation_gate_chain(definition)
+            if certified_diagonal:
+                self.__validate_certified_diagonal_modifiers(info)
+            elif any(isinstance(modifier.argument, _RuntimeGateExponent) for modifier in info.modifiers):
                 raise UnsupportedOpenQASMError('runtime integer factors in floating-point pow chains')
         if statement.duration is not None:
             raise UnsupportedOpenQASMError('duration on user-defined gate')
@@ -4737,6 +4765,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                         for operand in statement.qubits)):
             for _ in self.__qubit_operand_tuples(statement.qubits, distinct=True):
                 pass
+        if certified_diagonal:
+            if self.__diagonal_power_error is None:
+                raise UnsupportedOpenQASMError('certified diagonal gate powers require diagonal_power_error')
+            foundation = _load_diagonal_foundation()
+            try:
+                analysis = self.__analyze_diagonal_fixed_gate(name, foundation.Budget())
+            except foundation.CertificationError as error:
+                raise UnsupportedOpenQASMError(f'certified diagonal gate analysis failed: {error}') from error
+            if analysis.classification == 'non-diagonal':
+                raise UnsupportedOpenQASMError('certified diagonal gate power requires an exactly diagonal gate')
         return definition
 
     def __basic_gate_call_binding(
@@ -4766,6 +4804,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         definition = self.__validate_basic_gate_call(statement)
         info = self.__user_gate_modifier_info(statement.modifiers, allow_runtime=True, allow_float=True)
         floating = isinstance(info, _OrderedGateModifierInfo)
+        if floating and not self.__is_single_operation_gate_chain(definition):
+            raise UnsupportedOpenQASMError('certified diagonal gate power lowering is not yet implemented')
         inverse = False if floating else info.power < 0
         repetitions = 1 if floating else abs(info.power)
         control_count = sum(number for _, number in info.controls)

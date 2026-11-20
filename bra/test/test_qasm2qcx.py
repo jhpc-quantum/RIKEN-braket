@@ -387,6 +387,60 @@ class DiagonalFixedGateClassificationTests(unittest.TestCase):
                 qasm2qcx.convert(source, diagonal_power_error=goal)
 
 
+class CertifiedDiagonalRoutingTests(unittest.TestCase):
+    prefix = ('OPENQASM 3; include "stdgates.inc"; '
+              'gate diagonal a { t a; t a; t a; t a; } '
+              'gate scalar a { h a; h a; } gate empty a {} '
+              'gate nested a { diagonal a; scalar a; } '
+              'gate offdiag a { h a; t a; } '
+              'gate modified a { inv @ x a; x a; } '
+              'qubit[3] q; int n = 1; ')
+
+    def convert_call(self, call, *, skipped=False, goal='1e-12'):
+        body = f'for int i in [1:0] {{ {call} }}' if skipped else call
+        return qasm2qcx.convert(self.prefix + body, diagonal_power_error=goal)
+
+    def test_eligible_calls_are_validated_but_not_yet_lowered(self):
+        for call in ('pow(0.5) @ diagonal q[0];', 'pow(-0.5) @ scalar q[0];',
+                     'pow(0.0) @ empty q[0];', 'ctrl @ negctrl @ pow(2.0) @ nested q[0],q[1],q[2];'):
+            with self.subTest(call=call):
+                self.convert_call(call, skipped=True)
+                with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'not yet implemented'):
+                    self.convert_call(call)
+
+    def test_goal_is_required_even_in_skipped_loop(self):
+        for skipped in (False, True):
+            with self.subTest(skipped=skipped), self.assertRaisesRegex(
+                    qasm2qcx.UnsupportedOpenQASMError, 'diagonal_power_error'):
+                self.convert_call('pow(0.5) @ diagonal q[0];', skipped=skipped, goal=None)
+
+    def test_invalid_compositions_and_modifier_chains_are_rejected(self):
+        for call in ('pow(0.5) @ offdiag q[0];', 'pow(0.5) @ modified q[0];',
+                     'inv @ pow(0.5) @ diagonal q[0];',
+                     'pow(0.5) @ ctrl @ diagonal q[0],q[1];',
+                     'pow(0.5) @ pow(2) @ diagonal q[0];',
+                     'pow(0.5) @ pow(n) @ diagonal q[0];',
+                     'ctrl @ pow(0.5) @ diagonal q[0],q[0];',
+                     'pow(0.5) @ diagonal q[n];'):
+            for skipped in (False, True):
+                with self.subTest(call=call, skipped=skipped), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    self.convert_call(call, skipped=skipped)
+
+    def test_existing_wrapper_and_integer_power_paths_are_unchanged(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; gate wrapper a { h a; } '
+                  'gate composite a { t a; t a; } qubit q; '
+                  'pow(0.5) @ wrapper q; pow(2) @ composite q;')
+        self.assertEqual(qasm2qcx.convert(source), qasm2qcx.convert(source, diagonal_power_error='1e-12'))
+
+    def test_certification_budget_failure_is_a_conversion_error(self):
+        foundation = qasm2qcx._load_diagonal_foundation()
+        with patch.object(qasm2qcx.QASM2QCXConverter,
+                          '_QASM2QCXConverter__analyze_diagonal_fixed_gate',
+                          side_effect=foundation.BudgetExceeded('gate steps')):
+            with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'gate steps'):
+                self.convert_call('pow(0.5) @ diagonal q[0];')
+
+
 class BasicGateDefinitionFoundationTests(unittest.TestCase):
     def converter(self, source):
         program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ' + source)
