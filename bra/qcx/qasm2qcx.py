@@ -4766,7 +4766,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 pass
         if certified_diagonal:
             if self.__diagonal_power_error is None:
-                raise UnsupportedOpenQASMError('certified diagonal gate powers require diagonal_power_error')
+                raise UnsupportedOpenQASMError(
+                    'certified diagonal gate powers require diagonal_power_error '
+                    '(CLI: --diagonal-power-error)')
             foundation = _load_diagonal_foundation()
             try:
                 budget = foundation.Budget()

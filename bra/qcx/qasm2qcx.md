@@ -60,7 +60,7 @@ installation of `qasm2qcx.py` is needed.
 Python callers can use `qasm2qcx.convert(source)` to obtain the generated QCX
 lines as a list of strings.
 
-## Command-line help and reserved accuracy goal
+## Command-line help and diagonal power accuracy goal
 
 Use `python3 bra/qcx/qasm2qcx.py --help` or `-h` for the command-line help.
 The optional argument `--diagonal-power-error` accepts a converter-side error
@@ -70,11 +70,12 @@ goal as a decimal string:
 python3 bra/qcx/qasm2qcx.py --diagonal-power-error 1e-12 circuit.qasm > circuit.qcx
 ```
 
-The option is **reserved for future certified diagonal gate powers**. It is
-validated and stored, but currently does not enable that lowering, change QCX
-output, or certify the output or a `bra` execution. The one-file command
-without the option remains supported. Use `--` before a filename that would
-otherwise be interpreted as an option, for example `qasm2qcx.py -- --help`.
+The option enables the certified lowering for the eligible composite
+user-defined gate powers described [below](#certified-diagonal-user-gate-powers).
+It is required for that path. Other conversions, including the existing
+single-operation wrapper path, do not require it. Use `--` before a filename
+that would otherwise be interpreted as an option, for example
+`qasm2qcx.py -- --help`.
 
 The goal must be an ASCII decimal strictly between zero and one, with optional
 leading `+` and optional `e` or `E` exponent. Examples include `0.01`, `.5`,
@@ -87,9 +88,9 @@ Errors are reported without printing partial QCX output.
 Python callers can pass the same string using the keyword-only argument
 `qasm2qcx.convert(source, diagonal_power_error="1e-12")`. Omitting it, or
 passing `None`, preserves the existing call. Numeric values such as `0.1`
-are not accepted in place of the string. The intended future error goal is
-for the mathematical operation represented by the emitted decimal QCX
-parameters; it excludes `bra` parsing and execution errors.
+are not accepted in place of the string. The goal bounds the mathematical
+operation represented by the emitted decimal QCX parameters as exact real
+numbers; it excludes `bra` parsing and execution errors.
 
 ## Current integration scope
 
@@ -7204,9 +7205,54 @@ qubit q;
 pow(0.5) @ wrapped q;
 ```
 
-Floating powers of empty or multi-operation user-gate bodies and floating
-powers on nested user-gate calls inside definitions remain unsupported, as do
-runtime floating-point exponents and mixed runtime-integer/floating chains.
+Floating powers of certain empty or multi-operation user-gate bodies are also
+supported by the certified diagonal path below. Floating powers on nested
+user-gate calls inside definitions remain unsupported, as do runtime
+floating-point exponents and mixed runtime-integer/floating chains.
+
+### Certified diagonal user-gate powers
+
+With an explicit `--diagonal-power-error` goal, the converter supports one
+compile-time floating-point `pow` on a composite user-defined gate whose
+complete matrix is exactly diagonal. The gate must have one formal qubit and
+no parameters. Its body may be empty, or contain unmodified calls on that
+qubit to `id`, `x`, `y`, `z`, `h`, `s`, `sdg`, `t`, `tdg`, `sx`, or previously
+defined user gates satisfying the same rules. The converter composes the
+expanded body exactly and checks both off-diagonal entries for zero; individual
+gates need not be diagonal.
+
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+gate z_from_t a { t a; t a; t a; t a; }
+qubit[2] q;
+ctrl @ pow(0.5) @ z_from_t q[0], q[1];
+```
+
+Run this example with `--diagonal-power-error 1e-12`. Optional `ctrl` and
+`negctrl` modifiers with constant positive counts may precede the `pow`.
+This path does not support `inv`, additional `pow` modifiers, or controls
+inside that power. Static qubit selections and broadcasting follow the
+existing user-gate rules. The exponent must evaluate to a finite compile-time
+Python float; its exact binary value determines the power. Positive, negative,
+and zero floating powers are supported. Integer powers and single-operation
+wrappers continue to use their existing paths.
+
+The converter uses principal eigenphases in $(-\pi, \pi]$, choosing $+\pi$
+for $-1$, and retains both basis phases, including the global phase of a
+scalar gate. For each broadcast operation, the requested goal bounds the
+operator 2-norm error of the mathematical QCX operation when its serialized
+decimal angles are treated as exact real numbers. Added controls preserve the
+same bound. This is a **converter-only** bound: it does not cover how `bra`
+parses decimals, evaluates functions, or simulates the circuit. Bounds are per
+operation, not a guarantee for the full circuit.
+
+Exact composition, certification, and emitted output share bounded resources
+per source call. Conversion reports an error if the goal cannot be established
+within those limits; it does not fall back to an uncertified approximation.
+Invalid modifiers, operands, and definitions are checked even in skipped
+classical loop bodies. At the command line, failed conversion prints no partial
+QCX program.
 
 Loops and `gphase` in definitions remain unsupported. Qubit selections follow the existing static indexing rules;
 runtime-dependent selections and omitted range bounds remain unsupported.
@@ -9746,7 +9792,8 @@ The current prototype does not reliably support:
   alias iteration, or `switch` statements;
 - user-defined gates beyond the basic subset above, gate durations, runtime floating-point `pow` exponents,
   mixed runtime-integer/floating-point power chains, floating-point powers
-  outside the fixed, phase, Pauli-rotation, and `u2`/`u3`/`U` families above, or
+  outside the fixed, phase, Pauli-rotation, `u2`/`u3`/`U`, and certified
+  diagonal user-gate subsets above, or
   runtime-dependent control counts;
 - runtime qubit indices, dynamic register ranges or discrete sets outside the
   supported selection subsets described above, ranges with
