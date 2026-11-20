@@ -243,18 +243,21 @@ FIXED_GATES = MappingProxyType({
 })
 
 
+def _validate_matrix(matrix, budget):
+    if (not isinstance(matrix, (tuple, list)) or len(matrix) != 2
+            or any(not isinstance(row, (tuple, list)) or len(row) != 2 for row in matrix)):
+        raise InvalidInput('expected a 2x2 matrix')
+    for row in matrix:
+        for value in row:
+            _validate_exact(value, budget)
+
+
 def multiply_matrices(left, right, budget):
     """Compose two exact 2x2 matrices with checked intermediate operations."""
     if not isinstance(budget, Budget):
         raise InvalidInput('expected a shared Budget')
-    if any(not isinstance(matrix, (tuple, list)) or len(matrix) != 2
-           or any(not isinstance(row, (tuple, list)) or len(row) != 2 for row in matrix)
-           for matrix in (left, right)):
-        raise InvalidInput('expected two 2x2 matrices')
-    for matrix in (left, right):
-        for row in matrix:
-            for value in row:
-                _validate_exact(value, budget)
+    _validate_matrix(left, budget)
+    _validate_matrix(right, budget)
     return tuple(tuple(_exact_add(_exact_multiply(left[row][0], right[0][column], budget),
                                   _exact_multiply(left[row][1], right[1][column], budget), budget)
                        for column in range(2)) for row in range(2))
@@ -264,17 +267,48 @@ def adjoint_matrix(matrix, budget):
     """Return the exact conjugate transpose using the caller's shared budget."""
     if not isinstance(budget, Budget):
         raise InvalidInput('expected a shared Budget')
-    if (not isinstance(matrix, (tuple, list)) or len(matrix) != 2
-            or any(not isinstance(row, (tuple, list)) or len(row) != 2 for row in matrix)):
-        raise InvalidInput('expected a 2x2 matrix')
-    for row in matrix:
-        for value in row:
-            _validate_exact(value, budget)
+    _validate_matrix(matrix, budget)
     # Negation does not increase an integer's bit length; _make_exact charges
     # each entry and verifies the output limits before constructing it.
     return tuple(tuple(_make_exact((value.a, value.b, -value.c, -value.d), value.k, budget)
                        for value in (matrix[column][row] for column in range(2)))
                  for row in range(2))
+
+
+def integer_power_matrix(matrix, exponent, budget):
+    """Raise an exact 2x2 matrix to an integer power under one shared budget.
+
+    Negative powers use the adjoint and therefore require an exactly unitary
+    matrix. Zero powers still validate the input and the resulting identity.
+    """
+    if not isinstance(budget, Budget):
+        raise InvalidInput('expected a shared Budget')
+    if type(exponent) is not int:
+        raise InvalidInput('matrix exponent must be an integer')
+    if exponent.bit_length() > budget.limits.input_bits:
+        raise BudgetExceeded('input bits')
+    budget.check_integer_bits(exponent.bit_length())
+    budget.charge_work(max(1, exponent.bit_length()))
+    _validate_matrix(matrix, budget)
+    identity = FIXED_GATES['id']
+    _validate_matrix(identity, budget)
+    if exponent < 0:
+        base = adjoint_matrix(matrix, budget)
+        if multiply_matrices(base, matrix, budget) != identity:
+            raise InvalidInput('negative matrix power requires an exactly unitary matrix')
+        remaining = -exponent
+    else:
+        base = matrix
+        remaining = exponent
+    result = identity
+    while remaining:
+        budget.charge_work()
+        if remaining & 1:
+            result = multiply_matrices(base, result, budget)
+        remaining >>= 1
+        if remaining:
+            base = multiply_matrices(base, base, budget)
+    return result
 
 
 def compose_fixed_gates(names, budget):
