@@ -7215,11 +7215,13 @@ floating-point exponents and mixed runtime-integer/floating chains.
 With an explicit `--diagonal-power-error` goal, the converter supports one
 compile-time floating-point `pow` on a composite user-defined gate whose
 complete matrix is exactly diagonal. The gate must have one formal qubit and
-no parameters. Its body may be empty, or contain unmodified calls on that
-qubit to `id`, `x`, `y`, `z`, `h`, `s`, `sdg`, `t`, `tdg`, `sx`, or previously
-defined user gates satisfying the same rules. The converter composes the
-expanded body exactly and checks both off-diagonal entries for zero; individual
-gates need not be diagonal.
+no parameters. Its body may be empty, or contain calls on that qubit to `id`,
+`x`, `y`, `z`, `h`, `s`, `sdg`, `t`, `tdg`, `sx`, or previously defined user
+gates satisfying the same rules. These calls may have one or more `inv`
+modifiers; other modifiers inside the body are unsupported. The converter
+composes the expanded body exactly and checks both off-diagonal entries for
+zero; individual gates need not be diagonal. An inverse on a nested call applies
+to the complete nested gate, including its global phase.
 
 ```qasm
 OPENQASM 3.0;
@@ -7231,12 +7233,28 @@ ctrl @ pow(0.5) @ z_from_t q[0], q[1];
 
 Run this example with `--diagonal-power-error 1e-12`. Optional `ctrl` and
 `negctrl` modifiers with constant positive counts may precede the `pow`.
-This path does not support `inv`, additional `pow` modifiers, or controls
-inside that power. Static qubit selections and broadcasting follow the
+The outer modifier chain does not support `inv`, additional `pow` modifiers,
+or controls inside that power. Static qubit selections and broadcasting follow the
 existing user-gate rules. The exponent must evaluate to a finite compile-time
 Python float; its exact binary value determines the power. Positive, negative,
 and zero floating powers are supported. Integer powers and single-operation
 wrappers continue to use their existing paths.
+
+For example, a nested inverse reverses the complete operation even when its
+gates do not commute:
+
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+gate pair a { h a; s a; }
+gate cancel a { pair a; inv @ pair a; }
+qubit q;
+pow(0.5) @ cancel q;
+```
+
+This also requires the explicit error goal. Repeated `inv` modifiers are
+validated and reduced by parity. The shared resource budget covers modifier
+processing and exact adjoints as well as composition and certification.
 
 The converter uses principal eigenphases in $(-\pi, \pi]$, choosing $+\pi$
 for $-1$, and retains both basis phases, including the global phase of a
