@@ -765,7 +765,7 @@ class CertifiedDiagonalInnerInverseValidationTests(unittest.TestCase):
     prefix = ('OPENQASM 3; include "stdgates.inc"; '
               'gate composite a { t a; t a; t a; t a; } qubit[3] q; ')
 
-    def test_inner_inverses_validate_when_skipped_but_do_not_yet_lower(self):
+    def test_inner_inverses_validate_and_lower(self):
         calls = ('pow(0.5) @ inv @ composite q[0];',
                  'pow(0.0) @ inv @ inv @ composite q[0];',
                  'ctrl @ inv @ negctrl @ pow(-0.5) @ inv @ composite q[0],q[1],q[2];')
@@ -773,8 +773,8 @@ class CertifiedDiagonalInnerInverseValidationTests(unittest.TestCase):
             with self.subTest(call=call):
                 skipped = self.prefix + f'for int i in [1:0] {{ {call} }}'
                 qasm2qcx.convert(skipped, diagonal_power_error='1e-12')
-                with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'not yet implemented'):
-                    qasm2qcx.convert(self.prefix + call, diagonal_power_error='1e-12')
+                lines = qasm2qcx.convert(self.prefix + call, diagonal_power_error='1e-12')
+                self.assertEqual(sum(line.startswith(('U1 ', 'CU1 ', 'C2U1 ')) for line in lines), 2)
                 with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'diagonal_power_error'):
                     qasm2qcx.convert(skipped)
 
@@ -794,6 +794,29 @@ class CertifiedDiagonalInnerInverseValidationTests(unittest.TestCase):
         expected = ('OPENQASM 3; include "stdgates.inc"; '
                     'qubit q; pow(0.5) @ inv @ t q;')
         self.assertEqual(qasm2qcx.convert(source), qasm2qcx.convert(expected))
+
+    def test_inner_and_outer_inverses_treat_minus_one_branch_differently(self):
+        cases = (('pow(0.5) @ inv', math.pi / 2),
+                 ('pow(0.5) @ inv @ inv', math.pi / 2),
+                 ('inv @ pow(0.5) @ inv', -math.pi / 2),
+                 ('inv @ inv @ pow(-0.5) @ inv', -math.pi / 2),
+                 ('pow(0.0) @ inv', 0))
+        for modifiers, expected in cases:
+            with self.subTest(modifiers=modifiers):
+                lines = qasm2qcx.convert(self.prefix + f'{modifiers} @ composite q[0];',
+                                         diagonal_power_error='1e-12')
+                phases = [line.split() for line in lines if line.startswith('U1 ')]
+                self.assertEqual([line[1] for line in phases], ['0#0', '0'])
+                self.assertAlmostEqual(float(phases[1][2]), expected, places=12)
+
+    def test_inner_inverse_preserves_controlled_scalar_phase(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; gate scalar_i a { z a; y a; x a; } '
+                  'qubit[2] q; negctrl @ pow(0.5) @ inv @ scalar_i q[0],q[1];')
+        lines = qasm2qcx.convert(source, diagonal_power_error='1e-12')
+        phases = [line.split() for line in lines if line.startswith('CU1 ')]
+        self.assertEqual([line[1:3] for line in phases], [['0#0', '1#0'], ['0#0', '1']])
+        for line in phases:
+            self.assertAlmostEqual(float(line[3]), -math.pi / 4, places=12)
 
 
 class CertifiedDiagonalIntegerPowerTests(unittest.TestCase):

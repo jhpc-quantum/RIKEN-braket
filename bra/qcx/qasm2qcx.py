@@ -4821,13 +4821,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             budget, analysis: _DiagonalFixedGateAnalysis) -> None:
         power_index = next(index for index, modifier in enumerate(info.modifiers)
                            if modifier.kind == ast.GateModifierName.pow)
-        if len(info.modifiers) > power_index + 1:
-            raise UnsupportedOpenQASMError('certified diagonal inner inverse lowering is not yet implemented')
         foundation = _load_diagonal_foundation()
-        exponent = next(modifier.argument for modifier in info.modifiers
-                        if modifier.kind == ast.GateModifierName.pow)
+        exponent = info.modifiers[power_index].argument
         exponent = Fraction(*exponent.as_integer_ratio())
-        if sum(modifier.kind == ast.GateModifierName.inv for modifier in info.modifiers) % 2:
+        if sum(modifier.kind == ast.GateModifierName.inv for modifier in info.modifiers[:power_index]) % 2:
             # Inverting the already-powered operation negates its selected
             # phases; it does not reselect the original gate's branch.
             exponent = -exponent
@@ -4839,8 +4836,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         phase_bits = 48 if not exponent else max(48, goal_bits + exponent_bits + 16)
         decimal_places = max(24, (phase_bits * 30103 + 99999) // 100000 + 4)
         try:
+            matrix = analysis.matrix
+            if (len(info.modifiers) - power_index - 1) % 2:
+                # Select principal phases only after inverting the original
+                # gate: the -1 eigenvalue retains the +pi branch.
+                matrix = foundation.adjoint_matrix(matrix, budget)
             certificate = foundation.certify_diagonal_power(
-                analysis.matrix, exponent, goal, budget,
+                matrix, exponent, goal, budget,
                 phase_bits=phase_bits, decimal_places=decimal_places)
             count = sum(number for _, number in info.controls)
             mnemonic = self.__controlled_phase_gate_name(count + 1)
