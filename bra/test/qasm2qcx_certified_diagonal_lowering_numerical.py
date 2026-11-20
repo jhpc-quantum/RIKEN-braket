@@ -30,6 +30,11 @@ gate inverse_scalar a { inv @ scalar_i a; s a; }
 gate noncommuting a { h a; s a; }
 gate inverse_nested a { noncommuting a; inv @ noncommuting a; inv @ t a; inv @ t a; }
 gate inverse_sx a { inv @ sx a; sx a; s a; inv @ t a; }
+gate powered_z a { pow(4) @ t a; id a; }
+gate powered_scalar a { pow(-2) @ scalar_i a; s a; }
+gate powered_nested a { pow(3) @ noncommuting a; pow(-3) @ noncommuting a; pow(-2) @ t a; }
+gate powered_sx a { inv @ pow(-4) @ sx a; pow(2) @ t a; }
+gate powered_zero a { pow(0) @ noncommuting a; pow(0) @ sx a; }
 '''
 
 
@@ -78,6 +83,13 @@ def main():
         ('ctrl @ negctrl @ pow(-0.5) @ inverse_nested q[0],q[1],q[2];',
          (0, -math.pi / 2), -0.5, ((0, 1), (1, 0)), (2,)),
         ('pow(1.5) @ inverse_sx q[{1,3}];', (0, math.pi / 4), 1.5, (), (1, 3)),
+        ('pow(0.5) @ powered_z q[1];', (0, math.pi), 0.5, (), (1,)),
+        ('negctrl @ pow(0.5) @ powered_scalar q[0],q[1];',
+         (math.pi, -math.pi / 2), 0.5, ((0, 0),), (1,)),
+        ('ctrl @ negctrl @ pow(-0.5) @ powered_nested q[0],q[1],q[2];',
+         (0, -math.pi / 2), -0.5, ((0, 1), (1, 0)), (2,)),
+        ('pow(1.5) @ powered_sx q[{1,3}];', (0, math.pi / 2), 1.5, (), (1, 3)),
+        ('pow(0.5) @ powered_zero q[1];', (0, 0), 0.5, (), (1,)),
     )
     for case in cases:
         for fused in (False, True):
