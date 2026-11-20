@@ -90,6 +90,14 @@ def main():
          (0, -math.pi / 2), -0.5, ((0, 1), (1, 0)), (2,)),
         ('pow(1.5) @ powered_sx q[{1,3}];', (0, math.pi / 2), 1.5, (), (1, 3)),
         ('pow(0.5) @ powered_zero q[1];', (0, 0), 0.5, (), (1,)),
+        ('inv @ pow(0.5) @ powered_z q[1];', (0, math.pi), -0.5, (), (1,)),
+        ('inv @ inv @ pow(0.5) @ powered_z q[1];', (0, math.pi), 0.5, (), (1,)),
+        ('negctrl @ inv @ pow(0.5) @ scalar_i q[0],q[1];',
+         (math.pi / 2, math.pi / 2), -0.5, ((0, 0),), (1,)),
+        ('ctrl @ inv @ negctrl @ pow(-0.5) @ powered_nested q[0],q[1],q[2];',
+         (0, -math.pi / 2), 0.5, ((0, 1), (1, 0)), (2,)),
+        ('inv @ pow(0.1) @ t2 q[{1,3}];', (0, math.pi / 2), -0.1, (), (1, 3)),
+        ('inv @ pow(0.0) @ powered_z q[1];', (0, math.pi), 0.0, (), (1,)),
     )
     for case in cases:
         for fused in (False, True):
