@@ -1051,8 +1051,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     or diagonal_power_error.denominator.bit_length() > MAX_DIAGONAL_POWER_GOAL_BITS
                     or not 0 < diagonal_power_error.numerator < diagonal_power_error.denominator):
                 raise InvalidDiagonalPowerErrorGoal('diagonal power error goal must be a bounded rational between zero and one')
-        # Reserved for a future certified lowering. Supplying a goal does not
-        # enable that path or change existing gate conversion.
+        # Only composite diagonal user-gate powers consume this accuracy goal.
         self.__diagonal_power_error = diagonal_power_error
         self.__value: str | int | float | complex | None = None
         self.__value_type: ValueType | None = None
@@ -14631,7 +14630,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__release_temporary_variable(str(value))
 
 def convert(source: str, *, diagonal_power_error: str | None = None) -> list[str]:
-    """Convert OpenQASM to QCX; the optional bounded accuracy goal is reserved."""
+    """Convert OpenQASM to QCX, optionally bounding exact-real diagonal power error."""
     goal = (_parse_diagonal_power_error_goal(diagonal_power_error)
             if diagonal_power_error is not None else None)
     qasm_ast_root = openqasm3.parse(source)
@@ -14646,10 +14645,10 @@ Convert an OpenQASM 3 source file to QCX on standard output.
 
 options:
   -h, --help                       Show this help and exit.
-  --diagonal-power-error DECIMAL   Reserve an exact converter-side error goal
-                                   between zero and one for future certified
-                                   diagonal powers. The option does not yet
-                                   enable that lowering or certify bra.
+  --diagonal-power-error DECIMAL   Set the converter-side exact-real error goal
+                                   for eligible diagonal gate powers, strictly
+                                   between zero and one. This does not certify
+                                   bra parsing or execution.
 
 Use -- before a filename that would otherwise be interpreted as an option.'''
 
