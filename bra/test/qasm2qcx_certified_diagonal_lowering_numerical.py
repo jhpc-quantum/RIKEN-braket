@@ -25,6 +25,11 @@ gate minus_i a { t2 a; t2 a; t2 a; }
 gate scalar_i a { z a; y a; x a; }
 gate identity a { h a; h a; }
 gate empty a {}
+gate inverse_z a { inv @ t a; inv @ t a; inv @ t a; inv @ t a; }
+gate inverse_scalar a { inv @ scalar_i a; s a; }
+gate noncommuting a { h a; s a; }
+gate inverse_nested a { noncommuting a; inv @ noncommuting a; inv @ t a; inv @ t a; }
+gate inverse_sx a { inv @ sx a; sx a; s a; inv @ t a; }
 '''
 
 
@@ -67,6 +72,12 @@ def main():
         ('pow(0.0) @ z_nested q[1];', (0, math.pi), 0.0, (), (1,)),
         ('pow(-0.5) @ identity q[1];', (0, 0), -0.5, (), (1,)),
         ('pow(2.0) @ empty q[1];', (0, 0), 2.0, (), (1,)),
+        ('pow(0.5) @ inverse_z q[1];', (0, math.pi), 0.5, (), (1,)),
+        ('negctrl @ pow(0.5) @ inverse_scalar q[0],q[1];',
+         (-math.pi / 2, 0), 0.5, ((0, 0),), (1,)),
+        ('ctrl @ negctrl @ pow(-0.5) @ inverse_nested q[0],q[1],q[2];',
+         (0, -math.pi / 2), -0.5, ((0, 1), (1, 0)), (2,)),
+        ('pow(1.5) @ inverse_sx q[{1,3}];', (0, math.pi / 4), 1.5, (), (1, 3)),
     )
     for case in cases:
         for fused in (False, True):
