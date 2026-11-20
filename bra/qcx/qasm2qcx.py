@@ -4490,7 +4490,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             modifiers, iterators, allow_runtime=allow_runtime, allow_float=allow_float)
 
     def __iter_diagonal_fixed_gate_operations(
-            self, name: str, *, budget=None) -> Iterator[tuple[str, str, bool]]:
+            self, name: str, *, budget=None) -> Iterator[tuple[str, str, tuple[int, ...]]]:
         """Stream definition boundaries and fixed gates without emitting QCX.
 
         This only checks structural eligibility, not whether the composed
@@ -4513,16 +4513,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.MAX_GATE_DEFINITION_NESTING < 1 or self.MAX_GATE_DEFINITION_EXPANSION_STEPS < 1:
             raise InvalidLoopRangeException('diagonal fixed gate analysis exceeds work or nesting limit')
         active = {name}
-        stack = [(name, root, iter(root.body), False)]
+        stack = [(name, root, iter(root.body), ())]
         steps = 1
-        yield ('begin', name, False)
+        yield ('begin', name, ())
         while stack:
-            current_name, definition, operations, inverse = stack[-1]
+            current_name, definition, operations, factors = stack[-1]
             operation = next(operations, None)
             if operation is None:
                 stack.pop()
                 active.remove(current_name)
-                yield ('end', current_name, inverse)
+                yield ('end', current_name, factors)
                 continue
             steps += 1
             if steps > self.MAX_GATE_DEFINITION_EXPANSION_STEPS:
@@ -4536,7 +4536,22 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise UnsupportedOpenQASMError('diagonal fixed gate requires fixed one-qubit calls')
             if budget is not None:
                 budget.charge_work(len(operation.modifiers))
-            operation_inverse = self.__inverse_modifier_parity(operation.modifiers)
+            factors = []
+            for modifier in operation.modifiers:
+                if modifier.modifier == ast.GateModifierName.inv:
+                    self.__inverse_modifier_parity([modifier])
+                    factor = -1
+                elif modifier.modifier == ast.GateModifierName.pow:
+                    factor = self.__power_modifier_exponent(modifier)
+                else:
+                    raise UnsupportedOpenQASMError(f'gate modifier {modifier.modifier.name}')
+                if budget is not None:
+                    if factor.bit_length() > budget.limits.input_bits:
+                        raise foundation.BudgetExceeded('input bits')
+                    budget.check_integer_bits(factor.bit_length())
+                    budget.charge_work(max(1, factor.bit_length()))
+                factors.append(factor)
+            factors = tuple(factors)
             child_name = operation.name.name
             child = self.__basic_gate_definitions.get(child_name)
             if budget is not None:
@@ -4544,7 +4559,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if child is None:
                 if child_name not in self.diagonal_fixed_gates:
                     raise UnsupportedOpenQASMError(f'fixed gate {child_name} in diagonal gate analysis')
-                yield ('gate', child_name, operation_inverse)
+                yield ('gate', child_name, factors)
                 continue
             check_definition(child)
             if child_name in active:
@@ -4552,8 +4567,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if len(stack) >= self.MAX_GATE_DEFINITION_NESTING:
                 raise InvalidLoopRangeException('diagonal fixed gate analysis exceeds nesting limit')
             active.add(child_name)
-            stack.append((child_name, child, iter(child.body), operation_inverse))
-            yield ('begin', child_name, operation_inverse)
+            stack.append((child_name, child, iter(child.body), factors))
+            yield ('begin', child_name, factors)
 
     def __compose_diagonal_fixed_gate(self, name: str, budget):
         """Compose an eligible definition with one shared, caller-owned budget.
@@ -4566,19 +4581,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.diagonal_fixed_gates != frozenset(foundation.FIXED_GATES):
             raise RuntimeError('fixed gate sets disagree with diagonal certification foundation')
         matrices = []
-        for event, gate, inverse in self.__iter_diagonal_fixed_gate_operations(name, budget=budget):
+        for event, gate, factors in self.__iter_diagonal_fixed_gate_operations(name, budget=budget):
             if event == 'begin':
                 matrices.append(foundation.compose_fixed_gates((), budget))
-            elif event == 'gate':
-                operation = foundation.FIXED_GATES[gate]
-                if inverse:
-                    operation = foundation.adjoint_matrix(operation, budget)
-                matrices[-1] = foundation.multiply_matrices(operation, matrices[-1], budget)
             else:
-                operation = matrices.pop()
-                if inverse:
-                    operation = foundation.adjoint_matrix(operation, budget)
-                if not matrices:
+                operation = foundation.FIXED_GATES[gate] if event == 'gate' else matrices.pop()
+                for factor in reversed(factors):
+                    if factor == -1:
+                        operation = foundation.adjoint_matrix(operation, budget)
+                    elif factor != 1:
+                        operation = foundation.integer_power_matrix(operation, factor, budget)
+                if event == 'end' and not matrices:
                     return operation
                 matrices[-1] = foundation.multiply_matrices(operation, matrices[-1], budget)
         raise RuntimeError('incomplete diagonal gate operation stream')
