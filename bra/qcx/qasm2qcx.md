@@ -7217,8 +7217,11 @@ compile-time floating-point `pow` on a composite user-defined gate whose
 complete matrix is exactly diagonal. The gate must have one formal qubit and
 no parameters. Its body may be empty, or contain calls on that qubit to `id`,
 `x`, `y`, `z`, `h`, `s`, `sdg`, `t`, `tdg`, `sx`, or previously defined user
-gates satisfying the same rules. These calls may have one or more `inv`
-modifiers; other modifiers inside the body are unsupported. The converter
+gates satisfying the same rules. These calls may have `inv` and constant
+integer `pow` modifiers, including repeated or combined modifiers. Positive,
+zero, and negative integer exponents are supported; the existing restriction
+on nonlocal expressions in gate definitions still applies. Floating-point
+powers and control modifiers inside the body remain unsupported. The converter
 composes the expanded body exactly and checks both off-diagonal entries for
 zero; individual gates need not be diagonal. An inverse on a nested call applies
 to the complete nested gate, including its global phase.
@@ -7252,9 +7255,22 @@ qubit q;
 pow(0.5) @ cancel q;
 ```
 
-This also requires the explicit error goal. Repeated `inv` modifiers are
-validated and reduced by parity. The shared resource budget covers modifier
-processing and exact adjoints as well as composition and certification.
+This also requires the explicit error goal. Integer powers apply to the complete
+operation, including its global phase. For example:
+
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+gate pair a { h a; s a; }
+gate z_from_powers a { pow(3) @ pair a; pow(-3) @ pair a; pow(4) @ t a; }
+qubit q;
+pow(0.5) @ z_from_powers q;
+```
+
+Each modifier is validated, even when another power is zero. The shared
+resource budget covers modifier processing, exact adjoints, and integer matrix
+powers as well as composition and certification. Large exponents or chains
+can exceed those limits and cause conversion to fail.
 
 The converter uses principal eigenphases in $(-\pi, \pi]$, choosing $+\pi$
 for $-1$, and retains both basis phases, including the global phase of a
