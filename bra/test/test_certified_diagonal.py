@@ -113,6 +113,70 @@ class BoundedCompositionTests(unittest.TestCase):
                                         (foundation.ZERO, foundation.ONE)), foundation.Budget())
 
 
+class IntegerMatrixPowerTests(unittest.TestCase):
+    def test_positive_zero_and_negative_powers_of_all_fixed_gates(self):
+        identity = foundation.FIXED_GATES['id']
+        for name, matrix in foundation.FIXED_GATES.items():
+            for exponent in range(-4, 5):
+                with self.subTest(gate=name, exponent=exponent):
+                    budget = foundation.Budget()
+                    base = foundation.adjoint_matrix(matrix, budget) if exponent < 0 else matrix
+                    expected = identity
+                    for _ in range(abs(exponent)):
+                        expected = foundation.multiply_matrices(base, expected, budget)
+                    self.assertEqual(foundation.integer_power_matrix(matrix, exponent, budget), expected)
+
+    def test_noncommuting_composition_and_scalar_phase_are_preserved(self):
+        budget = foundation.Budget()
+        matrix = foundation.compose_fixed_gates(('h', 's'), budget)
+        inverse = foundation.integer_power_matrix(matrix, -1, budget)
+        self.assertEqual(foundation.multiply_matrices(matrix, inverse, budget), foundation.FIXED_GATES['id'])
+        self.assertEqual(foundation.integer_power_matrix(matrix, -2, budget),
+                         foundation.multiply_matrices(inverse, inverse, budget))
+        scalar = foundation.compose_fixed_gates(('z', 'y', 'x'), budget)
+        self.assertEqual(foundation.integer_power_matrix(scalar, -1, budget),
+                         ((foundation.MINUS_I, foundation.ZERO), (foundation.ZERO, foundation.MINUS_I)))
+
+    def test_large_integer_power_uses_bounded_logarithmic_work(self):
+        budget = foundation.Budget()
+        self.assertEqual(foundation.integer_power_matrix(foundation.FIXED_GATES['t'], 2**20, budget),
+                         foundation.FIXED_GATES['id'])
+        self.assertLess(budget.work, 20000)
+
+    def test_invalid_inputs_and_nonunitary_negative_power(self):
+        identity = foundation.FIXED_GATES['id']
+        for exponent in (True, 0.0, Fraction(1), '2', None):
+            with self.subTest(exponent=exponent), self.assertRaises(foundation.InvalidInput):
+                foundation.integer_power_matrix(identity, exponent, foundation.Budget())
+        for matrix in (None, (), ((foundation.ONE,), (foundation.ZERO,)),
+                       ((foundation.ONE, 1), (foundation.ZERO, foundation.ONE)),
+                       ((foundation.Exact(a=2, k=1), foundation.ZERO),
+                        (foundation.ZERO, foundation.ONE))):
+            with self.subTest(matrix=matrix), self.assertRaises(foundation.InvalidInput):
+                foundation.integer_power_matrix(matrix, 0, foundation.Budget())
+        nonunitary = ((foundation.Exact(a=2), foundation.ZERO), (foundation.ZERO, foundation.ONE))
+        with self.assertRaisesRegex(foundation.InvalidInput, 'unitary'):
+            foundation.integer_power_matrix(nonunitary, -1, foundation.Budget())
+        self.assertEqual(foundation.integer_power_matrix(nonunitary, 0, foundation.Budget()), identity)
+        with self.assertRaises(foundation.InvalidInput):
+            foundation.integer_power_matrix(identity, 1, None)
+
+    def test_exponent_limits_and_work_are_shared(self):
+        matrix = foundation.FIXED_GATES['t']
+        with self.assertRaisesRegex(foundation.BudgetExceeded, 'input bits'):
+            foundation.integer_power_matrix(matrix, 8, foundation.Budget(foundation.BudgetLimits(input_bits=3)))
+        with self.assertRaisesRegex(foundation.BudgetExceeded, 'intermediate integer'):
+            foundation.integer_power_matrix(matrix, 8, foundation.Budget(foundation.BudgetLimits(integer_bits=3)))
+        budget = foundation.Budget(foundation.BudgetLimits(work=10))
+        with self.assertRaisesRegex(foundation.BudgetExceeded, 'work'):
+            foundation.integer_power_matrix(matrix, 4, budget)
+        self.assertLessEqual(budget.work, 10)
+        with self.assertRaisesRegex(foundation.BudgetExceeded, 'exact coefficient'):
+            foundation.integer_power_matrix(((foundation.ZERO, foundation.ZERO),
+                                             (foundation.ZERO, foundation.ZERO)), 0,
+                                            foundation.Budget(foundation.BudgetLimits(exact_bits=0)))
+
+
 class SharedBudgetTests(unittest.TestCase):
     def test_gate_and_nesting_budgets_are_shared_and_monotonic(self):
         budget = foundation.Budget(foundation.BudgetLimits(gate_steps=1))
