@@ -4818,12 +4818,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_certified_diagonal_power(
             self, statement: ast.QuantumGate, info: _OrderedGateModifierInfo,
             budget, analysis: _DiagonalFixedGateAnalysis) -> None:
-        if any(modifier.kind == ast.GateModifierName.inv for modifier in info.modifiers):
-            raise UnsupportedOpenQASMError('certified diagonal outer inverse lowering is not yet implemented')
         foundation = _load_diagonal_foundation()
         exponent = next(modifier.argument for modifier in info.modifiers
                         if modifier.kind == ast.GateModifierName.pow)
         exponent = Fraction(*exponent.as_integer_ratio())
+        if sum(modifier.kind == ast.GateModifierName.inv for modifier in info.modifiers) % 2:
+            # Inverting the already-powered operation negates its selected
+            # phases; it does not reselect the original gate's branch.
+            exponent = -exponent
         goal = self.__diagonal_power_error
         # Leave guard bits for the phase enclosure and decimal rounding. Bound
         # the requested precision before the certification module allocates it.

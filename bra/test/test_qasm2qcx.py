@@ -647,15 +647,15 @@ class CertifiedDiagonalOuterInverseValidationTests(unittest.TestCase):
     prefix = ('OPENQASM 3; include "stdgates.inc"; '
               'gate composite a { t a; t a; t a; t a; } qubit[3] q; ')
 
-    def test_outer_inverses_validate_when_skipped_but_do_not_yet_lower(self):
+    def test_outer_inverses_validate_and_lower(self):
         for call in ('inv @ pow(0.5) @ composite q[0];',
                      'inv @ inv @ pow(0.0) @ composite q[0];',
                      'ctrl @ inv @ negctrl @ pow(-0.5) @ composite q[0],q[1],q[2];'):
             with self.subTest(call=call):
                 skipped = self.prefix + f'for int i in [1:0] {{ {call} }}'
                 qasm2qcx.convert(skipped, diagonal_power_error='1e-12')
-                with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'not yet implemented'):
-                    qasm2qcx.convert(self.prefix + call, diagonal_power_error='1e-12')
+                lines = qasm2qcx.convert(self.prefix + call, diagonal_power_error='1e-12')
+                self.assertEqual(sum(line.startswith(('U1 ', 'CU1 ', 'C2U1 ')) for line in lines), 2)
                 with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'diagonal_power_error'):
                     qasm2qcx.convert(skipped)
 
@@ -675,6 +675,26 @@ class CertifiedDiagonalOuterInverseValidationTests(unittest.TestCase):
         expected = ('OPENQASM 3; include "stdgates.inc"; '
                     'qubit q; inv @ pow(0.5) @ t q;')
         self.assertEqual(qasm2qcx.convert(source), qasm2qcx.convert(expected))
+
+    def test_odd_and_even_outer_inverses_preserve_principal_branch(self):
+        for modifiers, expected in (('inv @ pow(0.5)', -math.pi / 2),
+                                    ('inv @ inv @ pow(0.5)', math.pi / 2),
+                                    ('inv @ pow(-0.5)', math.pi / 2),
+                                    ('inv @ pow(0.0)', 0)):
+            with self.subTest(modifiers=modifiers):
+                lines = qasm2qcx.convert(self.prefix + f'{modifiers} @ composite q[0];',
+                                         diagonal_power_error='1e-12')
+                phases = [line.split() for line in lines if line.startswith('U1 ')]
+                self.assertEqual([line[1] for line in phases], ['0#0', '0'])
+                self.assertAlmostEqual(float(phases[0][2]), 0, places=12)
+                self.assertAlmostEqual(float(phases[1][2]), expected, places=12)
+
+    def test_mixed_controls_keep_order_and_polarity(self):
+        call = 'ctrl @ inv @ negctrl @ pow(0.5) @ composite q[0],q[1],q[2];'
+        lines = qasm2qcx.convert(self.prefix + call, diagonal_power_error='1e-12')
+        phases = [line.split() for line in lines if line.startswith('C2U1 ')]
+        self.assertEqual([line[1:4] for line in phases], [['0', '1#0', '2#0'], ['0', '1#0', '2']])
+        self.assertAlmostEqual(float(phases[1][4]), -math.pi / 2, places=12)
 
 
 class CertifiedDiagonalIntegerPowerTests(unittest.TestCase):
