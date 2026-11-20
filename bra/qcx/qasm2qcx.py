@@ -4639,10 +4639,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                   if modifier.kind == ast.GateModifierName.pow]
         if (len(powers) != 1 or not isinstance(modifiers[powers[0]].argument, float)
                 or powers[0] != len(modifiers) - 1
-                or any(modifier.kind not in (ast.GateModifierName.ctrl, ast.GateModifierName.negctrl)
+                or any(modifier.kind not in (ast.GateModifierName.ctrl, ast.GateModifierName.negctrl,
+                                             ast.GateModifierName.inv)
                        for modifier in modifiers[:powers[0]])):
             raise UnsupportedOpenQASMError(
-                'certified diagonal gate powers require one floating pow with only outer controls')
+                'certified diagonal gate powers require one floating pow with only outer inverses and controls')
 
     def visit_QuantumGateDefinition(self, statement: ast.QuantumGateDefinition) -> None:
         if not self.__is_initialization_process:
@@ -4821,6 +4822,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         exponent = next(modifier.argument for modifier in info.modifiers
                         if modifier.kind == ast.GateModifierName.pow)
         exponent = Fraction(*exponent.as_integer_ratio())
+        if sum(modifier.kind == ast.GateModifierName.inv for modifier in info.modifiers) % 2:
+            # Inverting the already-powered operation negates its selected
+            # phases; it does not reselect the original gate's branch.
+            exponent = -exponent
         goal = self.__diagonal_power_error
         # Leave guard bits for the phase enclosure and decimal rounding. Bound
         # the requested precision before the certification module allocates it.

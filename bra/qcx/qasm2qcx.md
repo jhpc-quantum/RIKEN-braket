@@ -7234,14 +7234,20 @@ qubit[2] q;
 ctrl @ pow(0.5) @ z_from_t q[0], q[1];
 ```
 
-Run this example with `--diagonal-power-error 1e-12`. Optional `ctrl` and
-`negctrl` modifiers with constant positive counts may precede the `pow`.
-The outer modifier chain does not support `inv`, additional `pow` modifiers,
-or controls inside that power. Static qubit selections and broadcasting follow the
-existing user-gate rules. The exponent must evaluate to a finite compile-time
-Python float; its exact binary value determines the power. Positive, negative,
-and zero floating powers are supported. Integer powers and single-operation
-wrappers continue to use their existing paths.
+Run this example with `--diagonal-power-error 1e-12`. Optional `inv`, `ctrl`,
+and `negctrl` modifiers may precede the floating-point `pow`; control counts
+must be constant positive integers. These outer modifiers may be interleaved.
+For example, `ctrl @ inv @ pow(0.5) @ z_from_t q[0], q[1];` applies the
+inverse of the powered gate when the control is active. Repeated outer
+inversions are applied by parity and preserve the inactive control block.
+
+Additional `pow` modifiers and any `inv` or control modifier *after* that
+floating-point `pow` remain unsupported on this path. In particular,
+`pow(0.5) @ inv @ z_from_t q[1];` is not covered. Static qubit selections and
+broadcasting follow the existing user-gate rules. The exponent must evaluate to
+a finite compile-time Python float; its exact binary value determines the
+power. Positive, negative, and zero floating powers are supported. Integer
+powers and single-operation wrappers continue to use their existing paths.
 
 For example, a nested inverse reverses the complete operation even when its
 gates do not commute:
@@ -7274,7 +7280,9 @@ can exceed those limits and cause conversion to fail.
 
 The converter uses principal eigenphases in $(-\pi, \pi]$, choosing $+\pi$
 for $-1$, and retains both basis phases, including the global phase of a
-scalar gate. For each broadcast operation, the requested goal bounds the
+scalar gate. An outer inverse negates the already-selected powered phases;
+it does not reselect the original gate's principal phases. For each broadcast
+operation, the requested goal bounds the
 operator 2-norm error of the mathematical QCX operation when its serialized
 decimal angles are treated as exact real numbers. Added controls preserve the
 same bound. This is a **converter-only** bound: it does not cover how `bra`
