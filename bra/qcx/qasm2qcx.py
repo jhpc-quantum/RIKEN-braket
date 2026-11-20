@@ -4552,8 +4552,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __compose_diagonal_fixed_gate(self, name: str, budget):
         """Compose an eligible definition with one shared, caller-owned budget.
 
-        This remains an internal, non-emitting helper; ordinary conversion does
-        not call it, and no diagonal classification or lowering is performed.
+        This helper does not itself classify the result or emit instructions.
         """
         foundation = _load_diagonal_foundation()
         if not isinstance(budget, foundation.Budget):
@@ -4690,7 +4689,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __validate_basic_gate_call(
             self, statement: ast.QuantumGate,
-            iterators: set[str] | dict[str, ValueType] | None = None) -> _BasicGateDefinition:
+            iterators: set[str] | dict[str, ValueType] | None = None, *,
+            diagonal_context: list | None = None) -> _BasicGateDefinition:
         name = statement.name.name
         if not self.__is_initialization_process and name not in self.__defined_basic_gate_names:
             raise UnsupportedOpenQASMError(f'gate {name} used before definition')
@@ -4770,12 +4770,52 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise UnsupportedOpenQASMError('certified diagonal gate powers require diagonal_power_error')
             foundation = _load_diagonal_foundation()
             try:
-                analysis = self.__analyze_diagonal_fixed_gate(name, foundation.Budget())
+                budget = foundation.Budget()
+                analysis = self.__analyze_diagonal_fixed_gate(name, budget)
             except foundation.CertificationError as error:
                 raise UnsupportedOpenQASMError(f'certified diagonal gate analysis failed: {error}') from error
             if analysis.classification == 'non-diagonal':
                 raise UnsupportedOpenQASMError('certified diagonal gate power requires an exactly diagonal gate')
+            if diagonal_context is not None:
+                diagonal_context.append((budget, analysis))
         return definition
+
+    def __emit_certified_diagonal_power(
+            self, statement: ast.QuantumGate, info: _OrderedGateModifierInfo,
+            budget, analysis: _DiagonalFixedGateAnalysis) -> None:
+        foundation = _load_diagonal_foundation()
+        exponent = next(modifier.argument for modifier in info.modifiers
+                        if modifier.kind == ast.GateModifierName.pow)
+        exponent = Fraction(*exponent.as_integer_ratio())
+        goal = self.__diagonal_power_error
+        # Leave guard bits for the phase enclosure and decimal rounding. Bound
+        # the requested precision before the certification module allocates it.
+        goal_bits = goal.denominator.bit_length() - goal.numerator.bit_length()
+        exponent_bits = max(0, abs(exponent.numerator).bit_length() - exponent.denominator.bit_length())
+        phase_bits = 48 if not exponent else max(48, goal_bits + exponent_bits + 16)
+        decimal_places = max(24, (phase_bits * 30103 + 99999) // 100000 + 4)
+        try:
+            certificate = foundation.certify_diagonal_power(
+                analysis.matrix, exponent, goal, budget,
+                phase_bits=phase_bits, decimal_places=decimal_places)
+            count = sum(number for _, number in info.controls)
+            mnemonic = self.__controlled_phase_gate_name(count + 1)
+            lines = []
+            for qubits in self.__qubit_operand_tuples(statement.qubits, distinct=True):
+                conditions = self.__condition_qubits(qubits[:count], info.controls)
+                target = qubits[count]
+                for wire, angle in ((f'{target}#0', certificate.angles[0]),
+                                    (target, certificate.angles[1])):
+                    line = f'{mnemonic} {" ".join(conditions + [wire])} {angle}'
+                    budget.reserve_output(chars=len(line) + 1, lines=1)
+                    lines.append(line)
+            if len(lines) > self.MAX_GATE_DEFINITION_OUTPUT_LINES:
+                raise UnsupportedOpenQASMError('user-defined gate expansion exceeds output limit')
+            self.__check_gate_power_output(len(lines), len(self.__qcx_lines))
+        except foundation.CertificationError as error:
+            raise UnsupportedOpenQASMError(f'certified diagonal gate power failed: {error}') from error
+        # Only append after every certificate, operand and output limit check.
+        self.__qcx_lines.extend(lines)
 
     def __basic_gate_call_binding(
             self, statement: ast.QuantumGate
@@ -4801,11 +4841,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return definition, dict(zip(definition.qubits, resolved[count:])), list(zip(polarities, resolved[:count]))
 
     def __emit_basic_gate_call(self, statement: ast.QuantumGate) -> None:
-        definition = self.__validate_basic_gate_call(statement)
+        diagonal_context = []
+        definition = self.__validate_basic_gate_call(statement, diagonal_context=diagonal_context)
         info = self.__user_gate_modifier_info(statement.modifiers, allow_runtime=True, allow_float=True)
         floating = isinstance(info, _OrderedGateModifierInfo)
-        if floating and not self.__is_single_operation_gate_chain(definition):
-            raise UnsupportedOpenQASMError('certified diagonal gate power lowering is not yet implemented')
+        if diagonal_context:
+            self.__emit_certified_diagonal_power(statement, info, *diagonal_context[0])
+            return
         inverse = False if floating else info.power < 0
         repetitions = 1 if floating else abs(info.power)
         control_count = sum(number for _, number in info.controls)
