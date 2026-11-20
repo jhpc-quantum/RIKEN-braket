@@ -7241,13 +7241,15 @@ For example, `ctrl @ inv @ pow(0.5) @ z_from_t q[0], q[1];` applies the
 inverse of the powered gate when the control is active. Repeated outer
 inversions are applied by parity and preserve the inactive control block.
 
-Additional `pow` modifiers and any `inv` or control modifier *after* that
-floating-point `pow` remain unsupported on this path. In particular,
-`pow(0.5) @ inv @ z_from_t q[1];` is not covered. Static qubit selections and
-broadcasting follow the existing user-gate rules. The exponent must evaluate to
-a finite compile-time Python float; its exact binary value determines the
-power. Positive, negative, and zero floating powers are supported. Integer
-powers and single-operation wrappers continue to use their existing paths.
+One or more `inv` modifiers may also appear *after* the floating-point `pow`:
+`pow(0.5) @ inv @ z_from_t q[1];` powers the inverse of the composed gate.
+Inner and outer inversions can be combined. Additional `pow` modifiers and
+control modifiers after the floating-point `pow` remain unsupported on this
+path. Static qubit selections and broadcasting follow the existing user-gate
+rules. The exponent must evaluate to a finite compile-time Python float; its
+exact binary value determines the power. Positive, negative, and zero floating
+powers are supported. Integer powers and single-operation wrappers continue to
+use their existing paths.
 
 For example, a nested inverse reverses the complete operation even when its
 gates do not commute:
@@ -7280,9 +7282,10 @@ can exceed those limits and cause conversion to fail.
 
 The converter uses principal eigenphases in $(-\pi, \pi]$, choosing $+\pi$
 for $-1$, and retains both basis phases, including the global phase of a
-scalar gate. An outer inverse negates the already-selected powered phases;
-it does not reselect the original gate's principal phases. For each broadcast
-operation, the requested goal bounds the
+scalar gate. An inner inverse is applied to the exact matrix before selecting
+principal phases, so an eigenvalue of $-1$ still selects $+\pi$. An outer
+inverse negates the already-selected powered phases; it does not reselect the
+original gate's principal phases. For each broadcast operation, the requested goal bounds the
 operator 2-norm error of the mathematical QCX operation when its serialized
 decimal angles are treated as exact real numbers. Added controls preserve the
 same bound. This is a **converter-only** bound: it does not cover how `bra`

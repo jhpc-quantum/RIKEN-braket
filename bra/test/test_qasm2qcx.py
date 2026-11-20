@@ -659,9 +659,8 @@ class CertifiedDiagonalOuterInverseValidationTests(unittest.TestCase):
                 with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'diagonal_power_error'):
                     qasm2qcx.convert(skipped)
 
-    def test_inverses_inside_power_and_other_invalid_chains_still_fail(self):
-        for call in ('pow(0.5) @ inv @ composite q[0];',
-                     'inv @ pow(0.5) @ pow(2) @ composite q[0];',
+    def test_other_invalid_chains_still_fail(self):
+        for call in ('inv @ pow(0.5) @ pow(2) @ composite q[0];',
                      'inv @ pow(0.5) @ ctrl @ composite q[0],q[1];',
                      'ctrl @ inv @ pow(0.5) @ composite q[0],q[0];'):
             for skipped in (False, True):
@@ -743,8 +742,7 @@ class CertifiedDiagonalOuterInverseIntegrationTests(unittest.TestCase):
             self.assertAlmostEqual(float(line[2]), -math.pi / 2, places=12)
 
     def test_invalid_chains_remain_invalid_in_skipped_paths_and_at_zero_power(self):
-        calls = ('pow(0.0) @ inv @ diagonal q[0];',
-                 'inv @ pow(0.0) @ non_diagonal q[0];',
+        calls = ('inv @ pow(0.0) @ non_diagonal q[0];',
                  'inv @ pow(0.5) @ pow(2) @ diagonal q[0];',
                  'ctrl @ inv @ pow(0.5) @ diagonal q[0],q[0];')
         for call in calls:
@@ -757,6 +755,145 @@ class CertifiedDiagonalOuterInverseIntegrationTests(unittest.TestCase):
         foundation = qasm2qcx._load_diagonal_foundation()
         source = self.prefix + 'inv @ pow(0.5) @ diagonal q[0];'
         with patch.object(foundation, 'certify_diagonal_power', side_effect=foundation.BudgetExceeded('work')), \
+                patch('builtins.open', mock_open(read_data=source)), \
+                patch('builtins.print') as output, self.assertRaises(SystemExit):
+            qasm2qcx.main(['--diagonal-power-error', '1e-12', 'program.qasm'])
+        output.assert_not_called()
+
+
+class CertifiedDiagonalInnerInverseValidationTests(unittest.TestCase):
+    prefix = ('OPENQASM 3; include "stdgates.inc"; '
+              'gate composite a { t a; t a; t a; t a; } qubit[3] q; ')
+
+    def test_inner_inverses_validate_and_lower(self):
+        calls = ('pow(0.5) @ inv @ composite q[0];',
+                 'pow(0.0) @ inv @ inv @ composite q[0];',
+                 'ctrl @ inv @ negctrl @ pow(-0.5) @ inv @ composite q[0],q[1],q[2];')
+        for call in calls:
+            with self.subTest(call=call):
+                skipped = self.prefix + f'for int i in [1:0] {{ {call} }}'
+                qasm2qcx.convert(skipped, diagonal_power_error='1e-12')
+                lines = qasm2qcx.convert(self.prefix + call, diagonal_power_error='1e-12')
+                self.assertEqual(sum(line.startswith(('U1 ', 'CU1 ', 'C2U1 ')) for line in lines), 2)
+                with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'diagonal_power_error'):
+                    qasm2qcx.convert(skipped)
+
+    def test_controls_and_additional_powers_inside_remain_invalid(self):
+        calls = ('pow(0.5) @ inv @ ctrl @ composite q[0],q[1];',
+                 'pow(0.5) @ inv @ pow(2) @ composite q[0];',
+                 'ctrl @ pow(0.5) @ inv @ composite q[0],q[0];')
+        for call in calls:
+            for skipped in (False, True):
+                body = f'for int i in [1:0] {{ {call} }}' if skipped else call
+                with self.subTest(call=call, skipped=skipped), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    qasm2qcx.convert(self.prefix + body, diagonal_power_error='1e-12')
+
+    def test_existing_single_operation_wrapper_is_unchanged(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; gate wrapper a { t a; } '
+                  'qubit q; pow(0.5) @ inv @ wrapper q;')
+        expected = ('OPENQASM 3; include "stdgates.inc"; '
+                    'qubit q; pow(0.5) @ inv @ t q;')
+        self.assertEqual(qasm2qcx.convert(source), qasm2qcx.convert(expected))
+
+    def test_inner_and_outer_inverses_treat_minus_one_branch_differently(self):
+        cases = (('pow(0.5) @ inv', math.pi / 2),
+                 ('pow(0.5) @ inv @ inv', math.pi / 2),
+                 ('inv @ pow(0.5) @ inv', -math.pi / 2),
+                 ('inv @ inv @ pow(-0.5) @ inv', -math.pi / 2),
+                 ('pow(0.0) @ inv', 0))
+        for modifiers, expected in cases:
+            with self.subTest(modifiers=modifiers):
+                lines = qasm2qcx.convert(self.prefix + f'{modifiers} @ composite q[0];',
+                                         diagonal_power_error='1e-12')
+                phases = [line.split() for line in lines if line.startswith('U1 ')]
+                self.assertEqual([line[1] for line in phases], ['0#0', '0'])
+                self.assertAlmostEqual(float(phases[1][2]), expected, places=12)
+
+    def test_inner_inverse_preserves_controlled_scalar_phase(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; gate scalar_i a { z a; y a; x a; } '
+                  'qubit[2] q; negctrl @ pow(0.5) @ inv @ scalar_i q[0],q[1];')
+        lines = qasm2qcx.convert(source, diagonal_power_error='1e-12')
+        phases = [line.split() for line in lines if line.startswith('CU1 ')]
+        self.assertEqual([line[1:3] for line in phases], [['0#0', '1#0'], ['0#0', '1']])
+        for line in phases:
+            self.assertAlmostEqual(float(line[3]), -math.pi / 4, places=12)
+
+
+class CertifiedDiagonalInnerInverseIntegrationTests(unittest.TestCase):
+    prefix = ('OPENQASM 3; include "stdgates.inc"; '
+              'gate z_gate a { pow(4) @ t a; id a; } '
+              'gate s_gate a { t a; t a; } '
+              'gate scalar_i a { z a; y a; x a; } '
+              'gate offdiag a { h a; t a; } qubit[4] q; ')
+
+    def test_exact_matrix_and_outer_exponent_reach_same_certificate(self):
+        foundation = qasm2qcx._load_diagonal_foundation()
+        original = foundation.certify_diagonal_power
+        observed = []
+
+        def capture(matrix, exponent, goal, budget, **kwargs):
+            observed.append((matrix, exponent, budget))
+            return original(matrix, exponent, goal, budget, **kwargs)
+
+        cases = (('pow(0.1) @ inv', foundation.FIXED_GATES['sdg'], Fraction.from_float(0.1)),
+                 ('inv @ pow(0.1) @ inv', foundation.FIXED_GATES['sdg'], -Fraction.from_float(0.1)),
+                 ('pow(0.1) @ inv @ inv', foundation.FIXED_GATES['s'], Fraction.from_float(0.1)),
+                 ('inv @ inv @ pow(-0.1) @ inv', foundation.FIXED_GATES['sdg'], Fraction.from_float(-0.1)))
+        with patch.object(foundation, 'certify_diagonal_power', capture):
+            for modifiers, expected_matrix, expected_exponent in cases:
+                with self.subTest(modifiers=modifiers):
+                    qasm2qcx.convert(self.prefix + f'{modifiers} @ s_gate q[0];',
+                                     diagonal_power_error='1e-12')
+                    matrix, exponent, budget = observed[-1]
+                    self.assertEqual((matrix, exponent), (expected_matrix, expected_exponent))
+                    self.assertGreater(budget.gate_steps, 0)
+                    self.assertEqual(budget.output_lines, 2)
+
+    def test_branch_point_and_scalar_phases_with_mixed_controls_and_broadcast(self):
+        call = 'ctrl @ inv @ negctrl @ pow(0.5) @ inv @ z_gate q[0],q[1],q[{2,3}];'
+        lines = qasm2qcx.convert(self.prefix + call, diagonal_power_error='1e-12')
+        phases = [line.split() for line in lines if line.startswith('C2U1 ')]
+        self.assertEqual([line[1:4] for line in phases],
+                         [['0', '1#0', '2#0'], ['0', '1#0', '2'],
+                          ['0', '1#0', '3#0'], ['0', '1#0', '3']])
+        for line in phases[1::2]:
+            self.assertAlmostEqual(float(line[4]), -math.pi / 2, places=12)
+        source = self.prefix + 'negctrl @ pow(0.5) @ inv @ scalar_i q[0],q[1];'
+        phases = [line.split() for line in qasm2qcx.convert(source, diagonal_power_error='1e-12')
+                  if line.startswith('CU1 ')]
+        for line in phases:
+            self.assertAlmostEqual(float(line[3]), -math.pi / 4, places=12)
+
+    def test_invalid_inputs_remain_invalid_for_zero_and_skipped_powers(self):
+        calls = ('pow(0.0) @ inv @ offdiag q[0];',
+                 'pow(0.0) @ inv @ ctrl @ z_gate q[0],q[1];',
+                 'pow(0.0) @ inv @ pow(2) @ z_gate q[0];',
+                 'ctrl @ pow(0.0) @ inv @ z_gate q[0],q[0];')
+        for call in calls:
+            for skipped in (False, True):
+                body = f'for int i in [1:0] {{ {call} }}' if skipped else call
+                with self.subTest(call=call, skipped=skipped), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    qasm2qcx.convert(self.prefix + body, diagonal_power_error='1e-12')
+
+    def test_adjoint_work_limit_is_shared_and_cli_output_is_atomic(self):
+        foundation = qasm2qcx._load_diagonal_foundation()
+        source = self.prefix + 'pow(0.5) @ inv @ z_gate q[0];'
+        original_adjoint = foundation.adjoint_matrix
+        observed = []
+
+        def capture(matrix, budget):
+            observed.append(budget.work)
+            return original_adjoint(matrix, budget)
+
+        with patch.object(foundation, 'adjoint_matrix', capture):
+            qasm2qcx.convert(source, diagonal_power_error='1e-12')
+        self.assertEqual(len(observed), 1)
+        original_init = foundation.Budget.__init__
+
+        def limited(budget, limits=None):
+            original_init(budget, foundation.BudgetLimits(work=observed[0] + 1))
+
+        with patch.object(foundation.Budget, '__init__', limited), \
                 patch('builtins.open', mock_open(read_data=source)), \
                 patch('builtins.print') as output, self.assertRaises(SystemExit):
             qasm2qcx.main(['--diagonal-power-error', '1e-12', 'program.qasm'])

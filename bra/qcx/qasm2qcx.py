@@ -4638,12 +4638,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         powers = [index for index, modifier in enumerate(modifiers)
                   if modifier.kind == ast.GateModifierName.pow]
         if (len(powers) != 1 or not isinstance(modifiers[powers[0]].argument, float)
-                or powers[0] != len(modifiers) - 1
                 or any(modifier.kind not in (ast.GateModifierName.ctrl, ast.GateModifierName.negctrl,
                                              ast.GateModifierName.inv)
-                       for modifier in modifiers[:powers[0]])):
+                       for modifier in modifiers[:powers[0]])
+                or any(modifier.kind != ast.GateModifierName.inv
+                       for modifier in modifiers[powers[0] + 1:])):
             raise UnsupportedOpenQASMError(
-                'certified diagonal gate powers require one floating pow with only outer inverses and controls')
+                'certified diagonal gate powers require one floating pow with outer controls and inverses')
 
     def visit_QuantumGateDefinition(self, statement: ast.QuantumGateDefinition) -> None:
         if not self.__is_initialization_process:
@@ -4818,11 +4819,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_certified_diagonal_power(
             self, statement: ast.QuantumGate, info: _OrderedGateModifierInfo,
             budget, analysis: _DiagonalFixedGateAnalysis) -> None:
+        power_index = next(index for index, modifier in enumerate(info.modifiers)
+                           if modifier.kind == ast.GateModifierName.pow)
         foundation = _load_diagonal_foundation()
-        exponent = next(modifier.argument for modifier in info.modifiers
-                        if modifier.kind == ast.GateModifierName.pow)
+        exponent = info.modifiers[power_index].argument
         exponent = Fraction(*exponent.as_integer_ratio())
-        if sum(modifier.kind == ast.GateModifierName.inv for modifier in info.modifiers) % 2:
+        if sum(modifier.kind == ast.GateModifierName.inv for modifier in info.modifiers[:power_index]) % 2:
             # Inverting the already-powered operation negates its selected
             # phases; it does not reselect the original gate's branch.
             exponent = -exponent
@@ -4834,8 +4836,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         phase_bits = 48 if not exponent else max(48, goal_bits + exponent_bits + 16)
         decimal_places = max(24, (phase_bits * 30103 + 99999) // 100000 + 4)
         try:
+            matrix = analysis.matrix
+            if (len(info.modifiers) - power_index - 1) % 2:
+                # Select principal phases only after inverting the original
+                # gate: the -1 eigenvalue retains the +pi branch.
+                matrix = foundation.adjoint_matrix(matrix, budget)
             certificate = foundation.certify_diagonal_power(
-                analysis.matrix, exponent, goal, budget,
+                matrix, exponent, goal, budget,
                 phase_bits=phase_bits, decimal_places=decimal_places)
             count = sum(number for _, number in info.controls)
             mnemonic = self.__controlled_phase_gate_name(count + 1)
