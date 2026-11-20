@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for the maintained, currently unconnected diagonal foundation."""
+"""Tests for the maintained diagonal certification foundation."""
 
 import cmath
 from fractions import Fraction

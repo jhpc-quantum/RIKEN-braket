@@ -578,6 +578,13 @@ class CertifiedDiagonalInverseTests(unittest.TestCase):
         lines = qasm2qcx.convert(source, diagonal_power_error='1e-12')
         self.assertEqual([Fraction(line.split()[-1]) for line in lines if line.startswith('U1 ')], [0, 0])
 
+    def test_valid_inverse_is_checked_in_skipped_loop(self):
+        source = self.prefix + 'for int i in [1:0] { pow(0.5) @ cancellation q[0]; }'
+        lines = qasm2qcx.convert(source, diagonal_power_error='1e-12')
+        self.assertFalse(any(line.startswith(('U1 ', 'CU1 ', 'C2U1 ')) for line in lines))
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'diagonal_power_error'):
+            qasm2qcx.convert(source)
+
     def test_invalid_inner_and_outer_modifiers_are_rejected_even_when_skipped(self):
         for call in ('pow(0.0) @ non_diagonal q[0];',
                      'pow(0.0) @ unsupported q[0];',

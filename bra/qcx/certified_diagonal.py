@@ -56,7 +56,7 @@ class BudgetLimits:
 
 
 class Budget:
-    """Monotonic counters shared by a complete future source gate call."""
+    """Monotonic counters shared by a complete source gate call."""
 
     def __init__(self, limits=None):
         self.limits = BudgetLimits() if limits is None else limits
