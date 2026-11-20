@@ -659,9 +659,8 @@ class CertifiedDiagonalOuterInverseValidationTests(unittest.TestCase):
                 with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'diagonal_power_error'):
                     qasm2qcx.convert(skipped)
 
-    def test_inverses_inside_power_and_other_invalid_chains_still_fail(self):
-        for call in ('pow(0.5) @ inv @ composite q[0];',
-                     'inv @ pow(0.5) @ pow(2) @ composite q[0];',
+    def test_other_invalid_chains_still_fail(self):
+        for call in ('inv @ pow(0.5) @ pow(2) @ composite q[0];',
                      'inv @ pow(0.5) @ ctrl @ composite q[0],q[1];',
                      'ctrl @ inv @ pow(0.5) @ composite q[0],q[0];'):
             for skipped in (False, True):
@@ -743,8 +742,7 @@ class CertifiedDiagonalOuterInverseIntegrationTests(unittest.TestCase):
             self.assertAlmostEqual(float(line[2]), -math.pi / 2, places=12)
 
     def test_invalid_chains_remain_invalid_in_skipped_paths_and_at_zero_power(self):
-        calls = ('pow(0.0) @ inv @ diagonal q[0];',
-                 'inv @ pow(0.0) @ non_diagonal q[0];',
+        calls = ('inv @ pow(0.0) @ non_diagonal q[0];',
                  'inv @ pow(0.5) @ pow(2) @ diagonal q[0];',
                  'ctrl @ inv @ pow(0.5) @ diagonal q[0],q[0];')
         for call in calls:
@@ -761,6 +759,41 @@ class CertifiedDiagonalOuterInverseIntegrationTests(unittest.TestCase):
                 patch('builtins.print') as output, self.assertRaises(SystemExit):
             qasm2qcx.main(['--diagonal-power-error', '1e-12', 'program.qasm'])
         output.assert_not_called()
+
+
+class CertifiedDiagonalInnerInverseValidationTests(unittest.TestCase):
+    prefix = ('OPENQASM 3; include "stdgates.inc"; '
+              'gate composite a { t a; t a; t a; t a; } qubit[3] q; ')
+
+    def test_inner_inverses_validate_when_skipped_but_do_not_yet_lower(self):
+        calls = ('pow(0.5) @ inv @ composite q[0];',
+                 'pow(0.0) @ inv @ inv @ composite q[0];',
+                 'ctrl @ inv @ negctrl @ pow(-0.5) @ inv @ composite q[0],q[1],q[2];')
+        for call in calls:
+            with self.subTest(call=call):
+                skipped = self.prefix + f'for int i in [1:0] {{ {call} }}'
+                qasm2qcx.convert(skipped, diagonal_power_error='1e-12')
+                with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'not yet implemented'):
+                    qasm2qcx.convert(self.prefix + call, diagonal_power_error='1e-12')
+                with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'diagonal_power_error'):
+                    qasm2qcx.convert(skipped)
+
+    def test_controls_and_additional_powers_inside_remain_invalid(self):
+        calls = ('pow(0.5) @ inv @ ctrl @ composite q[0],q[1];',
+                 'pow(0.5) @ inv @ pow(2) @ composite q[0];',
+                 'ctrl @ pow(0.5) @ inv @ composite q[0],q[0];')
+        for call in calls:
+            for skipped in (False, True):
+                body = f'for int i in [1:0] {{ {call} }}' if skipped else call
+                with self.subTest(call=call, skipped=skipped), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    qasm2qcx.convert(self.prefix + body, diagonal_power_error='1e-12')
+
+    def test_existing_single_operation_wrapper_is_unchanged(self):
+        source = ('OPENQASM 3; include "stdgates.inc"; gate wrapper a { t a; } '
+                  'qubit q; pow(0.5) @ inv @ wrapper q;')
+        expected = ('OPENQASM 3; include "stdgates.inc"; '
+                    'qubit q; pow(0.5) @ inv @ t q;')
+        self.assertEqual(qasm2qcx.convert(source), qasm2qcx.convert(expected))
 
 
 class CertifiedDiagonalIntegerPowerTests(unittest.TestCase):
